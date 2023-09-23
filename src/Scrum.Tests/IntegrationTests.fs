@@ -84,7 +84,7 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None addTaskCmd)
             test <@ task = Ok addTaskCmd.TaskId @>
             let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None addTaskCmd)
-            test <@ task = Error(AddTaskToStoryCommand.BusinessError("Duplicate task Id: 00000000-0000-0000-0000-000000000000")) @> // TODO: How to identify the correct case?
+            test <@ task = Error(AddTaskToStoryCommand.DuplicateTask(Guid "00000000-0000-0000-0000-000000000000")) @>
         }
 
     [<Fact>]

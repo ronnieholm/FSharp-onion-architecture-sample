@@ -6,8 +6,6 @@
 - [ ] Add logging, timing, exception handlers to Application
 - [ ] Begin transaction once per request and commit once per request
 - [ ] Create console app to initialize database, including migrations (in web app with cmdline arg?)
-- [ ] How to wrap errors in different layers? Does users care about if error occurred in Domain or Application? To callers it may all be core. How to wrap errors?
-      - https://github.com/PragmaticFlow/NBomber/blob/dev/src/NBomber/Domain/Errors.fs.
 - [ ] Link to C# and Go versions and red and blue books.
 - [ ] Explore UMX library to add units of measure to every type to avoid memory overhead of wrapping basic types.
 - [ ] Take into account downsides of service locator

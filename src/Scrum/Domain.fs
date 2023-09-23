@@ -47,11 +47,10 @@ module StoryAggregate =
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let create (id: TaskId) (title: TaskTitle) (description: TaskDescription option) (createdAt: DateTime) : Result<Task, string> =
-            Ok
-                { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
-                  Title = title
-                  Description = description }
+        let create (id: TaskId) (title: TaskTitle) (description: TaskDescription option) (createdAt: DateTime) : Task =
+            { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
+              Title = title
+              Description = description }
 
         let equals a b = a.Entity.Id = b.Entity.Id
 
@@ -118,10 +117,8 @@ module StoryAggregate =
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option
           UpdatedAt: DateTime }
-        
-    type TaskDeletedEvent =
-        { StoryId: StoryId
-          TaskId: TaskEntity.TaskId }
+
+    type TaskDeletedEvent = { StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
     type DomainEvent =
         | StoryCreatedEvent of StoryCreatedEvent
@@ -131,31 +128,19 @@ module StoryAggregate =
         | TaskUpdatedEvent of TaskUpdatedEvent
         | TaskDeletedEvent of TaskDeletedEvent
 
-    let create
-        (id: StoryId)
-        (title: StoryTitle)
-        (description: StoryDescription option)
-        (createdAt: DateTime)
-        : Result<Story * DomainEvent, string> =
-        Ok(
-            { Root = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
-              Title = title
-              Description = description
-              Tasks = [] },
-            DomainEvent.StoryCreatedEvent(
-                { StoryId = id
-                  StoryTitle = title
-                  StoryDescription = description
-                  CreatedAt = createdAt }
-            )
+    let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (createdAt: DateTime) : Story * DomainEvent =
+        { Root = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
+          Title = title
+          Description = description
+          Tasks = [] },
+        DomainEvent.StoryCreatedEvent(
+            { StoryId = id
+              StoryTitle = title
+              StoryDescription = description
+              CreatedAt = createdAt }
         )
 
-    let update
-        (story: Story)
-        (title: StoryTitle)
-        (description: StoryDescription option)
-        (updatedAt: DateTime)
-        : Result<Story * DomainEvent, string> =
+    let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * DomainEvent =
         let root = { story.Root with UpdatedAt = Some updatedAt }
         let story = { story with Title = title; Description = description; Root = root }
         let event =
@@ -165,19 +150,21 @@ module StoryAggregate =
                   StoryDescription = description
                   UpdatedAt = updatedAt }
             )
-        Ok(story, event)
+        story, event
 
-    let delete (story: Story) : Result<Story * DomainEvent, string> =
+    let delete (story: Story) : Story * DomainEvent =
         let event = DomainEvent.StoryDeletedEvent({ StoryId = story.Root.Id })
-        Ok(story, event)
+        story, event
 
     open TaskEntity
 
-    let addTaskToStory (story: Story) (task: Task) (createdAt: DateTime) : Result<Story * DomainEvent, string> =
+    type AddTaskToStoryError = DuplicateTask of TaskId
+
+    let addTaskToStory (story: Story) (task: Task) (createdAt: DateTime) : Result<Story * DomainEvent, AddTaskToStoryError> =
         let duplicate = story.Tasks |> List.exists (equals task)
 
         if duplicate then
-            Error "Duplicate task Id"
+            Error(DuplicateTask task.Entity.Id)
         else
             Ok(
                 { story with Tasks = task :: story.Tasks },
@@ -190,19 +177,22 @@ module StoryAggregate =
                 )
             )
 
+    type UpdateTaskError = TaskNotFound of TaskId
+    
     let updateTask
         (story: Story)
         (taskId: TaskId)
         (title: TaskTitle)
         (description: TaskDescription option)
         (updatedAt: DateTime)
-        : Result<Story * DomainEvent, string> =
+        : Result<Story * DomainEvent, UpdateTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
             let task = story.Tasks[idx]
             let entity = { task.Entity with UpdatedAt = Some updatedAt }
-            let updatedTask = { task with Title = title; Description = description; Entity = entity }
+            let updatedTask =
+                { task with Title = title; Description = description; Entity = entity }
             let tasks = story.Tasks |> List.removeAt idx
             let story = { story with Tasks = updatedTask :: tasks }
             let event =
@@ -214,21 +204,20 @@ module StoryAggregate =
                       UpdatedAt = updatedAt }
                 )
             Ok(story, event)
-        | None -> Error "Task not found"
+        | None -> Error (TaskNotFound taskId)
 
-    let deleteTask (story: Story) (taskId: TaskId): Result<Story * DomainEvent, string> =
+    type DeleteTaskError = TaskNotFound of TaskId
+    
+    let deleteTask (story: Story) (taskId: TaskId) : Result<Story * DomainEvent, DeleteTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
             let updatedTasks = story.Tasks |> List.removeAt idx
             let story = { story with Tasks = updatedTasks }
             let event =
-                DomainEvent.TaskDeletedEvent(
-                    { StoryId = story.Root.Id
-                      TaskId = taskId }
-                )
+                DomainEvent.TaskDeletedEvent({ StoryId = story.Root.Id; TaskId = taskId })
             Ok(story, event)
-        | None -> Error "Task not found"
+        | None -> Error (TaskNotFound taskId)
 
     [<Interface>]
     type IStoryRepository =

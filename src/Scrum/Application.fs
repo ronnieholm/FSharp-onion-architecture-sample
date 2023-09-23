@@ -73,19 +73,17 @@ module StoryAggregateRequest =
                     stories.ExistAsync ct cmd.Id
                     |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                 let now = clock.CurrentUtc()
-                let! story, event =
-                    StoryAggregate.create cmd.Id cmd.Title cmd.Description now
-                    |> Result.mapError BusinessError
+                let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
                 do! stories.ApplyEventAsync ct event
                 // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
                 return StoryId.value story.Root.Id
             }
 
     type UpdateStoryCommand = { Id: Guid; Title: string; Description: string option }
-    
+
     module UpdateStoryCommand =
         type UpdateStoryValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
-        
+
         let validate (c: UpdateStoryCommand) : Validation<UpdateStoryValidatedCommand, ValidationError> =
             validation {
                 // Identical to create command except for return type
@@ -100,12 +98,11 @@ module StoryAggregateRequest =
                     | None -> Ok None
                 return { Id = id; Title = title; Description = description }
             }
-            
+
         type UpdateStoryHandlerError =
             | ValidationErrors of ValidationError list
-            | BusinessError of string
             | StoryNotFound of Guid
-            
+
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
@@ -118,28 +115,25 @@ module StoryAggregateRequest =
                     stories.GetByIdAsync ct cmd.Id
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                 let now = clock.CurrentUtc()
-                let! story, event =
-                    StoryAggregate.update story cmd.Title cmd.Description now
-                    |> Result.mapError BusinessError
+                let story, event = StoryAggregate.update story cmd.Title cmd.Description now
                 do! stories.ApplyEventAsync ct event
                 // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
-                return StoryId.value story.Root.Id                                    
+                return StoryId.value story.Root.Id
             }
 
     type DeleteStoryCommand = { Id: Guid }
-                
+
     module DeleteStoryCommand =
         type DeleteStoryValidatedCommand = { Id: StoryId }
-        
+
         let validate (c: DeleteStoryCommand) : Validation<DeleteStoryValidatedCommand, ValidationError> =
             validation {
                 let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
                 return { Id = id }
             }
-        
+
         type DeleteStoryHandlerError =
             | ValidationErrors of ValidationError list
-            | BusinessError of string
             | StoryNotFound of Guid
 
         let runAsync
@@ -153,11 +147,10 @@ module StoryAggregateRequest =
                 let! story =
                     stories.GetByIdAsync ct cmd.Id
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                let! story, event =
-                    StoryAggregate.delete story |> Result.mapError BusinessError
+                let story, event = StoryAggregate.delete story
                 do! stories.ApplyEventAsync ct event
                 // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
-                return StoryId.value story.Root.Id            
+                return StoryId.value story.Root.Id
             }
 
     type AddTaskToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
@@ -186,8 +179,12 @@ module StoryAggregateRequest =
 
         type AddTaskToStoryHandlerError =
             | ValidationErrors of ValidationError list
-            | BusinessError of string
             | StoryNotFound of Guid
+            | DuplicateTask of Guid
+
+        let fromDomainError =
+            function
+            | AddTaskToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
         let runAsync
             (stories: IStoryRepository)
@@ -201,22 +198,22 @@ module StoryAggregateRequest =
                     stories.GetByIdAsync ct cmd.StoryId
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                 let now = clock.CurrentUtc()
-                let! task = create cmd.TaskId cmd.Title cmd.Description now |> Result.mapError BusinessError
-                let! _, event = addTaskToStory story task now |> Result.mapError BusinessError
+                let task = create cmd.TaskId cmd.Title cmd.Description now
+                let! _, event = addTaskToStory story task now |> Result.mapError fromDomainError
                 do! stories.ApplyEventAsync ct event
                 // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
                 return TaskId.value task.Entity.Id
             }
 
     type UpdateTaskCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
-    
+
     module UpdateTaskCommand =
         type UpdateTaskValidatedCommand =
             { StoryId: StoryId
               TaskId: TaskId
               Title: TaskTitle
               Description: TaskDescription option }
-            
+
         let validate (c: UpdateTaskCommand) : Validation<UpdateTaskValidatedCommand, ValidationError> =
             // Identical to create command except for return type
             validation {
@@ -232,12 +229,16 @@ module StoryAggregateRequest =
                     | None -> Ok None
                 return { StoryId = storyId; TaskId = taskId; Title = title; Description = description }
             }
-            
+
         type UpdateTaskHandlerError =
             | ValidationErrors of ValidationError list
-            | BusinessError of string // If task isn't found on story, we end up with BusinessError, which is bad communication to clients.
             | StoryNotFound of Guid
-            
+            | TaskNotFound of Guid
+
+        let fromDomainErrors =
+            function
+            | UpdateTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
+
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
@@ -249,29 +250,35 @@ module StoryAggregateRequest =
                 let! story =
                     stories.GetByIdAsync ct cmd.StoryId
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                let now = clock.CurrentUtc()                    
-                let! _, event = updateTask story cmd.TaskId cmd.Title cmd.Description now |> Result.mapError BusinessError
+                let now = clock.CurrentUtc()
+                let! _, event =
+                    updateTask story cmd.TaskId cmd.Title cmd.Description now
+                    |> Result.mapError fromDomainErrors
                 do! stories.ApplyEventAsync ct event
                 // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
                 return TaskId.value cmd.TaskId
             }
-    
+
     type DeleteTaskCommand = { StoryId: Guid; TaskId: Guid }
-    
+
     module DeleteTaskCommand =
         type DeleteTaskValidatedCommand = { StoryId: StoryId; TaskId: TaskId }
-        
+
         let validate (c: DeleteTaskCommand) : Validation<DeleteTaskValidatedCommand, ValidationError> =
             validation {
                 let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
                 return { StoryId = storyId; TaskId = taskId }
             }
-            
+
         type DeleteTaskHandlerError =
             | ValidationErrors of ValidationError list
-            | BusinessError of string // TODO: hides task not found error
             | StoryNotFound of Guid
+            | TaskNotFound of Guid
+
+        let fromDomainErrors =
+            function
+            | DeleteTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
         let runAsync
             (stories: IStoryRepository)
@@ -283,12 +290,12 @@ module StoryAggregateRequest =
                 let! story =
                     stories.GetByIdAsync ct cmd.StoryId
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                let! _, event = deleteTask story cmd.TaskId |> Result.mapError BusinessError 
+                let! _, event = deleteTask story cmd.TaskId |> Result.mapError fromDomainErrors
                 do! stories.ApplyEventAsync ct event
                 // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
                 return TaskId.value cmd.TaskId
-            }                
-        
+            }
+
     type GetStoryByIdQuery = { Id: Guid }
 
     module GetStoryByIdQuery =
