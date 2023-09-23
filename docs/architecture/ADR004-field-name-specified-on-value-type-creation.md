@@ -1,4 +1,4 @@
-# ADR004: Field name specified on value type creating
+# ADR004: Field name specified on value type creation
 
 Status: Accepted and active.
 
