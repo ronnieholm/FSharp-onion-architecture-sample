@@ -133,6 +133,10 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
                 let count = cmd.ExecuteNonQueryAsync(ct).Result
                 Task.FromResult(assert (count = 1))
+            | DomainEvent.StoryUpdatedEvent e ->
+                failwith "Not implemented"
+            | DomainEvent.StoryDeletedEvent e ->
+                failwith "Not implemented"
             | DomainEvent.TaskAddedToStoryEvent e ->
                 use cmd =
                     new SQLiteCommand(
@@ -154,6 +158,10 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
                 let count = cmd.ExecuteNonQueryAsync(ct).Result
                 Task.FromResult(assert (count = 1))
+            | DomainEvent.TaskUpdatedEvent e ->
+                failwith "Not implemented"
+            | DomainEvent.TaskDeletedEvent e ->
+                failwith "Not implemented"
 
 type SystemClock() =
     interface ISystemClock with

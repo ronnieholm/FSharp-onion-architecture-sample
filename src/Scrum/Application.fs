@@ -81,6 +81,85 @@ module StoryAggregateRequest =
                 return StoryId.value story.Root.Id
             }
 
+    type UpdateStoryCommand = { Id: Guid; Title: string; Description: string option }
+    
+    module UpdateStoryCommand =
+        type UpdateStoryValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
+        
+        let validate (c: UpdateStoryCommand) : Validation<UpdateStoryValidatedCommand, ValidationError> =
+            validation {
+                // Identical to create command except for return type
+                let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
+                and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
+                and! description =
+                    match c.Description with
+                    | Some d ->
+                        StoryDescription.validate d
+                        |> ValidationError.mapError (nameof c.Description)
+                        |> Result.map Some
+                    | None -> Ok None
+                return { Id = id; Title = title; Description = description }
+            }
+            
+        type UpdateStoryHandlerError =
+            | ValidationErrors of ValidationError list
+            | BusinessError of string
+            | StoryNotFound of Guid
+            
+        let runAsync
+            (stories: IStoryRepository)
+            (clock: ISystemClock)
+            (ct: CancellationToken)
+            (cmd: UpdateStoryCommand)
+            : TaskResult<Guid, UpdateStoryHandlerError> =
+            taskResult {
+                let! cmd = validate cmd |> Result.mapError ValidationErrors
+                let! story =
+                    stories.GetByIdAsync ct cmd.Id
+                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
+                let now = clock.CurrentUtc()
+                let! story, event =
+                    StoryAggregate.update story cmd.Title cmd.Description now
+                    |> Result.mapError BusinessError
+                do! stories.ApplyEventAsync ct event
+                // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
+                return StoryId.value story.Root.Id                                    
+            }
+
+    type DeleteStoryCommand = { Id: Guid }
+                
+    module DeleteStoryCommand =
+        type DeleteStoryValidatedCommand = { Id: StoryId }
+        
+        let validate (c: DeleteStoryCommand) : Validation<DeleteStoryValidatedCommand, ValidationError> =
+            validation {
+                let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
+                return { Id = id }
+            }
+        
+        type DeleteStoryHandlerError =
+            | ValidationErrors of ValidationError list
+            | BusinessError of string
+            | StoryNotFound of Guid
+
+        let runAsync
+            (stories: IStoryRepository)
+            (ct: CancellationToken)
+            (cmd: DeleteStoryCommand)
+            : TaskResult<Guid, DeleteStoryHandlerError> =
+            taskResult {
+                // In a real-world system, not everyone should be allowed to delete. So here we'd perform authorization checks.
+                let! cmd = validate cmd |> Result.mapError ValidationErrors
+                let! story =
+                    stories.GetByIdAsync ct cmd.Id
+                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
+                let! story, event =
+                    StoryAggregate.delete story |> Result.mapError BusinessError
+                do! stories.ApplyEventAsync ct event
+                // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
+                return StoryId.value story.Root.Id            
+            }
+
     type AddTaskToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
     module AddTaskToStoryCommand =
@@ -129,6 +208,87 @@ module StoryAggregateRequest =
                 return TaskId.value task.Entity.Id
             }
 
+    type UpdateTaskCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
+    
+    module UpdateTaskCommand =
+        type UpdateTaskValidatedCommand =
+            { StoryId: StoryId
+              TaskId: TaskId
+              Title: TaskTitle
+              Description: TaskDescription option }
+            
+        let validate (c: UpdateTaskCommand) : Validation<UpdateTaskValidatedCommand, ValidationError> =
+            // Identical to create command except for return type
+            validation {
+                let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
+                and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
+                and! title = TaskTitle.validate c.Title |> ValidationError.mapError (nameof c.Title)
+                and! description =
+                    match c.Description with
+                    | Some d ->
+                        TaskDescription.validate d
+                        |> ValidationError.mapError (nameof c.Description)
+                        |> Result.map Some
+                    | None -> Ok None
+                return { StoryId = storyId; TaskId = taskId; Title = title; Description = description }
+            }
+            
+        type UpdateTaskHandlerError =
+            | ValidationErrors of ValidationError list
+            | BusinessError of string // If task isn't found on story, we end up with BusinessError, which is bad communication to clients.
+            | StoryNotFound of Guid
+            
+        let runAsync
+            (stories: IStoryRepository)
+            (clock: ISystemClock)
+            (ct: CancellationToken)
+            (cmd: UpdateTaskCommand)
+            : TaskResult<Guid, UpdateTaskHandlerError> =
+            taskResult {
+                let! cmd = validate cmd |> Result.mapError ValidationErrors
+                let! story =
+                    stories.GetByIdAsync ct cmd.StoryId
+                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                let now = clock.CurrentUtc()                    
+                let! _, event = updateTask story cmd.TaskId cmd.Title cmd.Description now |> Result.mapError BusinessError
+                do! stories.ApplyEventAsync ct event
+                // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
+                return TaskId.value cmd.TaskId
+            }
+    
+    type DeleteTaskCommand = { StoryId: Guid; TaskId: Guid }
+    
+    module DeleteTaskCommand =
+        type DeleteTaskValidatedCommand = { StoryId: StoryId; TaskId: TaskId }
+        
+        let validate (c: DeleteTaskCommand) : Validation<DeleteTaskValidatedCommand, ValidationError> =
+            validation {
+                let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
+                and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
+                return { StoryId = storyId; TaskId = taskId }
+            }
+            
+        type DeleteTaskHandlerError =
+            | ValidationErrors of ValidationError list
+            | BusinessError of string // TODO: hides task not found error
+            | StoryNotFound of Guid
+
+        let runAsync
+            (stories: IStoryRepository)
+            (ct: CancellationToken)
+            (cmd: DeleteTaskCommand)
+            : TaskResult<Guid, DeleteTaskHandlerError> =
+            taskResult {
+                let! cmd = validate cmd |> Result.mapError ValidationErrors
+                let! story =
+                    stories.GetByIdAsync ct cmd.StoryId
+                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                let! _, event = deleteTask story cmd.TaskId |> Result.mapError BusinessError 
+                do! stories.ApplyEventAsync ct event
+                // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
+                return TaskId.value cmd.TaskId
+            }                
+        
     type GetStoryByIdQuery = { Id: Guid }
 
     module GetStoryByIdQuery =
