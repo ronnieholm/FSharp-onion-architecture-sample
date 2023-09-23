@@ -25,7 +25,6 @@ type StoryController() =
     [<HttpPost>]
     member _.Create(ct: CancellationToken) : string =
         // TODO: https://softwareengineering.stackexchange.com/questions/314066/restful-api-should-i-be-returning-the-object-that-was-created-updated
-        // TODO: Should we add cancellation token to environment?
         let id =
             StoryAggregateRequest.CreateStoryCommand.runAsync
                 env.StoryRepository

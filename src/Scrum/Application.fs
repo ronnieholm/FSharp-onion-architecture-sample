@@ -35,8 +35,6 @@ module Seedwork =
 open Seedwork
 
 module StoryAggregateRequest =
-    open Seedwork
-
     type CreateStoryCommand = { Id: Guid; Title: string; Description: string option }
 
     module CreateStoryCommand =
