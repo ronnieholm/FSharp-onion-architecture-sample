@@ -1,7 +1,6 @@
 # TODO
 
 - [ ] Create union with commands/queries and use with decorator pattern to setup application pipeline
-- [ ] Setting GUID keys from outside should be prohibited
 - [ ] Make note of how CLI tools can be fsx scripts, skipping console argument parsing
 - [ ] Add update and delete handlers
 - [ ] Add functions in Web for converting Application results to HTTP response codes
