@@ -58,7 +58,6 @@ module StoryAggregateRequest =
 
         type CreateStoryHandlerError =
             | ValidationErrors of ValidationError list
-            | BusinessError of string
             | DuplicateStory of Guid
 
         let runAsync
