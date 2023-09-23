@@ -1,0 +1,19 @@
+[*.{fs,fsi}]
+max_line_length = 140                                           # default: 120
+fsharp_align_function_signature_to_indentation = false          # default: false
+fsharp_alternative_long_member_definitions = false              # default: false
+fsharp_blank_lines_around_nested_multiline_expressions = false  # default: true
+fsharp_keep_max_number_of_blank_lines = 1                       # default: 100
+fsharp_max_function_binding_width = 80                          # default: 40
+fsharp_max_infix_operator_expression = 80                       # default: 80
+fsharp_max_if_then_else_short_width = 80                        # default: 60
+fsharp_max_record_width = 80                                    # default: 40
+fsharp_max_dot_get_expression_width = 80                        # default: 80
+fsharp_max_array_or_list_number_of_items = 5                    # default: 1
+fsharp_multi_line_lambda_closing_newline = false                # default: false
+fsharp_multiline_bracket_style = Cramped                        # default: Cramped
+fsharp_newline_before_multiline_computation_expression = true   # default: true
+fsharp_newline_between_type_definition_and_members = true       # default: true
+fsharp_space_before_colon = false                               # default: false
+fsharp_max_value_binding_width = 80                             # default: 80
+fsharp_max_dot_get_expression_width = 80                        # default: 80
