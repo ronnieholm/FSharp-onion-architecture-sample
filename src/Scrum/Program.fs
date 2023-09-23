@@ -29,6 +29,7 @@ type StoryController() =
             StoryAggregateRequest.CreateStoryCommand.runAsync
                 env.StoryRepository
                 env.SystemClock
+                env.Logger
                 ct
                 { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
 

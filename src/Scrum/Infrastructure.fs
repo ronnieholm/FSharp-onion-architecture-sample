@@ -18,7 +18,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 new SQLiteCommand("select count(*) from stories where id = @id", connection, transaction)
             cmd.Parameters.AddWithValue("@id", id |> StoryId.value |> string) |> ignore
             let count = cmd.ExecuteScalarAsync(ct).Result :?> int64
-            
+
             match count with
             | 0L -> Task.FromResult(false)
             | 1L -> Task.FromResult(true)
@@ -133,10 +133,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
                 let count = cmd.ExecuteNonQueryAsync(ct).Result
                 Task.FromResult(assert (count = 1))
-            | DomainEvent.StoryUpdatedEvent e ->
-                failwith "Not implemented"
-            | DomainEvent.StoryDeletedEvent e ->
-                failwith "Not implemented"
+            | DomainEvent.StoryUpdatedEvent e -> failwith "Not implemented"
+            | DomainEvent.StoryDeletedEvent e -> failwith "Not implemented"
             | DomainEvent.TaskAddedToStoryEvent e ->
                 use cmd =
                     new SQLiteCommand(
@@ -158,14 +156,17 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
                 let count = cmd.ExecuteNonQueryAsync(ct).Result
                 Task.FromResult(assert (count = 1))
-            | DomainEvent.TaskUpdatedEvent e ->
-                failwith "Not implemented"
-            | DomainEvent.TaskDeletedEvent e ->
-                failwith "Not implemented"
+            | DomainEvent.TaskUpdatedEvent e -> failwith "Not implemented"
+            | DomainEvent.TaskDeletedEvent e -> failwith "Not implemented"
 
 type SystemClock() =
     interface ISystemClock with
         member this.CurrentUtc() = DateTime.UtcNow
+
+type Logger() =
+    interface ILogger with
+        member _.LogRequest (useCase: string) (request: obj) : unit = printfn $"%s{useCase}: %A{request}"
+        member _.LogRequestTime (useCase: string) (elapsedMs: int) : unit = printfn $"%s{useCase}: %d{elapsedMs}"
 
 // Pass into ctor IOptions<config>.
 // Avoid Singletons dependencies as they make testing hard.
@@ -177,7 +178,7 @@ type SystemClock() =
 // Are Open and BeginTransaction on the connection idempotent?
 // AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locater tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
 // This is our composition root: https://blog.ploeh.dk/2011/07/28/CompositionRoot/
-type AppEnv(connectionString: string, ?currentTime, ?storyRepository) =
+type AppEnv(connectionString: string, ?systemClock, ?logger, ?storyRepository) =
     let transaction =
         lazy
             let connection = new SQLiteConnection(connectionString)
@@ -187,7 +188,8 @@ type AppEnv(connectionString: string, ?currentTime, ?storyRepository) =
     let storyRepository' =
         lazy (storyRepository |> Option.defaultValue (SqliteStoryRepository transaction.Value))
 
-    let currentTime' = lazy (currentTime |> Option.defaultValue (SystemClock()))
+    let systemClock' = lazy (systemClock |> Option.defaultValue (SystemClock()))
+    let logger' = lazy (logger |> Option.defaultValue (Logger()))
 
     interface IAppEnv with
         member _.CommitAsync(ct: CancellationToken) : System.Threading.Tasks.Task =
@@ -203,5 +205,6 @@ type AppEnv(connectionString: string, ?currentTime, ?storyRepository) =
             else
                 Task.CompletedTask
 
-        member _.SystemClock = currentTime'.Value
+        member _.SystemClock = systemClock'.Value
+        member _.Logger = logger'.Value
         member _.StoryRepository = storyRepository'.Value

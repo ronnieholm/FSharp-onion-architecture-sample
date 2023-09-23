@@ -22,12 +22,22 @@ module Seedwork =
         abstract SystemClock: ISystemClock
 
     [<Interface>]
+    type ILogger =
+        abstract LogRequest: string -> obj -> unit
+        abstract LogRequestTime: string -> int -> unit
+        
+    [<Interface>]
+    type ILoggerFactory =
+        abstract Logger: ILogger
+    
+    [<Interface>]
     type IStoryRepositoryFactory =
         abstract StoryRepository: IStoryRepository
 
     [<Interface>]
     type IAppEnv =
         inherit ISystemClockFactory
+        inherit ILoggerFactory
         inherit IStoryRepositoryFactory
         abstract CommitAsync: CancellationToken -> System.Threading.Tasks.Task
         abstract RollbackAsync: CancellationToken -> System.Threading.Tasks.Task
@@ -61,9 +71,11 @@ module StoryAggregateRequest =
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
+            (logger: ILogger)
             (ct: CancellationToken)
             (cmd: CreateStoryCommand)
             : TaskResult<Guid, CreateStoryHandlerError> =
+            logger.LogRequest (nameof CreateStoryCommand) cmd
             taskResult {
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 do!
@@ -103,9 +115,11 @@ module StoryAggregateRequest =
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
+            (logger: ILogger)
             (ct: CancellationToken)
             (cmd: UpdateStoryCommand)
             : TaskResult<Guid, UpdateStoryHandlerError> =
+            logger.LogRequest (nameof UpdateStoryCommand) cmd
             taskResult {
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
@@ -135,9 +149,11 @@ module StoryAggregateRequest =
 
         let runAsync
             (stories: IStoryRepository)
+            (logger: ILogger)            
             (ct: CancellationToken)
             (cmd: DeleteStoryCommand)
             : TaskResult<Guid, DeleteStoryHandlerError> =
+            logger.LogRequest (nameof DeleteStoryCommand) cmd    
             taskResult {
                 // In a real-world system, not everyone should be allowed to delete. So here we'd perform authorization checks.
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -186,9 +202,11 @@ module StoryAggregateRequest =
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
+            (logger: ILogger)            
             (ct: CancellationToken)
             (cmd: AddTaskToStoryCommand)
             : TaskResult<Guid, AddTaskToStoryHandlerError> =
+            logger.LogRequest (nameof AddTaskToStoryCommand) cmd                
             taskResult {
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
@@ -239,9 +257,11 @@ module StoryAggregateRequest =
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
+            (logger: ILogger)
             (ct: CancellationToken)
             (cmd: UpdateTaskCommand)
             : TaskResult<Guid, UpdateTaskHandlerError> =
+            logger.LogRequest (nameof UpdateTaskCommand) cmd                
             taskResult {
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
@@ -279,9 +299,11 @@ module StoryAggregateRequest =
 
         let runAsync
             (stories: IStoryRepository)
+            (logger: ILogger)            
             (ct: CancellationToken)
             (cmd: DeleteTaskCommand)
             : TaskResult<Guid, DeleteTaskHandlerError> =
+            logger.LogRequest (nameof DeleteTaskCommand) cmd
             taskResult {
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
@@ -342,9 +364,11 @@ module StoryAggregateRequest =
 
         let runAsync
             (stories: IStoryRepository)
+            (logger: ILogger)            
             (ct: CancellationToken)
             (qry: GetStoryByIdQuery)
             : TaskResult<StoryDto, GetStoryByIdHandlerError> =
+            logger.LogRequest (nameof GetStoryByIdQuery) qry
             taskResult {
                 let! qry = validate qry |> Result.mapError ValidationErrors
                 let! story = stories.GetByIdAsync ct qry.Id |> TaskResult.requireSome (StoryNotFound qry.Id)

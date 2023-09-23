@@ -34,9 +34,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
         task {
             let env = AppEnv(connectionString) :> IAppEnv
             let cmd = { A.createStoryCommand with Id = Guid.NewGuid() }
-            let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None cmd)
+            let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
             test <@ story = Ok cmd.Id @>
-            let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None cmd)
+            let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
             test <@ story = Error(CreateStoryCommand.DuplicateStory(cmd.Id)) @>
         }
 
@@ -59,9 +59,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
         task {
             let env = AppEnv(connectionString) :> IAppEnv
             let cmd = { A.createStoryCommand with Id = Guid.NewGuid() }
-            let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None cmd)
+            let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
             let qry = { A.getStoryByIdQuery with Id = cmd.Id }
-            let! story = (GetStoryByIdQuery.runAsync env.StoryRepository CancellationToken.None qry)
+            let! story = (GetStoryByIdQuery.runAsync env.StoryRepository env.Logger CancellationToken.None qry)
             test <@ true = true @>
         }
 
@@ -70,7 +70,7 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
         task {
             let env = AppEnv(connectionString) :> IAppEnv
             let qry = { A.getStoryByIdQuery with Id = (* Non-existing Id *) Guid.NewGuid() }
-            let! story = (GetStoryByIdQuery.runAsync env.StoryRepository CancellationToken.None qry)
+            let! story = (GetStoryByIdQuery.runAsync env.StoryRepository env.Logger CancellationToken.None qry)
             test <@ true = true @>
         }
 
@@ -80,10 +80,10 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let env = AppEnv(connectionString) :> IAppEnv
             let createStoryCmd = { A.createStoryCommand with Id = Guid.NewGuid() }
             let addTaskCmd = { A.addTaskToStoryCommand with StoryId = createStoryCmd.Id }
-            let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None createStoryCmd)
-            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None addTaskCmd)
+            let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None createStoryCmd)
+            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd)
             test <@ task = Ok addTaskCmd.TaskId @>
-            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None addTaskCmd)
+            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd)
             test <@ task = Error(AddTaskToStoryCommand.DuplicateTask(Guid "00000000-0000-0000-0000-000000000000")) @>
         }
 
@@ -93,6 +93,6 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let env = AppEnv(connectionString) :> IAppEnv
             let addTaskCmd =
                 { A.addTaskToStoryCommand with StoryId = (* non-existing *) Guid.NewGuid() }
-            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock CancellationToken.None addTaskCmd)
+            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd)
             test <@ task = Error(AddTaskToStoryCommand.StoryNotFound(addTaskCmd.StoryId)) @>
         }
