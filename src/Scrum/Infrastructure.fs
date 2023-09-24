@@ -14,15 +14,18 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
     interface IStoryRepository with
         member _.ExistAsync (ct: CancellationToken) (id: StoryId) : Task<bool> =
-            use cmd =
-                new SQLiteCommand("select count(*) from stories where id = @id", connection, transaction)
+            let sql = "select count(*) from stories where id = @id"
+            use cmd = new SQLiteCommand(sql, connection, transaction)
             cmd.Parameters.AddWithValue("@id", id |> StoryId.value |> string) |> ignore
-            let count = cmd.ExecuteScalarAsync(ct).Result :?> int64
-
-            match count with
-            | 0L -> Task.FromResult(false)
-            | 1L -> Task.FromResult(true)
-            | _ -> failwith $"Inconsistent database state caused by duplicate id: '{id}'"
+            task {
+                let! count = cmd.ExecuteScalarAsync(ct)
+                let exist =
+                    match count :?> int64 with
+                    | 0L -> false
+                    | 1L -> true
+                    | _ -> failwith $"Inconsistent database state. Duplicate story Id: '{id}'"
+                return exist
+            }
 
         member _.GetByIdAsync (ct: CancellationToken) (id: StoryId) : Task<Story option> =
             // TODO: Convert to single SQL with left inner join.
@@ -87,15 +90,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
                 aux []
 
-            use getStories =
-                new SQLiteCommand("select * from stories where id = @id", connection, transaction)
-
+            let storySql = "select * from stories where id = @id"
+            use getStories = new SQLiteCommand(storySql, connection, transaction)
             getStories.Parameters.AddWithValue("@id", id |> StoryId.value |> string)
             |> ignore
 
-            use getTasks =
-                new SQLiteCommand("select * from tasks where story_id = @storyId", connection, transaction)
-
+            let taskSql = "select * from tasks where story_id = @storyId"
+            use getTasks = new SQLiteCommand(taskSql, connection, transaction)
             getTasks.Parameters.AddWithValue("@storyId", id |> StoryId.value |> string)
             |> ignore
 
@@ -109,53 +110,54 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
         // As we're immediately applying events to the store, we don't have to
         // worry about events evolving over time. For this domain, we don't
-        // require full event sourcing; only enough data to keep the store up to
+        // require full event sourcing; only enough event data to keep the store up to
         // date.
         member _.ApplyEventAsync (ct: CancellationToken) (event: DomainEvent) : Task<unit> =
             // TODO: persist event to DomainEvents table
             match event with
             | DomainEvent.StoryCreatedEvent e ->
-                use cmd =
-                    new SQLiteCommand(
-                        "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)",
-                        connection,
-                        transaction
-                    )
-
-                [| ("@id", e.StoryId |> StoryId.value |> string)
-                   ("@title", e.StoryTitle |> StoryTitle.value)
-                   ("@description",
+                let description =
                     match e.StoryDescription with
                     | Some x -> x |> StoryDescription.value
-                    | None -> null)
-                   ("@createdAt", string e.CreatedAt) |]
-                |> Array.iter (fun v -> cmd.Parameters.AddWithValue v |> ignore)
+                    | None -> null
 
-                let count = cmd.ExecuteNonQueryAsync(ct).Result
-                Task.FromResult(assert (count = 1))
+                let sql =
+                    "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
+                p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
+                p.AddWithValue("@description", description) |> ignore
+                p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
+
+                task {
+                    let! count = cmd.ExecuteNonQueryAsync(ct)
+                    assert (count = 1)
+                    return ()
+                }
             | DomainEvent.StoryUpdatedEvent e -> failwith "Not implemented"
             | DomainEvent.StoryDeletedEvent e -> failwith "Not implemented"
             | DomainEvent.TaskAddedToStoryEvent e ->
-                use cmd =
-                    new SQLiteCommand(
-                        "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)",
-                        connection,
-                        transaction
-                    )
-
-                // TODO: don't waste memory recreating an each time.
-                [| ("@id", e.TaskId |> TaskId.value |> string)
-                   ("@storyId", e.StoryId |> StoryId.value |> string)
-                   ("@title", e.TaskTitle |> TaskTitle.value)
-                   ("@description",
+                let description =
                     match e.TaskDescription with
                     | Some x -> x |> TaskDescription.value
-                    | None -> null)
-                   ("@createdAt", string e.CreatedAt) |]
-                |> Array.iter (fun v -> cmd.Parameters.AddWithValue v |> ignore)
+                    | None -> null
 
-                let count = cmd.ExecuteNonQueryAsync(ct).Result
-                Task.FromResult(assert (count = 1))
+                let sql =
+                    "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
+                p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
+                p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
+                p.AddWithValue("@description", description) |> ignore
+                p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
+
+                task {
+                    let! count = cmd.ExecuteNonQueryAsync(ct)
+                    assert (count = 1)
+                    return ()
+                }
             | DomainEvent.TaskUpdatedEvent e -> failwith "Not implemented"
             | DomainEvent.TaskDeletedEvent e -> failwith "Not implemented"
 
