@@ -53,7 +53,7 @@ module Seedwork =
         let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
         result, elapsed
 
-    let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 'tcmd) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
+    let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
                 logger.LogRequestPayload useCase cmd
