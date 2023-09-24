@@ -9,6 +9,9 @@ open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
 
 module Seedwork =
+    [<Measure>]
+    type ms
+
     type ValidationError = { Field: string; Message: string }
     module ValidationError =
         let create (field: string) (message: string) = { Field = field; Message = message }
@@ -25,7 +28,7 @@ module Seedwork =
     [<Interface>]
     type ILogger =
         abstract LogRequest: string -> obj -> unit
-        abstract LogRequestTime: string -> int -> unit
+        abstract LogRequestTime: string -> uint<ms> -> unit
 
     [<Interface>]
     type ILoggerFactory =
@@ -43,20 +46,19 @@ module Seedwork =
         abstract CommitAsync: CancellationToken -> System.Threading.Tasks.Task
         abstract RollbackAsync: CancellationToken -> System.Threading.Tasks.Task
 
-    let time (fn: unit -> 't) : 't * int (* TODO: use ms units of measure? *) =
+    let time (fn: unit -> 't) : 't * uint<ms> =
         let sw = Stopwatch()
         sw.Start()
-        let r = fn ()
-        r, int sw.ElapsedMilliseconds
+        let result = fn ()
+        let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
+        result, elapsed
 
     let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 'tcmd) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
                 logger.LogRequest useCase cmd
-                // TODO: don't call Result. Causes thread to block. How to await?
                 taskResult { return! fn () })
-        // Don't log errors as the result of evaluating fn. These are expected errors
-        // which we don't want to pollute our lots with.            
+        // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
         logger.LogRequestTime useCase elapsed
         result
 
@@ -82,7 +84,7 @@ module StoryAggregateRequest =
                 return { Id = id; Title = title; Description = description }
             }
 
-        type CreateStoryHandlerError =
+        type CreateStoryError =
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
 
@@ -92,18 +94,17 @@ module StoryAggregateRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: CreateStoryCommand)
-            : TaskResult<Guid, CreateStoryHandlerError> =
+            : TaskResult<Guid, CreateStoryError> =
             let aux () =
                 taskResult {
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
-                    //do! Threading.Tasks.Task.Delay(5000)
                     do!
                         stories.ExistAsync ct cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let now = clock.CurrentUtc()
                     let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
                     do! stories.ApplyEventAsync ct event
-                    // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
+                    // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                     return StoryId.value story.Root.Id
                 }
 
@@ -116,7 +117,8 @@ module StoryAggregateRequest =
 
         let validate (c: UpdateStoryCommand) : Validation<UpdateStoryValidatedCommand, ValidationError> =
             validation {
-                // Identical to create command except for return type
+                // Except for return type, identical to CreateStoryCommand's validate. In the real-world, we may
+                // not want to allow updating every field set during creation, so they wouldn't be identical.
                 let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
@@ -129,7 +131,7 @@ module StoryAggregateRequest =
                 return { Id = id; Title = title; Description = description }
             }
 
-        type UpdateStoryHandlerError =
+        type UpdateStoryError =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
@@ -139,7 +141,7 @@ module StoryAggregateRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: UpdateStoryCommand)
-            : TaskResult<Guid, UpdateStoryHandlerError> =
+            : TaskResult<Guid, UpdateStoryError> =
             let aux () =
                 taskResult {
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -165,7 +167,7 @@ module StoryAggregateRequest =
                 return { Id = id }
             }
 
-        type DeleteStoryHandlerError =
+        type DeleteStoryError =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
@@ -174,15 +176,14 @@ module StoryAggregateRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: DeleteStoryCommand)
-            : TaskResult<Guid, DeleteStoryHandlerError> =
+            : TaskResult<Guid, DeleteStoryError> =
             let aux () =
                 taskResult {
-                    // In a real-world system, not everyone should be allowed to delete. So here we'd perform authorization checks.
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                    let story, event = StoryAggregate.delete story
+                    let event = StoryAggregate.delete story
                     do! stories.ApplyEventAsync ct event
                     return StoryId.value story.Root.Id
                 }
@@ -213,14 +214,14 @@ module StoryAggregateRequest =
                 return { StoryId = storyId; TaskId = taskId; Title = title; Description = description }
             }
 
-        type AddTaskToStoryHandlerError =
+        type AddTaskToStoryError =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | DuplicateTask of Guid
 
         let fromDomainError =
             function
-            | AddTaskToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
+            | StoryAggregate.AddTaskToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
         let runAsync
             (stories: IStoryRepository)
@@ -228,7 +229,7 @@ module StoryAggregateRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: AddTaskToStoryCommand)
-            : TaskResult<Guid, AddTaskToStoryHandlerError> =
+            : TaskResult<Guid, AddTaskToStoryError> =
             let aux () =
                 taskResult {
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -254,7 +255,7 @@ module StoryAggregateRequest =
               Description: TaskDescription option }
 
         let validate (c: UpdateTaskCommand) : Validation<UpdateTaskValidatedCommand, ValidationError> =
-            // Identical to create command except for return type
+            // Except for return type, identical to AddTaskToStoryCommand's validate command.
             validation {
                 let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
@@ -269,14 +270,14 @@ module StoryAggregateRequest =
                 return { StoryId = storyId; TaskId = taskId; Title = title; Description = description }
             }
 
-        type UpdateTaskHandlerError =
+        type UpdateTaskError =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | TaskNotFound of Guid
 
         let fromDomainErrors =
             function
-            | UpdateTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
+            | StoryAggregate.UpdateTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
         let runAsync
             (stories: IStoryRepository)
@@ -284,7 +285,7 @@ module StoryAggregateRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: UpdateTaskCommand)
-            : TaskResult<Guid, UpdateTaskHandlerError> =
+            : TaskResult<Guid, UpdateTaskError> =
             let aux () =
                 taskResult {
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -313,21 +314,21 @@ module StoryAggregateRequest =
                 return { StoryId = storyId; TaskId = taskId }
             }
 
-        type DeleteTaskHandlerError =
+        type DeleteTaskError =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | TaskNotFound of Guid
 
         let fromDomainErrors =
             function
-            | DeleteTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
+            | StoryAggregate.DeleteTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
         let runAsync
             (stories: IStoryRepository)
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: DeleteTaskCommand)
-            : TaskResult<Guid, DeleteTaskHandlerError> =
+            : TaskResult<Guid, DeleteTaskError> =
             let aux () =
                 taskResult {
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -384,7 +385,7 @@ module StoryAggregateRequest =
                   UpdatedAt = story.Root.UpdatedAt
                   Tasks = story.Tasks |> List.map TaskDto.from }
 
-        type GetStoryByIdHandlerError =
+        type GetStoryByIdError =
             | ValidationErrors of ValidationError list
             | StoryNotFound of StoryId
 
@@ -393,7 +394,7 @@ module StoryAggregateRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (qry: GetStoryByIdQuery)
-            : TaskResult<StoryDto, GetStoryByIdHandlerError> =
+            : TaskResult<StoryDto, GetStoryByIdError> =
             let aux () =
                 taskResult {
                     let! qry = validate qry |> Result.mapError ValidationErrors

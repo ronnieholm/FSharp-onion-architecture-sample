@@ -75,7 +75,7 @@ let runAsync
             let now = clock.CurrentUtc()
             let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
             do! stories.ApplyEventAsync ct event
-            // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
+            // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependencies ct event
             return StoryId.value story.Root.Id
         }
 

@@ -17,26 +17,31 @@ module StoryAggregate =
     module TaskEntity =
         type TaskId = TaskId of Guid
         module TaskId =
-            // TODO: Disallow empty Guid
-            let validate value = Ok(TaskId value)
+            let validate =
+                function
+                | v when v = Guid.Empty -> Error "Should be non-empty"
+                | v -> Ok(TaskId v)
+
             let value (TaskId id) = id
 
         type TaskTitle = TaskTitle of string
         module TaskTitle =
-            let validate value =
-                match value with
-                | v when String.IsNullOrWhiteSpace v -> Error "Shouldn't by empty or whitespace"
-                | v when v.Length > 100 -> Error "Shouldn't contain more than 100 characters"
+            let maxLength = 100
+            let validate =
+                function
+                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+                | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
                 | v -> Ok(TaskTitle v)
 
             let value (TaskTitle id) = id
 
         type TaskDescription = TaskDescription of string
         module TaskDescription =
-            let validate value =
-                match value with
-                | v when String.IsNullOrWhiteSpace v -> Error "Shouldn't by empty or whitespace"
-                | v when v.Length > 1000 -> Error "Shouldn't contain more than 1000 characters"
+            let maxLength = 1000
+            let validate =
+                function
+                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+                | v when v.Length > maxLength -> Error $"Should contain less than or equal to ${maxLength} characters"
                 | v -> Ok(TaskDescription v)
 
             let value (TaskDescription id) = id
@@ -57,28 +62,33 @@ module StoryAggregate =
     type StoryId = StoryId of Guid
 
     module StoryId =
-        // TODO: Disallow empty Guid
-        let validate value = Ok(StoryId value)
+        let validate =
+            function
+            | v when v = Guid.Empty -> Error "Should be non-empty"
+            | v -> Ok(StoryId v)
+
         let value (StoryId id) = id
 
     type StoryTitle = StoryTitle of string
     module StoryTitle =
-        // TODO: disallow newline characters
-        // TODO: Add length as constant below module
-        let create value =
-            match value with
-            | v when String.IsNullOrWhiteSpace v -> Error "Shouldn't by empty or whitespace"
-            | v when v.Length > 100 -> Error "Shouldn't contain more than 100 characters"
+        let maxLength = 100
+
+        let create =
+            function
+            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+            | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
             | v -> Ok(StoryTitle v)
 
         let value (StoryTitle id) = id
 
     type StoryDescription = StoryDescription of string
     module StoryDescription =
-        let validate value =
-            match value with
-            | v when String.IsNullOrWhiteSpace v -> Error "Shouldn't by empty or whitespace"
-            | v when v.Length > 1000 -> Error "Shouldn't contain more than 1000 characters"
+        let maxLength = 1000
+
+        let validate =
+            function
+            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+            | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
             | v -> Ok(StoryDescription v)
 
         let value (StoryDescription id) = id
@@ -152,9 +162,7 @@ module StoryAggregate =
             )
         story, event
 
-    let delete (story: Story) : Story * DomainEvent =
-        let event = DomainEvent.StoryDeletedEvent({ StoryId = story.Root.Id })
-        story, event
+    let delete (story: Story) : DomainEvent = DomainEvent.StoryDeletedEvent({ StoryId = story.Root.Id })
 
     open TaskEntity
 
@@ -178,7 +186,7 @@ module StoryAggregate =
             )
 
     type UpdateTaskError = TaskNotFound of TaskId
-    
+
     let updateTask
         (story: Story)
         (taskId: TaskId)
@@ -190,10 +198,10 @@ module StoryAggregate =
         match idx with
         | Some idx ->
             let task = story.Tasks[idx]
+            let tasks = story.Tasks |> List.removeAt idx
             let entity = { task.Entity with UpdatedAt = Some updatedAt }
             let updatedTask =
-                { task with Title = title; Description = description; Entity = entity }
-            let tasks = story.Tasks |> List.removeAt idx
+                { task with Entity = entity; Title = title; Description = description }
             let story = { story with Tasks = updatedTask :: tasks }
             let event =
                 DomainEvent.TaskUpdatedEvent(
@@ -204,20 +212,20 @@ module StoryAggregate =
                       UpdatedAt = updatedAt }
                 )
             Ok(story, event)
-        | None -> Error (TaskNotFound taskId)
+        | None -> Error(TaskNotFound taskId)
 
     type DeleteTaskError = TaskNotFound of TaskId
-    
+
     let deleteTask (story: Story) (taskId: TaskId) : Result<Story * DomainEvent, DeleteTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
-            let updatedTasks = story.Tasks |> List.removeAt idx
-            let story = { story with Tasks = updatedTasks }
+            let tasks = story.Tasks |> List.removeAt idx
+            let story = { story with Tasks = tasks }
             let event =
                 DomainEvent.TaskDeletedEvent({ StoryId = story.Root.Id; TaskId = taskId })
             Ok(story, event)
-        | None -> Error (TaskNotFound taskId)
+        | None -> Error(TaskNotFound taskId)
 
     [<Interface>]
     type IStoryRepository =
