@@ -27,6 +27,7 @@ module StoryAggregate =
         type TaskTitle = TaskTitle of string
         module TaskTitle =
             let maxLength = 100
+
             let validate =
                 function
                 | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
@@ -38,6 +39,7 @@ module StoryAggregate =
         type TaskDescription = TaskDescription of string
         module TaskDescription =
             let maxLength = 1000
+            
             let validate =
                 function
                 | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
@@ -73,7 +75,7 @@ module StoryAggregate =
     module StoryTitle =
         let maxLength = 100
 
-        let create =
+        let create value =
             function
             | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
             | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"

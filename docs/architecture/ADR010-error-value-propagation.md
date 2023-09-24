@@ -49,7 +49,7 @@ let runAsync
         let! task = create cmd.TaskId cmd.Title cmd.Description now |> Result.mapError BusinessError
         let! _, event = addTaskToStory story task now |> Result.mapError BusinessError
         do! stories.ApplyEventAsync ct event
-        // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
+        // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
         return TaskId.value task.Entity.Id
     }
 ```

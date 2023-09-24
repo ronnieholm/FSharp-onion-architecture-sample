@@ -275,7 +275,7 @@ module StoryAggregateRequest =
             | StoryNotFound of Guid
             | TaskNotFound of Guid
 
-        let fromDomainErrors =
+        let fromDomainError =
             function
             | StoryAggregate.UpdateTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
@@ -295,7 +295,7 @@ module StoryAggregateRequest =
                     let now = clock.CurrentUtc()
                     let! _, event =
                         updateTask story cmd.TaskId cmd.Title cmd.Description now
-                        |> Result.mapError fromDomainErrors
+                        |> Result.mapError fromDomainError
                     do! stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
@@ -319,7 +319,7 @@ module StoryAggregateRequest =
             | StoryNotFound of Guid
             | TaskNotFound of Guid
 
-        let fromDomainErrors =
+        let fromDomainError =
             function
             | StoryAggregate.DeleteTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
@@ -335,7 +335,7 @@ module StoryAggregateRequest =
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! _, event = deleteTask story cmd.TaskId |> Result.mapError fromDomainErrors
+                    let! _, event = deleteTask story cmd.TaskId |> Result.mapError fromDomainError
                     do! stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
@@ -386,8 +386,8 @@ module StoryAggregateRequest =
                   Tasks = story.Tasks |> List.map TaskDto.from }
 
         type GetStoryByIdError =
-            | ValidationErrors of ValidationError list
-            | StoryNotFound of StoryId
+            | ValidationErrors of ValidationError list // TODO: list isn't a C# friendly type, but it's native to F#, not the domain. Rule it not to return domain internal types to outside world
+            | StoryNotFound of StoryId // TODO: should we return Guid here? C# friendly types in, C# friendly types out?
 
         let runAsync
             (stories: IStoryRepository)
