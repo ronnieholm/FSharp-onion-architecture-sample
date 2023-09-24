@@ -56,6 +56,53 @@ In F#, going for a more explicit approach seems more idiomatic, i.e., instead of
 a pipeline, duplicate these functions across `runAsync` functions. The
 duplication makes it more obvious to readers what's going on.
 
+As an example, `CreateStoryCommand` becomes:
+
+```fsharp
+let runAsync
+    (stories: IStoryRepository)
+    (clock: ISystemClock)
+    (logger: ILogger)
+    (ct: CancellationToken)
+    (cmd: CreateStoryCommand)
+    : TaskResult<Guid, CreateStoryHandlerError> =
+    let aux () =
+        taskResult {
+            let! cmd = validate cmd |> Result.mapError ValidationErrors
+            do!
+                stories.ExistAsync ct cmd.Id
+                |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
+            let now = clock.CurrentUtc()
+            let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
+            do! stories.ApplyEventAsync ct event
+            // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
+            return StoryId.value story.Root.Id
+        }
+
+    runWithDecoratorAsync logger (nameof CreateStoryCommand) cmd aux
+```
+
+where the decorator is defined as:
+
+```fsharp
+let time (fn: unit -> 't) : 't * int =
+    let sw = Stopwatch()
+    sw.Start()
+    let r = fn ()
+    r, int sw.ElapsedMilliseconds
+
+let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 'tcmd) (fn: unit -> 'tresult) : TaskResult<'a, 'b> =
+    let result, elapsed =
+        time (fun _ ->
+            logger.LogRequest useCase cmd
+            taskResult { return! fn () })
+    logger.LogRequestTime useCase elapsed
+    result
+```
+
+reusing the decorator across commands and queries, but with explicit invocation
+within each `runAsync` function.
+
 ## Consequences
 
 Don't attempt to transplant to F# MediatR/object-oriented concepts.

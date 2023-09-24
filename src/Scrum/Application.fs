@@ -1,6 +1,7 @@
 module Scrum.Application
 
 open System
+open System.Diagnostics
 open System.Threading
 open FsToolkit.ErrorHandling
 open Scrum.Domain
@@ -25,11 +26,11 @@ module Seedwork =
     type ILogger =
         abstract LogRequest: string -> obj -> unit
         abstract LogRequestTime: string -> int -> unit
-        
+
     [<Interface>]
     type ILoggerFactory =
         abstract Logger: ILogger
-    
+
     [<Interface>]
     type IStoryRepositoryFactory =
         abstract StoryRepository: IStoryRepository
@@ -41,6 +42,23 @@ module Seedwork =
         inherit IStoryRepositoryFactory
         abstract CommitAsync: CancellationToken -> System.Threading.Tasks.Task
         abstract RollbackAsync: CancellationToken -> System.Threading.Tasks.Task
+
+    let time (fn: unit -> 't) : 't * int (* TODO: use ms units of measure? *) =
+        let sw = Stopwatch()
+        sw.Start()
+        let r = fn ()
+        r, int sw.ElapsedMilliseconds
+
+    let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 'tcmd) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
+        let result, elapsed =
+            time (fun _ ->
+                logger.LogRequest useCase cmd
+                // TODO: don't call Result. Causes thread to block. How to await?
+                taskResult { return! fn () })
+        // Don't log errors as the result of evaluating fn. These are expected errors
+        // which we don't want to pollute our lots with.            
+        logger.LogRequestTime useCase elapsed
+        result
 
 open Seedwork
 
@@ -75,18 +93,21 @@ module StoryAggregateRequest =
             (ct: CancellationToken)
             (cmd: CreateStoryCommand)
             : TaskResult<Guid, CreateStoryHandlerError> =
-            logger.LogRequest (nameof CreateStoryCommand) cmd
-            taskResult {
-                let! cmd = validate cmd |> Result.mapError ValidationErrors
-                do!
-                    stories.ExistAsync ct cmd.Id
-                    |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
-                let now = clock.CurrentUtc()
-                let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
-                do! stories.ApplyEventAsync ct event
-                // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
-                return StoryId.value story.Root.Id
-            }
+            let aux () =
+                taskResult {
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    //do! Threading.Tasks.Task.Delay(5000)
+                    do!
+                        stories.ExistAsync ct cmd.Id
+                        |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
+                    let now = clock.CurrentUtc()
+                    let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
+                    do! stories.ApplyEventAsync ct event
+                    // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
+                    return StoryId.value story.Root.Id
+                }
+
+            runWithDecoratorAsync logger (nameof CreateStoryCommand) cmd aux
 
     type UpdateStoryCommand = { Id: Guid; Title: string; Description: string option }
 
@@ -119,18 +140,19 @@ module StoryAggregateRequest =
             (ct: CancellationToken)
             (cmd: UpdateStoryCommand)
             : TaskResult<Guid, UpdateStoryHandlerError> =
-            logger.LogRequest (nameof UpdateStoryCommand) cmd
-            taskResult {
-                let! cmd = validate cmd |> Result.mapError ValidationErrors
-                let! story =
-                    stories.GetByIdAsync ct cmd.Id
-                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                let now = clock.CurrentUtc()
-                let story, event = StoryAggregate.update story cmd.Title cmd.Description now
-                do! stories.ApplyEventAsync ct event
-                // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
-                return StoryId.value story.Root.Id
-            }
+            let aux () =
+                taskResult {
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        stories.GetByIdAsync ct cmd.Id
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
+                    let now = clock.CurrentUtc()
+                    let story, event = StoryAggregate.update story cmd.Title cmd.Description now
+                    do! stories.ApplyEventAsync ct event
+                    return StoryId.value story.Root.Id
+                }
+
+            runWithDecoratorAsync logger (nameof UpdateStoryCommand) cmd aux
 
     type DeleteStoryCommand = { Id: Guid }
 
@@ -149,22 +171,23 @@ module StoryAggregateRequest =
 
         let runAsync
             (stories: IStoryRepository)
-            (logger: ILogger)            
+            (logger: ILogger)
             (ct: CancellationToken)
             (cmd: DeleteStoryCommand)
             : TaskResult<Guid, DeleteStoryHandlerError> =
-            logger.LogRequest (nameof DeleteStoryCommand) cmd    
-            taskResult {
-                // In a real-world system, not everyone should be allowed to delete. So here we'd perform authorization checks.
-                let! cmd = validate cmd |> Result.mapError ValidationErrors
-                let! story =
-                    stories.GetByIdAsync ct cmd.Id
-                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                let story, event = StoryAggregate.delete story
-                do! stories.ApplyEventAsync ct event
-                // do! SomeOtherAggregate.Notification.SomeEventHandlerAsync dependency ct event
-                return StoryId.value story.Root.Id
-            }
+            let aux () =
+                taskResult {
+                    // In a real-world system, not everyone should be allowed to delete. So here we'd perform authorization checks.
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        stories.GetByIdAsync ct cmd.Id
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
+                    let story, event = StoryAggregate.delete story
+                    do! stories.ApplyEventAsync ct event
+                    return StoryId.value story.Root.Id
+                }
+
+            runWithDecoratorAsync logger (nameof DeleteStoryCommand) cmd aux
 
     type AddTaskToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
@@ -202,23 +225,24 @@ module StoryAggregateRequest =
         let runAsync
             (stories: IStoryRepository)
             (clock: ISystemClock)
-            (logger: ILogger)            
+            (logger: ILogger)
             (ct: CancellationToken)
             (cmd: AddTaskToStoryCommand)
             : TaskResult<Guid, AddTaskToStoryHandlerError> =
-            logger.LogRequest (nameof AddTaskToStoryCommand) cmd                
-            taskResult {
-                let! cmd = validate cmd |> Result.mapError ValidationErrors
-                let! story =
-                    stories.GetByIdAsync ct cmd.StoryId
-                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                let now = clock.CurrentUtc()
-                let task = create cmd.TaskId cmd.Title cmd.Description now
-                let! _, event = addTaskToStory story task now |> Result.mapError fromDomainError
-                do! stories.ApplyEventAsync ct event
-                // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
-                return TaskId.value task.Entity.Id
-            }
+            let aux () =
+                taskResult {
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        stories.GetByIdAsync ct cmd.StoryId
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                    let now = clock.CurrentUtc()
+                    let task = create cmd.TaskId cmd.Title cmd.Description now
+                    let! _, event = addTaskToStory story task now |> Result.mapError fromDomainError
+                    do! stories.ApplyEventAsync ct event
+                    return TaskId.value task.Entity.Id
+                }
+
+            runWithDecoratorAsync logger (nameof AddTaskToStoryCommand) cmd aux
 
     type UpdateTaskCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
@@ -261,20 +285,21 @@ module StoryAggregateRequest =
             (ct: CancellationToken)
             (cmd: UpdateTaskCommand)
             : TaskResult<Guid, UpdateTaskHandlerError> =
-            logger.LogRequest (nameof UpdateTaskCommand) cmd                
-            taskResult {
-                let! cmd = validate cmd |> Result.mapError ValidationErrors
-                let! story =
-                    stories.GetByIdAsync ct cmd.StoryId
-                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                let now = clock.CurrentUtc()
-                let! _, event =
-                    updateTask story cmd.TaskId cmd.Title cmd.Description now
-                    |> Result.mapError fromDomainErrors
-                do! stories.ApplyEventAsync ct event
-                // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
-                return TaskId.value cmd.TaskId
-            }
+            let aux () =
+                taskResult {
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        stories.GetByIdAsync ct cmd.StoryId
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                    let now = clock.CurrentUtc()
+                    let! _, event =
+                        updateTask story cmd.TaskId cmd.Title cmd.Description now
+                        |> Result.mapError fromDomainErrors
+                    do! stories.ApplyEventAsync ct event
+                    return TaskId.value cmd.TaskId
+                }
+
+            runWithDecoratorAsync logger (nameof UpdateTaskCommand) cmd aux
 
     type DeleteTaskCommand = { StoryId: Guid; TaskId: Guid }
 
@@ -299,21 +324,22 @@ module StoryAggregateRequest =
 
         let runAsync
             (stories: IStoryRepository)
-            (logger: ILogger)            
+            (logger: ILogger)
             (ct: CancellationToken)
             (cmd: DeleteTaskCommand)
             : TaskResult<Guid, DeleteTaskHandlerError> =
-            logger.LogRequest (nameof DeleteTaskCommand) cmd
-            taskResult {
-                let! cmd = validate cmd |> Result.mapError ValidationErrors
-                let! story =
-                    stories.GetByIdAsync ct cmd.StoryId
-                    |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                let! _, event = deleteTask story cmd.TaskId |> Result.mapError fromDomainErrors
-                do! stories.ApplyEventAsync ct event
-                // do! SomeOtherAggregate.SomeEventNotificationAsync dependency ct event
-                return TaskId.value cmd.TaskId
-            }
+            let aux () =
+                taskResult {
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        stories.GetByIdAsync ct cmd.StoryId
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                    let! _, event = deleteTask story cmd.TaskId |> Result.mapError fromDomainErrors
+                    do! stories.ApplyEventAsync ct event
+                    return TaskId.value cmd.TaskId
+                }
+
+            runWithDecoratorAsync logger (nameof DeleteTaskCommand) cmd aux
 
     type GetStoryByIdQuery = { Id: Guid }
 
@@ -364,13 +390,15 @@ module StoryAggregateRequest =
 
         let runAsync
             (stories: IStoryRepository)
-            (logger: ILogger)            
+            (logger: ILogger)
             (ct: CancellationToken)
             (qry: GetStoryByIdQuery)
             : TaskResult<StoryDto, GetStoryByIdHandlerError> =
-            logger.LogRequest (nameof GetStoryByIdQuery) qry
-            taskResult {
-                let! qry = validate qry |> Result.mapError ValidationErrors
-                let! story = stories.GetByIdAsync ct qry.Id |> TaskResult.requireSome (StoryNotFound qry.Id)
-                return StoryDto.from story
-            }
+            let aux () =
+                taskResult {
+                    let! qry = validate qry |> Result.mapError ValidationErrors
+                    let! story = stories.GetByIdAsync ct qry.Id |> TaskResult.requireSome (StoryNotFound qry.Id)
+                    return StoryDto.from story
+                }
+
+            runWithDecoratorAsync logger (nameof GetStoryByIdQuery) qry aux
