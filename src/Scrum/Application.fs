@@ -27,7 +27,7 @@ module Seedwork =
 
     [<Interface>]
     type ILogger =
-        abstract LogRequest: string -> obj -> unit
+        abstract LogRequestPayload: string -> obj -> unit
         abstract LogRequestTime: string -> uint<ms> -> unit
 
     [<Interface>]
@@ -56,7 +56,7 @@ module Seedwork =
     let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 'tcmd) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
-                logger.LogRequest useCase cmd
+                logger.LogRequestPayload useCase cmd
                 taskResult { return! fn () })
         // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
         logger.LogRequestTime useCase elapsed

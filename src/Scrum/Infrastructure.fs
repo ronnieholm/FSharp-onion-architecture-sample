@@ -165,11 +165,8 @@ type SystemClock() =
 
 type Logger() =
     interface ILogger with
-        member _.LogRequest (useCase: string) (request: obj) : unit =
-            printfn $"%s{useCase}: %A{request}"
-
-        member _.LogRequestTime (useCase: string) (elapsedMs: int) : unit =
-            printfn $"%s{useCase}: %d{elapsedMs}"
+        member _.LogRequestPayload (useCase: string) (request: obj) : unit = printfn $"%s{useCase}: %A{request}"
+        member _.LogRequestTime (useCase: string) (elapsed: uint<ms>) : unit = printfn $"%s{useCase}: %d{elapsed}"
 
 // Pass into ctor IOptions<config>.
 // Avoid Singletons dependencies as they make testing hard.
