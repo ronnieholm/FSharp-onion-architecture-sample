@@ -75,7 +75,7 @@ module StoryAggregate =
     module StoryTitle =
         let maxLength = 100
 
-        let create value =
+        let create =
             function
             | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
             | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
@@ -154,7 +154,7 @@ module StoryAggregate =
 
     let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * DomainEvent =
         let root = { story.Root with UpdatedAt = Some updatedAt }
-        let story = { story with Title = title; Description = description; Root = root }
+        let story = { story with Root = root; Title = title; Description = description }
         let event =
             DomainEvent.StoryUpdatedEvent(
                 { StoryId = story.Root.Id
