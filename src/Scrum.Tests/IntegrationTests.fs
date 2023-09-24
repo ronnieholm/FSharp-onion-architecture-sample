@@ -11,7 +11,6 @@ open Xunit
 // [<assembly: CollectionBehavior(DisableTestParallelization = true)>]
 // do ()
 
-// How to run tests in parallel? Generate random databases?
 // TODO: Organize tests into modules (command, query)
 
 module A =
@@ -23,8 +22,6 @@ module A =
           StoryId = Guid.Empty
           Title = "title"
           Description = Some "description" }
-
-    let getStoryByIdQuery: GetStoryByIdQuery = { Id = Guid.Empty }
 
 type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
     let connectionString = "URI=file:/home/rh/Downloads/scrumfs.sqlite"
@@ -38,6 +35,7 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             test <@ story = Ok cmd.Id @>
             let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
             test <@ story = Error(CreateStoryCommand.DuplicateStory(cmd.Id)) @>
+            do! env.CommitAsync(CancellationToken.None)
         }
 
     //     [<Fact>]
@@ -60,7 +58,7 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let env = AppEnv(connectionString) :> IAppEnv
             let cmd = { A.createStoryCommand with Id = Guid.NewGuid() }
             let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
-            let qry = { A.getStoryByIdQuery with Id = cmd.Id }
+            let qry = { Id = cmd.Id }
             let! story = (GetStoryByIdQuery.runAsync env.StoryRepository env.Logger CancellationToken.None qry)
             test <@ true = true @>
         }
@@ -69,7 +67,7 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
     let ``get story by non-existing id`` () =
         task {
             let env = AppEnv(connectionString) :> IAppEnv
-            let qry = { A.getStoryByIdQuery with Id = (* Non-existing Id *) Guid.NewGuid() }
+            let qry = { Id = (* Non-existing Id *) Guid.Parse "12345678-90ab-cdef-1234-1234567890ab" }
             let! story = (GetStoryByIdQuery.runAsync env.StoryRepository env.Logger CancellationToken.None qry)
             test <@ true = true @>
         }
@@ -80,11 +78,12 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let env = AppEnv(connectionString) :> IAppEnv
             let createStoryCmd = { A.createStoryCommand with Id = Guid.NewGuid() }
             let addTaskCmd = { A.addTaskToStoryCommand with StoryId = createStoryCmd.Id }
-            let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None createStoryCmd)
-            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd)
+            let! _ = CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None createStoryCmd
+            let! task = AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd
             test <@ task = Ok addTaskCmd.TaskId @>
-            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd)
-            test <@ task = Error(AddTaskToStoryCommand.DuplicateTask(Guid "00000000-0000-0000-0000-000000000000")) @>
+            let! task = AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd
+            test <@ task = Error(AddTaskToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
+            do! env.CommitAsync(CancellationToken.None)
         }
 
     [<Fact>]
@@ -93,6 +92,6 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let env = AppEnv(connectionString) :> IAppEnv
             let addTaskCmd =
                 { A.addTaskToStoryCommand with StoryId = (* non-existing *) Guid.NewGuid() }
-            let! task = (AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd)
+            let! task = AddTaskToStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None addTaskCmd
             test <@ task = Error(AddTaskToStoryCommand.StoryNotFound(addTaskCmd.StoryId)) @>
         }
