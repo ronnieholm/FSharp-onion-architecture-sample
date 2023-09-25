@@ -1,6 +1,7 @@
 ﻿namespace Scrum.Infrastructure
 
 open System
+open System.Data.Common
 open System.Threading
 open System.Threading.Tasks
 open System.Collections.Generic
@@ -19,9 +20,7 @@ open Seedwork
 
 type SqliteStoryRepository(transaction: SQLiteTransaction) =
     let connection = transaction.Connection
-
     let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
-
     let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
 
     interface IStoryRepository with
@@ -31,20 +30,17 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
             cmd.Parameters.AddWithValue("@id", id |> StoryId.value |> string) |> ignore
             task {
                 let! count = cmd.ExecuteScalarAsync(ct)
-                let exist =
-                    match count :?> int64 with
-                    | 0L -> false
-                    | 1L -> true
-                    | _ -> failwith $"Inconsistent database state. {count} instances with story Id: '{id}'"
-                return exist
+                return
+                    (match count :?> int64 with
+                     | 0L -> false
+                     | 1L -> true
+                     | _ -> failwith $"Inconsistent database state. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         member _.GetByIdAsync (ct: CancellationToken) (id: StoryId) : Task<Story option> =
             // See also: https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
-
             let parsedTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
-
-            let parseTask (r: SQLiteDataReader) (storyId: StoryId) : unit =
+            let parseTask (r: DbDataReader) (storyId: StoryId) : unit =
                 let parseTaskInner id =
                     { Entity =
                         { Id = id
@@ -69,8 +65,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                             tasks.Add(taskId, task)
 
             let parsedStories = Dictionary<StoryId, Story>()
-
-            let parseStory (r: SQLiteDataReader) : unit =
+            let parseStory (r: DbDataReader) : unit =
                 let storyId = r["s_id"] |> string |> Guid |> StoryId
                 let ok, _ = parsedStories.TryGetValue(storyId)
                 if not ok then
@@ -83,45 +78,49 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                           Description = Option.ofDBNull r["s_description"] |> Option.map (string >> StoryDescription)
                           Tasks = [] }
                     parsedStories.Add(storyId, story)
-
                 parseTask r storyId
 
-            let parse (r: SQLiteDataReader) : Story list =
-                while r.Read() do
-                    parseStory r
-                parsedStories.Values |> Seq.toList
-
-            let sql =
-                """
-                -- We're mapping every field, so no need to list each field explicitly.
-                -- But even though in the query editor fields show up as s.id, with ADO.NET
-                -- s.id doesn't exist. A field alias is required.
+            // With ADO.NET, each field must be explicitly aliased for it to become part of result.
+            let sql = """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                        t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                 from stories s
                 left join tasks t on s.id = t.story_id
-                where s.id = @id
-                """
+                where s.id = @id"""
             use cmd = new SQLiteCommand(sql, connection)
             cmd.Parameters.AddWithValue("@id", StoryId.value id |> string) |> ignore
 
             task {
-                // TODO: call async versions passing in ct
-                let reader = cmd.ExecuteReader()
+                // Note that ExecuteReader() returns type SQLiteDataReader, but ExecuteReaderAsync(...)
+                // returns type DbDataReader. Presumably because querying async against SQLite in the
+                // same address space doesn't make a performance different. We stick with ExecuteReaderAsync
+                // to illustrate how to work with a client/server database.
+                let! reader = cmd.ExecuteReaderAsync(ct)
+
+                // F# 8 adds while! allowing "while r.ReadAsync(ct) do". Until its release late 2023 ...
+                // https://devblogs.microsoft.com/dotnet/simplifying-fsharp-computations-with-the-new-while-keyword/
+                //while! reader.ReadAsync(ct) do
+                //    parseStory reader
+                let mutable keepGoing = true
+                while keepGoing do
+                    match! reader.ReadAsync(ct) with
+                    | true -> parseStory reader
+                    | false -> keepGoing <- false
+
                 let stories =
-                    parse reader
+                    parsedStories.Values
+                    |> Seq.toList
                     |> Seq.map (fun story ->
-                        // TODO: fix bug in FlatToTreeStructure code not using TryGetValue because Bs are always present in that example.
                         let ok, tasks = parsedTasks.TryGetValue(story.Root.Id)
                         { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
                     |> Seq.toList
 
-                let result =
-                    match stories |> List.length with
-                    | 0 -> None
-                    | 1 -> stories |> List.exactlyOne |> Some
-                    | _ -> failwith "bug"
-                return result
+                return
+                    (let count = stories |> List.length
+                     match count with
+                     | 0 -> None
+                     | 1 -> stories |> List.exactlyOne |> Some
+                     | _ -> failwith $"Inconsistent database state. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         // As we're immediately applying events to the store, we don't have to
