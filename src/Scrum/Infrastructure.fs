@@ -7,12 +7,22 @@ open System.Collections.Generic
 open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Scrum.Application.Seedwork
-open Scrum.Domain
+open Scrum.Domain.Seedwork
 open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
 
+module Seedwork =
+    module Option =
+        let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
+
+open Seedwork
+
 type SqliteStoryRepository(transaction: SQLiteTransaction) =
     let connection = transaction.Connection
+
+    let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
+
+    let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
 
     interface IStoryRepository with
         member _.ExistAsync (ct: CancellationToken) (id: StoryId) : Task<bool> =
@@ -32,80 +42,45 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
         member _.GetByIdAsync (ct: CancellationToken) (id: StoryId) : Task<Story option> =
             // See also: https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
 
-            let parsedTasks =
-                Dictionary<string (* StoryId *) , Dictionary<string (* TaskId *) , Task>>()
+            let parsedTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
 
-            let parseTask (r: SQLiteDataReader) (storyId: string) : unit =
+            let parseTask (r: SQLiteDataReader) (storyId: StoryId) : unit =
+                let parseTaskInner id =
+                    { Entity =
+                        { Id = id
+                          CreatedAt = parseCreatedAt r["t_created_at"]
+                          UpdatedAt = parseUpdatedAt r["t_updated_at"] }
+                      Title = r["t_title"] |> string |> TaskTitle
+                      Description = Option.ofDBNull r["t_description"] |> Option.map (string >> TaskDescription) }
+
                 let taskId = r["t_id"]
                 if taskId <> DBNull.Value then
-                    let taskId = taskId |> string
+                    let taskId = taskId |> string |> Guid |> TaskId
                     let ok, tasks = parsedTasks.TryGetValue(storyId)
                     if not ok then
-                        let tasks = Dictionary<string, Task>()
-                        let task =
-                            // TODO: Duplicate, move task parsing into separate function
-                            // TODO: Create general parseEntity function
-                            { Entity =
-                                { Id = taskId |> Guid |> TaskId
-                                  CreatedAt = r["t_created_at"] |> string |> DateTime.Parse
-                                  UpdatedAt =
-                                    if r["t_updated_at"] = DBNull.Value then
-                                        None
-                                    else
-                                        r["t_updated_at"] |> string |> DateTime.Parse |> Some }
-                              Title = r["t_title"] |> string |> TaskTitle
-                              Description =
-                                if r["t_description"] = DBNull.Value then
-                                    None
-                                else
-                                    r["t_description"] |> string |> TaskDescription |> Some }
-                        tasks.Add(storyId, task)
+                        let tasks = Dictionary<TaskId, Task>()
+                        let task = parseTaskInner taskId
+                        tasks.Add(taskId, task)
                         parsedTasks.Add(storyId, tasks)
                     else
                         let ok, _ = tasks.TryGetValue(taskId)
                         if not ok then
-                            let task =
-                                // TODO: Duplicate, move task parsing into separate function
-                                { Entity =
-                                    { Id = taskId |> Guid |> TaskId
-                                      CreatedAt = r["t_created_at"] |> string |> DateTime.Parse
-                                      UpdatedAt =
-                                        if r["t_updated_at"] = DBNull.Value then
-                                            None
-                                        else
-                                            r["t_updated_at"] |> string |> DateTime.Parse |> Some }
-                                  Title = r["t_title"] |> string |> TaskTitle
-                                  Description =
-                                    if r["t_description"] = DBNull.Value then
-                                        None
-                                    else
-                                        r["t_description"] |> string |> TaskDescription |> Some }
+                            let task = parseTaskInner taskId
                             tasks.Add(taskId, task)
 
-            let parsedStories = Dictionary<string (* StoryId *) , Story>()
+            let parsedStories = Dictionary<StoryId, Story>()
 
             let parseStory (r: SQLiteDataReader) : unit =
-                let storyId = r["s_id"] |> string
+                let storyId = r["s_id"] |> string |> Guid |> StoryId
                 let ok, _ = parsedStories.TryGetValue(storyId)
                 if not ok then
                     let story =
-                        // TODO: Extract root into its own parseRoot function (outside any repo type).
                         { Root =
-                            { Id = storyId |> Guid |> StoryId
-                              CreatedAt = r["s_created_at"] |> string |> DateTime.Parse
-                              UpdatedAt =
-                                // TODO: Extract pattern into its own parse function.
-                                if r["s_updated_at"] = DBNull.Value then
-                                    None
-                                else
-                                    r["s_updated_at"] |> string |> DateTime.Parse |> Some }
+                            { Id = id
+                              CreatedAt = parseCreatedAt r["s_created_at"]
+                              UpdatedAt = parseUpdatedAt r["s_updated_at"] }
                           Title = r["s_title"] |> string |> StoryTitle
-                          // TODO: use parser helper.
-                          Description =
-                            if r["s_description"] = DBNull.Value then
-                                None
-                            else
-                                r["s_description"] |> string |> StoryDescription |> Some
+                          Description = Option.ofDBNull r["s_description"] |> Option.map (string >> StoryDescription)
                           Tasks = [] }
                     parsedStories.Add(storyId, story)
 
@@ -114,7 +89,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
             let parse (r: SQLiteDataReader) : Story list =
                 while r.Read() do
                     parseStory r
-
                 parsedStories.Values |> Seq.toList
 
             let sql =
@@ -138,7 +112,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     parse reader
                     |> Seq.map (fun story ->
                         // TODO: fix bug in FlatToTreeStructure code not using TryGetValue because Bs are always present in that example.
-                        let ok, tasks = parsedTasks.TryGetValue(StoryId.value story.Root.Id |> string)
+                        let ok, tasks = parsedTasks.TryGetValue(story.Root.Id)
                         { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
                     |> Seq.toList
 
