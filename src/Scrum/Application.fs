@@ -353,6 +353,7 @@ module StoryAggregateRequest =
                 return { Id = storyId }
             }
 
+        // TODO: Missing CreatedAt and UpdatedAt.
         type TaskDto = { Id: Guid; Title: string; Description: string }
 
         module TaskDto =
@@ -386,6 +387,7 @@ module StoryAggregateRequest =
                   Tasks = story.Tasks |> List.map TaskDto.from }
 
         type GetStoryByIdError =
+            // TODO: Write ADR on input and output types
             | ValidationErrors of ValidationError list // TODO: list isn't a C# friendly type, but it's native to F#, not the domain. Rule it not to return domain internal types to outside world
             | StoryNotFound of StoryId // TODO: should we return Guid here? C# friendly types in, C# friendly types out?
 

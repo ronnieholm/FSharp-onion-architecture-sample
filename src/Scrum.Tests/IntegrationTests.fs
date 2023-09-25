@@ -31,9 +31,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
         task {
             let env = AppEnv(connectionString) :> IAppEnv
             let cmd = { A.createStoryCommand with Id = Guid.NewGuid() }
-            let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
+            let! story = CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd
             test <@ story = Ok cmd.Id @>
-            let! story = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
+            let! story = CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd
             test <@ story = Error(CreateStoryCommand.DuplicateStory(cmd.Id)) @>
             do! env.CommitAsync(CancellationToken.None)
         }
@@ -57,9 +57,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
         task {
             let env = AppEnv(connectionString) :> IAppEnv
             let cmd = { A.createStoryCommand with Id = Guid.NewGuid() }
-            let! _ = (CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd)
+            let! _ = CreateStoryCommand.runAsync env.StoryRepository env.SystemClock env.Logger CancellationToken.None cmd
             let qry = { Id = cmd.Id }
-            let! story = (GetStoryByIdQuery.runAsync env.StoryRepository env.Logger CancellationToken.None qry)
+            let! story = GetStoryByIdQuery.runAsync env.StoryRepository env.Logger CancellationToken.None qry
             test <@ true = true @>
         }
 
