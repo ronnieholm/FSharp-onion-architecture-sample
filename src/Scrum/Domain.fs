@@ -132,6 +132,7 @@ module StoryAggregate =
 
     type TaskDeletedEvent = { StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
+    // TODO: redundant Event postfix?
     type DomainEvent =
         | StoryCreatedEvent of StoryCreatedEvent
         | StoryUpdatedEvent of StoryUpdatedEvent
@@ -164,7 +165,11 @@ module StoryAggregate =
             )
         story, event
 
-    let delete (story: Story) : DomainEvent = DomainEvent.StoryDeletedEvent({ StoryId = story.Root.Id })
+    let delete (story: Story) : DomainEvent =
+        // Depending on the domain, we might want to explicitly delete the story's tasks
+        // and emit task deleted domain events. In this case, we leave cascade delete
+        // to the store. 
+        DomainEvent.StoryDeletedEvent({ StoryId = story.Root.Id })
 
     open TaskEntity
 

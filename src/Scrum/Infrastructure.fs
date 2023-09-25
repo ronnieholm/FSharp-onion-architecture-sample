@@ -15,13 +15,17 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 module Seedwork =
     module Option =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
+        
+    module Repository =
+        let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
+        let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
+        
 
 open Seedwork
+open Seedwork.Repository
 
 type SqliteStoryRepository(transaction: SQLiteTransaction) =
     let connection = transaction.Connection
-    let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
-    let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
 
     interface IStoryRepository with
         member _.ExistAsync (ct: CancellationToken) (id: StoryId) : Task<bool> =
@@ -123,10 +127,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                      | _ -> failwith $"Inconsistent database state. {count} instances with story Id: '{StoryId.value id}'")
             }
 
-        // As we're immediately applying events to the store, we don't have to
-        // worry about events evolving over time. For this domain, we don't
-        // require full event sourcing; only enough event data to keep the store up to
-        // date.
+        // As we're immediately applying events to the store, compared to event sourcing, we don't have to
+        // worry about events evolving over time. For this domain, we don't require full event sourcing;
+        // only enough event data to keep the store up to date.
         member _.ApplyEventAsync (ct: CancellationToken) (event: DomainEvent) : Task<unit> =
             // TODO: persist event to DomainEvents table
             match event with
@@ -143,10 +146,18 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
-                    return ()
                 }
             | DomainEvent.StoryUpdatedEvent e -> failwith "Not implemented"
-            | DomainEvent.StoryDeletedEvent e -> failwith "Not implemented"
+            | DomainEvent.StoryDeletedEvent e ->
+                let sql = "delete from stories where id = @id"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                cmd.Parameters.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
+                
+                task {
+                    let! count = cmd.ExecuteNonQueryAsync(ct)
+                    // TODO: with cascade delete of tasks, does count > 1?
+                    assert (count = 1)
+                }
             | DomainEvent.TaskAddedToStoryEvent e ->
                 let sql =
                     "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
@@ -161,10 +172,19 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
-                    return ()
                 }
             | DomainEvent.TaskUpdatedEvent e -> failwith "Not implemented"
-            | DomainEvent.TaskDeletedEvent e -> failwith "Not implemented"
+            | DomainEvent.TaskDeletedEvent e ->
+                let sql = "delete from tasks where id = @id and story_id = @storyId"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
+                p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
+                
+                task {
+                    let! count = cmd.ExecuteNonQueryAsync(ct)
+                    assert (count = 1)
+                }
 
 type SystemClock() =
     interface ISystemClock with
