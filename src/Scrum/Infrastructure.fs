@@ -80,7 +80,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     parsedStories.Add(storyId, story)
                 parseTask r storyId
 
-            // With ADO.NET, each field must be explicitly aliased for it to become part of result.
+            // With ADO.NET, each field must be explicitly aliased for it to be part of result.
             let sql = """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                        t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
@@ -97,7 +97,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 // to illustrate how to work with a client/server database.
                 let! reader = cmd.ExecuteReaderAsync(ct)
 
-                // F# 8 adds while! allowing "while r.ReadAsync(ct) do". Until its release late 2023 ...
+                // F# 8, released late 2023, adds while!
                 // https://devblogs.microsoft.com/dotnet/simplifying-fsharp-computations-with-the-new-while-keyword/
                 //while! reader.ReadAsync(ct) do
                 //    parseStory reader
