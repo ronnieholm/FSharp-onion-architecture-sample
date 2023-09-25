@@ -131,18 +131,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
             // TODO: persist event to DomainEvents table
             match event with
             | DomainEvent.StoryCreatedEvent e ->
-                let description =
-                    match e.StoryDescription with
-                    | Some x -> x |> StoryDescription.value
-                    | None -> null
-
                 let sql =
                     "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
                 let p = cmd.Parameters
                 p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
                 p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
-                p.AddWithValue("@description", description) |> ignore
+                p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj) |> ignore
                 p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
 
                 task {
@@ -153,11 +148,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
             | DomainEvent.StoryUpdatedEvent e -> failwith "Not implemented"
             | DomainEvent.StoryDeletedEvent e -> failwith "Not implemented"
             | DomainEvent.TaskAddedToStoryEvent e ->
-                let description =
-                    match e.TaskDescription with
-                    | Some x -> x |> TaskDescription.value
-                    | None -> null
-
                 let sql =
                     "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -165,7 +155,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                 p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
                 p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
-                p.AddWithValue("@description", description) |> ignore
+                p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj) |> ignore
                 p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
 
                 task {

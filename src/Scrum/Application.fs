@@ -106,6 +106,7 @@ module StoryAggregateRequest =
                     do! stories.ApplyEventAsync ct event
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                     return StoryId.value story.Root.Id
+                    // TODO: Who's going to call commit?
                 }
 
             runWithDecoratorAsync logger (nameof CreateStoryCommand) cmd aux
@@ -389,7 +390,7 @@ module StoryAggregateRequest =
         type GetStoryByIdError =
             // TODO: Write ADR on input and output types
             | ValidationErrors of ValidationError list // TODO: list isn't a C# friendly type, but it's native to F#, not the domain. Rule it not to return domain internal types to outside world
-            | StoryNotFound of StoryId // TODO: should we return Guid here? C# friendly types in, C# friendly types out?
+            | StoryNotFound of Guid
 
         let runAsync
             (stories: IStoryRepository)
@@ -400,7 +401,7 @@ module StoryAggregateRequest =
             let aux () =
                 taskResult {
                     let! qry = validate qry |> Result.mapError ValidationErrors
-                    let! story = stories.GetByIdAsync ct qry.Id |> TaskResult.requireSome (StoryNotFound qry.Id)
+                    let! story = stories.GetByIdAsync ct qry.Id |> TaskResult.requireSome (StoryNotFound (StoryId.value qry.Id))
                     return StoryDto.from story
                 }
 
