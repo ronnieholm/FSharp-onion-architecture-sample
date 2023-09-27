@@ -147,7 +147,20 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
                 }
-            | DomainEvent.StoryUpdatedEvent e -> failwith "Not implemented"
+            | DomainEvent.StoryUpdatedEvent e ->
+                let sql =
+                    "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
+                p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj) |> ignore
+                p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
+                p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
+                // TODO: extend task to entire function.                
+                task {
+                    let! count = cmd.ExecuteNonQueryAsync(ct)
+                    assert (count = 1)
+                }
             | DomainEvent.StoryDeletedEvent e ->
                 let sql = "delete from stories where id = @id"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -173,7 +186,21 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
                 }
-            | DomainEvent.TaskUpdatedEvent e -> failwith "Not implemented"
+            | DomainEvent.TaskUpdatedEvent e ->
+                let sql =
+                    "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
+                p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj) |> ignore
+                p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
+                p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
+                p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
+
+                task {
+                    let! count = cmd.ExecuteNonQueryAsync(ct)
+                    assert (count = 1)
+                }                                            
             | DomainEvent.TaskDeletedEvent e ->
                 let sql = "delete from tasks where id = @id and story_id = @storyId"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
