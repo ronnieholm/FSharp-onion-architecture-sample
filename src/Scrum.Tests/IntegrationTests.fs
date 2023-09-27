@@ -119,9 +119,10 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
     let ``add task to non-existing story`` () =
         task {
             let _, addTaskToStory, _, _, _, _, _ = AppEnv(connectionString) |> setupWith
-            let addTaskCmd = { A.addTaskToStoryCommand () with StoryId = Guid.NewGuid() }
-            let! task = addTaskToStory addTaskCmd
-            test <@ task = Error(AddTaskToStoryCommand.StoryNotFound(addTaskCmd.StoryId)) @>
+            let missing = Guid.NewGuid()
+            let cmd = { A.addTaskToStoryCommand () with StoryId = missing }
+            let! task = addTaskToStory cmd
+            test <@ task = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
@@ -142,10 +143,10 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
     let ``delete task on non-existing story`` () =
         task {
             let createStory, _, _, _, deleteTask, _, _ = AppEnv(connectionString) |> setupWith
-            let createStoryCmd = A.createStoryCommand ()
-            let cmd = { A.addTaskToStoryCommand () with StoryId = createStoryCmd.Id }
-            let! _ = createStory createStoryCmd
-            let cmd' = { StoryId = Guid.NewGuid(); TaskId = cmd.TaskId }
+            let cmd = A.createStoryCommand ()
+            let! _ = createStory cmd
+            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let cmd' = { StoryId = Guid.NewGuid(); TaskId = cmd'.TaskId }
             let! result = deleteTask cmd'            
             test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd'.StoryId)) @>
         }
