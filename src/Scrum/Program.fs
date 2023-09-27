@@ -2,6 +2,7 @@
 
 open System
 open System.Threading
+open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
 open Microsoft.Extensions.Hosting
 open Microsoft.AspNetCore.Hosting
@@ -9,6 +10,7 @@ open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
 open Scrum.Application
 open Scrum.Application.Seedwork
+open Scrum.Application.StoryAggregateRequest.CreateStoryCommand
 open Scrum.Infrastructure
 
 [<ApiController>]
@@ -23,19 +25,25 @@ type StoryController() =
     member _.GetById() : string = "Hello from F# and ASP.NET Core!"
 
     [<HttpPost>]
-    member _.Create(ct: CancellationToken) : string =
-        // TODO: https://softwareengineering.stackexchange.com/questions/314066/restful-api-should-i-be-returning-the-object-that-was-created-updated
-        let id =
-            StoryAggregateRequest.CreateStoryCommand.runAsync
-                env.StoryRepository
-                env.SystemClock
-                env.Logger
-                ct
-                { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
-
-        match id.Result with
-        | Ok id -> "id"
-        | Error e -> "error"
+    member _.Create(ct: CancellationToken) : Task<string> =
+        task {            
+            // TODO: https://softwareengineering.stackexchange.com/questions/314066/restful-api-should-i-be-returning-the-object-that-was-created-updated
+            let! result =
+                StoryAggregateRequest.CreateStoryCommand.runAsync
+                    env.StoryRepository
+                    env.SystemClock
+                    env.Logger
+                    ct
+                    { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
+            return
+                match result with
+                | Ok v -> "ok"
+                | Error e ->
+                    match e with
+                    | ValidationErrors es -> "validation"
+                    | DuplicateStory e -> "duplicate"
+        }
+        
 
 type Startup() =
     member _.ConfigureServices(services: IServiceCollection) : unit =
