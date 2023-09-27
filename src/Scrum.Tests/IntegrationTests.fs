@@ -111,8 +111,8 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let addTaskCmd = { A.addTaskToStoryCommand () with StoryId = createStoryCmd.Id }
             let! _ = createStory createStoryCmd
             let! _ = addTaskToStory addTaskCmd
-            let! task = addTaskToStory addTaskCmd
-            test <@ task = Error(AddTaskToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
+            let! result = addTaskToStory addTaskCmd
+            test <@ result = Error(AddTaskToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
         }
 
     [<Fact>]
@@ -121,8 +121,8 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let _, addTaskToStory, _, _, _, _, _ = AppEnv(connectionString) |> setupWith
             let missing = Guid.NewGuid()
             let cmd = { A.addTaskToStoryCommand () with StoryId = missing }
-            let! task = addTaskToStory cmd
-            test <@ task = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
+            let! result = addTaskToStory cmd
+            test <@ result = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
