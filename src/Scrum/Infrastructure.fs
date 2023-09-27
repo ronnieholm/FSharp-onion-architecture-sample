@@ -84,7 +84,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     parsedStories.Add(storyId, story)
                 parseTask r storyId
 
-            // With ADO.NET, each field must be explicitly aliased for it to be part of result.
+            // With ADO.NET, each field must be explicitly aliased for it to appears in the result.
             let sql = """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                        t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
@@ -215,7 +215,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
 
 type SystemClock() =
     interface ISystemClock with
-        member this.CurrentUtc() = DateTime.UtcNow
+        member _.CurrentUtc() = DateTime.UtcNow
 
 type Logger() =
     interface ILogger with
