@@ -146,7 +146,8 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let cmd = { StoryId = Guid.NewGuid(); TaskId = cmd.TaskId }
+            let missing = Guid.NewGuid()
+            let cmd = { StoryId = missing; TaskId = cmd.TaskId }
             let! result = deleteTask cmd            
             test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
