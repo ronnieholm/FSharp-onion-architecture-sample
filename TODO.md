@@ -8,3 +8,5 @@
 - [ ] Explore UMX library to add units of measure to every type to avoid memory overhead of wrapping basic types.
 - [ ] Use System.Text.Json: System.Json.Text custom converter
       - https://twitter.com/ursenzler/status/1618956836245479425
+- [ ] Re-implement Respawn features or use Docker to run each test in a container (see Nick's video)
+      - Docker containers seem harder to manage in a CI/CD pipeline

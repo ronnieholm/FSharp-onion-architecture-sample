@@ -156,7 +156,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj) |> ignore
                 p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
                 p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
-                // TODO: extend task to entire function.                
+
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
