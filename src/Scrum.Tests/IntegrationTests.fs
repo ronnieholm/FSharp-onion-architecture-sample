@@ -57,9 +57,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let! result = createStory cmd
             test <@ result = Ok(cmd.Id) @>
             let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! result' = addTaskToStory cmd'
-            test <@ result' = Ok(cmd'.TaskId) @>
-            let! result'' = getStory { Id = cmd.Id }
+            let! result = addTaskToStory cmd'
+            test <@ result = Ok(cmd'.TaskId) @>
+            let! result = getStory { Id = cmd.Id }
             //test <@ result = Ok(_) @>
             test <@ true @>
         }
@@ -83,8 +83,8 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let! _ = createStory cmd
             let! result = deleteStory { Id = cmd.Id }
             test <@ result = Ok(cmd.Id) @>
-            let! result' = getStoryById { Id = cmd.Id }
-            test <@ result' = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
+            let! result = getStoryById { Id = cmd.Id }
+            test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
@@ -96,10 +96,10 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let! _ = createStory cmd
             let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
             let! _ = addTaskToStory cmd'
-            let! result' = deleteStory { Id = cmd.Id }
-            test <@ result' = Ok(cmd.Id) @>
-            let! result'' = getStoryById { Id = cmd.Id }
-            test <@ result'' = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
+            let! result = deleteStory { Id = cmd.Id }
+            test <@ result = Ok(cmd.Id) @>
+            let! result = getStoryById { Id = cmd.Id }
+            test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
@@ -145,10 +145,10 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let createStory, _, _, _, deleteTask, _, _ = AppEnv(connectionString) |> setupWith
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
-            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let cmd'' = { StoryId = Guid.NewGuid(); TaskId = cmd'.TaskId }
-            let! result = deleteTask cmd''            
-            test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd''.StoryId)) @>
+            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let cmd = { StoryId = Guid.NewGuid(); TaskId = cmd.TaskId }
+            let! result = deleteTask cmd            
+            test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
@@ -158,9 +158,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
             let missing = Guid.NewGuid()
-            let cmd' = { StoryId = cmd.Id; TaskId = missing }
-            let! result = deleteTask cmd'
-            test <@ result = Error(DeleteTaskCommand.TaskNotFound(cmd'.TaskId)) @>
+            let cmd = { StoryId = cmd.Id; TaskId = missing }
+            let! result = deleteTask cmd
+            test <@ result = Error(DeleteTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
@@ -169,8 +169,8 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
             let createStory, _, _, _, _, updateStory, _ = AppEnv(connectionString) |> setupWith
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
-            let cmd' = A.updateStoryCommand cmd
-            let! result = updateStory cmd'            
+            let cmd = A.updateStoryCommand cmd
+            let! result = updateStory cmd            
             test <@ result = Ok(cmd.Id) @>
         }
 
@@ -179,8 +179,8 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
         task {
             let _, _, _, _, _, updateStory, _ = AppEnv(connectionString) |> setupWith
             let cmd = A.createStoryCommand ()
-            let cmd' = A.updateStoryCommand cmd
-            let! result = updateStory cmd'
+            let cmd = A.updateStoryCommand cmd
+            let! result = updateStory cmd
             test <@ result = Error(UpdateStoryCommand.StoryNotFound(cmd.Id)) @>
         }
 
@@ -191,11 +191,11 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
                 AppEnv(connectionString) |> setupWith
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
-            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = addTaskToStory cmd'
-            let cmd'' = A.updateTaskCommand cmd'
-            let! result = updateTask cmd''
-            test <@ result = Ok(cmd''.TaskId) @>
+            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let! _ = addTaskToStory cmd
+            let cmd = A.updateTaskCommand cmd
+            let! result = updateTask cmd
+            test <@ result = Ok(cmd.TaskId) @>
         }
 
     [<Fact>]
@@ -205,11 +205,12 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
                 AppEnv(connectionString) |> setupWith
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
-            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = addTaskToStory cmd'
-            let cmd'' = { A.updateTaskCommand cmd' with TaskId = Guid.NewGuid() }
-            let! result = updateTask cmd''
-            test <@ result = Error(UpdateTaskCommand.TaskNotFound(cmd''.TaskId)) @>
+            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let! _ = addTaskToStory cmd
+            let missing = Guid.NewGuid()
+            let cmd = { A.updateTaskCommand cmd with TaskId = missing }
+            let! result = updateTask cmd
+            test <@ result = Error(UpdateTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
@@ -219,9 +220,9 @@ type StoryAggregateRequestTests( (*output: ITestOutputHelper*) ) =
                 AppEnv(connectionString) |> setupWith
             let cmd = A.createStoryCommand ()
             let! _ = createStory cmd
-            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = addTaskToStory cmd'
-            let cmd'' = { A.updateTaskCommand cmd' with StoryId = Guid.NewGuid() }
-            let! result = updateTask cmd''
-            test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd''.StoryId)) @>
+            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let! _ = addTaskToStory cmd
+            let cmd = { A.updateTaskCommand cmd with StoryId = Guid.NewGuid() }
+            let! result = updateTask cmd
+            test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
