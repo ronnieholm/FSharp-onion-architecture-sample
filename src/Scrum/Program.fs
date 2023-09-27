@@ -28,20 +28,26 @@ type StoryController() =
     member _.Create(ct: CancellationToken) : Task<string> =
         task {            
             // TODO: https://softwareengineering.stackexchange.com/questions/314066/restful-api-should-i-be-returning-the-object-that-was-created-updated
-            let! result =
-                StoryAggregateRequest.CreateStoryCommand.runAsync
-                    env.StoryRepository
-                    env.SystemClock
-                    env.Logger
-                    ct
-                    { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
-            return
-                match result with
-                | Ok v -> "ok"
-                | Error e ->
-                    match e with
-                    | ValidationErrors es -> "validation"
-                    | DuplicateStory e -> "duplicate"
+            try
+                let! result =
+                    StoryAggregateRequest.CreateStoryCommand.runAsync
+                        env.StoryRepository
+                        env.SystemClock
+                        env.Logger
+                        ct
+                        { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
+                do! env.CommitAsync(ct)                    
+                return
+                    match result with
+                    | Ok v -> "ok"
+                    | Error e ->
+                        match e with
+                        | ValidationErrors es -> "validation"
+                        | DuplicateStory e -> "duplicate"
+            with e ->
+                do! env.RollbackAsync(ct)
+                // TODO: log exception
+                return "error"
         }
         
 
