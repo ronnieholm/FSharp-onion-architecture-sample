@@ -39,7 +39,7 @@ type DisableParallelization() =
 // ongoing transaction finish commit or rollback. Thus commenting out the attribute below likely
 // results in tests succeeding. But if any test assume a reset database, tests may start failing.
 // In order for tests not to interfere with each other and the reset, take must be taken to serialize
-// test runs. 
+// test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
     let connectionString = "URI=file:/home/rh/Downloads/scrumfs.sqlite"
@@ -50,7 +50,7 @@ type StoryAggregateRequestTests() =
         let r = env.StoryRepository
         let s = env.SystemClock
         let l = env.Logger
-        let ct = CancellationToken.None        
+        let ct = CancellationToken.None
         {| CreateStory = CreateStoryCommand.runAsync r s l ct
            AddTaskToStory = AddTaskToStoryCommand.runAsync r s l ct
            GetStoryById = GetStoryByIdQuery.runAsync r l ct
@@ -58,9 +58,8 @@ type StoryAggregateRequestTests() =
            DeleteTask = DeleteTaskCommand.runAsync r l ct
            UpdateStory = UpdateStoryCommand.runAsync r s l ct
            UpdateTask = UpdateTaskCommand.runAsync r s l ct
-           Commit = fun _ -> env.CommitAsync ct
-           Rollback = fun _ -> env.RollbackAsync ct |}  
-    
+           Commit = fun _ -> env.CommitAsync ct |}
+
     // TODO: move function out of any specific test as it clean all tables
     let resetDatabase () =
         // Run SQL statements in reverse dependency order.
@@ -74,12 +73,12 @@ type StoryAggregateRequestTests() =
             // TODO: use fold to accumulate records affected for debugging
             cmd.ExecuteNonQuery() |> ignore)
         transaction.Commit()
-        
-    [<Fact>]        
+
+    [<Fact>]
     let ``create story with task`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! result = f.CreateStory cmd
             test <@ result = Ok(cmd.Id) @>
@@ -88,14 +87,14 @@ type StoryAggregateRequestTests() =
             test <@ result = Ok(cmd.TaskId) @>
             let! result = f.GetStoryById { Id = cmd.StoryId }
             //test <@ result = Ok(_) @>
-            do! f.Commit ()
-        }        
+            do! f.Commit()
+        }
 
     [<Fact>]
     let ``create duplicate story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let! result = f.CreateStory cmd
@@ -105,8 +104,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``delete story without tasks`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let! result = f.DeleteStory { Id = cmd.Id }
@@ -118,8 +117,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``delete story with task`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
@@ -133,8 +132,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``add duplicate task to story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let createStoryCmd = A.createStoryCommand ()
             let addTaskCmd = { A.addTaskToStoryCommand () with StoryId = createStoryCmd.Id }
             let! _ = f.CreateStory createStoryCmd
@@ -146,8 +145,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``add task to non-existing story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = { A.addTaskToStoryCommand () with StoryId = missing () }
             let! result = f.AddTaskToStory cmd
             test <@ result = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
@@ -156,8 +155,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``delete existing task on story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
@@ -165,14 +164,14 @@ type StoryAggregateRequestTests() =
             let cmd = { StoryId = cmd.StoryId; TaskId = cmd.TaskId }
             let! result = f.DeleteTask cmd
             test <@ result = Ok(cmd.TaskId) @>
-            do! f.Commit ()
+            do! f.Commit()
         }
 
     [<Fact>]
     let ``delete task on non-existing story`` () =
-        use env = new AppEnv(connectionString)        
+        use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
@@ -184,8 +183,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``delete non-existing task on story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { StoryId = cmd.Id; TaskId = missing () }
@@ -196,21 +195,21 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``update existing story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = A.updateStoryCommand cmd
             let! result = f.UpdateStory cmd
             test <@ result = Ok(cmd.Id) @>
-            do! f.Commit ()
+            do! f.Commit()
         }
 
     [<Fact>]
     let ``update non-existing story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let cmd = A.updateStoryCommand cmd
             let! result = f.UpdateStory cmd
@@ -220,8 +219,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``update existing task`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
@@ -229,14 +228,14 @@ type StoryAggregateRequestTests() =
             let cmd = A.updateTaskCommand cmd
             let! result = f.UpdateTask cmd
             test <@ result = Ok(cmd.TaskId) @>
-            do! f.Commit ()
+            do! f.Commit()
         }
 
     [<Fact>]
     let ``update non-existing task on existing story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
@@ -249,8 +248,8 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``update task on non-existing story`` () =
         use env = new AppEnv(connectionString)
+        let f = env |> setup
         task {
-            let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
