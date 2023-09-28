@@ -238,9 +238,17 @@ type Logger() =
 // AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locater tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
 // This is our composition root: https://blog.ploeh.dk/2011/07/28/CompositionRoot/
 type AppEnv(connectionString: string, ?systemClock, ?logger, ?storyRepository) =
+    // Instantiate the connection and transaction with a let binding, and not a use binding, or
+    // repository operations error will fail with:
+    //
+    // System.ObjectDisposedException: Cannot access a disposed object.
+    //
+    // The connection and transaction are disposed of by the IDisposable implementation.
+    let connection = lazy new SQLiteConnection(connectionString)
+
     let transaction =
         lazy
-            let connection = new SQLiteConnection(connectionString)
+            let connection = connection.Value
             connection.Open()
             connection.BeginTransaction()
 
@@ -250,19 +258,31 @@ type AppEnv(connectionString: string, ?systemClock, ?logger, ?storyRepository) =
     let systemClock' = lazy (systemClock |> Option.defaultValue (SystemClock()))
     let logger' = lazy (logger |> Option.defaultValue (Logger()))
 
+    interface IDisposable with
+        member _.Dispose() =
+            if transaction.IsValueCreated then
+                let tx = transaction.Value
+                // From https://learn.microsoft.com/en-us/dotnet/api/system.data.common.dbtransaction.dispose?view=net-7.0#system-data-common-dbtransaction-dispose
+                // "Dispose should rollback the transaction. However, the behavior of Dispose is provider specific, and should not replace calling Rollback".
+                // TODO: How to determine if tx is in pending state? Assert this isn't the case as that indicates code forgetting to call commit/rollback.
+                // TODO: Why does Rollback() sometimes result in exception where transaction has to no connection?
+                //tx.Rollback()
+                tx.Dispose()
+            if connection.IsValueCreated then
+                connection.Value.Dispose()
+
     interface IAppEnv with
         member _.CommitAsync(ct: CancellationToken) : System.Threading.Tasks.Task =
-            if transaction.IsValueCreated then
-                transaction.Value.CommitAsync(ct) // TODO: Must be awaited
-            else
-                Task.CompletedTask
+            task {
+                if transaction.IsValueCreated then
+                    do! transaction.Value.CommitAsync(ct)
+            }
 
         member _.RollbackAsync(ct: CancellationToken) : System.Threading.Tasks.Task =
-            // TODO: Should we have a dispose() which calls Rollback? How to not get stuck?
-            if transaction.IsValueCreated then
-                transaction.Value.RollbackAsync(ct) // TODO: Must be awaited
-            else
-                Task.CompletedTask
+            task {
+                if transaction.IsValueCreated then
+                    do! transaction.Value.RollbackAsync(ct)
+            }
 
         member _.SystemClock = systemClock'.Value
         member _.Logger = logger'.Value

@@ -18,7 +18,7 @@ open Scrum.Infrastructure
 type StoryController() =
     inherit ControllerBase()
 
-    let env = AppEnv("URI=file:/home/rh/Downloads/scrumfs.sqlite") :> IAppEnv
+    let env = new AppEnv("URI=file:/home/rh/Downloads/scrumfs.sqlite") :> IAppEnv
 
     [<HttpGet>]
     //[<Route("test")>]
