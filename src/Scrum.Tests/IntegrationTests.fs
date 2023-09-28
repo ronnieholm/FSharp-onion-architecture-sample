@@ -34,9 +34,12 @@ type DisableParallelization() =
     class
     end
 
-// TODO: Do we really require disable parallelization? With SQLite, only one tx can be active at once anyway.
-// Even if we could run multiple tx in parallel, changes from one don't bleed into another. The clean-up of
-// data, to reset baseline, is why we run aren't running in parallel.
+// Serializing integration tests makes for slower but more reliable test runs. With SQLite, only one
+// transaction can be in progress at once anyway. Another transaction will block on commit until the
+// ongoing transaction finish commit or rollback. Thus commenting out the attribute below likely
+// results in tests succeeding. But if any test assume a reset database, tests may start failing.
+// In order for tests not to interfere with each other and the reset, take must be taken to serialize
+// test runs. 
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
     let connectionString = "URI=file:/home/rh/Downloads/scrumfs.sqlite"
@@ -72,6 +75,7 @@ type StoryAggregateRequestTests() =
             cmd.ExecuteNonQuery() |> ignore)
         transaction.Commit()
         
+    [<Fact>]        
     let ``create story with task`` () =
         use env = new AppEnv(connectionString)
         task {
@@ -89,19 +93,18 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``create duplicate story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
             let! _ = f.CreateStory cmd
             let! result = f.CreateStory cmd
             test <@ result = Error(CreateStoryCommand.DuplicateStory(cmd.Id)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``delete story without tasks`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -110,12 +113,11 @@ type StoryAggregateRequestTests() =
             test <@ result = Ok(cmd.Id) @>
             let! result = f.GetStoryById { Id = cmd.Id }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``delete story with task`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -126,12 +128,11 @@ type StoryAggregateRequestTests() =
             test <@ result = Ok(cmd.StoryId) @>
             let! result = f.GetStoryById { Id = cmd.StoryId }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.StoryId)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``add duplicate task to story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let createStoryCmd = A.createStoryCommand ()
@@ -140,23 +141,21 @@ type StoryAggregateRequestTests() =
             let! _ = f.AddTaskToStory addTaskCmd
             let! result = f.AddTaskToStory addTaskCmd
             test <@ result = Error(AddTaskToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``add task to non-existing story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = { A.addTaskToStoryCommand () with StoryId = missing () }
             let! result = f.AddTaskToStory cmd
             test <@ result = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``delete existing task on story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -171,7 +170,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete task on non-existing story`` () =
-        let env = new AppEnv(connectionString)        
+        use env = new AppEnv(connectionString)        
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -180,12 +179,11 @@ type StoryAggregateRequestTests() =
             let cmd = { StoryId = missing (); TaskId = cmd.TaskId }
             let! result = f.DeleteTask cmd
             test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd.StoryId)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``delete non-existing task on story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -193,12 +191,11 @@ type StoryAggregateRequestTests() =
             let cmd = { StoryId = cmd.Id; TaskId = missing () }
             let! result = f.DeleteTask cmd
             test <@ result = Error(DeleteTaskCommand.TaskNotFound(cmd.TaskId)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``update existing story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -211,19 +208,18 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update non-existing story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
             let cmd = A.updateStoryCommand cmd
             let! result = f.UpdateStory cmd
             test <@ result = Error(UpdateStoryCommand.StoryNotFound(cmd.Id)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``update existing task`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -238,7 +234,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update non-existing task on existing story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -248,12 +244,11 @@ type StoryAggregateRequestTests() =
             let cmd = { A.updateTaskCommand cmd with TaskId = missing () }
             let! result = f.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.TaskNotFound(cmd.TaskId)) @>
-            do! f.Rollback()
         }
 
     [<Fact>]
     let ``update task on non-existing story`` () =
-        let env = new AppEnv(connectionString)
+        use env = new AppEnv(connectionString)
         task {
             let f = env |> setup
             let cmd = A.createStoryCommand ()
@@ -263,7 +258,6 @@ type StoryAggregateRequestTests() =
             let cmd = { A.updateTaskCommand cmd with StoryId = missing () }
             let! result = f.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
-            do! f.Rollback()
         }
 
     interface IDisposable with
