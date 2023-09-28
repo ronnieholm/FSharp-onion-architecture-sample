@@ -39,7 +39,7 @@ module StoryAggregate =
         type TaskDescription = TaskDescription of string
         module TaskDescription =
             let maxLength = 1000
-            
+
             let validate =
                 function
                 | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
@@ -97,7 +97,7 @@ module StoryAggregate =
 
     [<NoComparison; NoEquality>]
     type Story =
-        { Root: AggregateRoot<StoryId>
+        { Aggregate: AggregateRoot<StoryId>
           Title: StoryTitle
           Description: StoryDescription option
           Tasks: TaskEntity.Task list }
@@ -142,7 +142,7 @@ module StoryAggregate =
         | TaskDeletedEvent of TaskDeletedEvent
 
     let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (createdAt: DateTime) : Story * DomainEvent =
-        { Root = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
+        { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
           Title = title
           Description = description
           Tasks = [] },
@@ -154,11 +154,12 @@ module StoryAggregate =
         )
 
     let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * DomainEvent =
-        let root = { story.Root with UpdatedAt = Some updatedAt }
-        let story = { story with Root = root; Title = title; Description = description }
+        let root = { story.Aggregate with UpdatedAt = Some updatedAt }
+        let story =
+            { story with Aggregate = root; Title = title; Description = description }
         let event =
             DomainEvent.StoryUpdatedEvent(
-                { StoryId = story.Root.Id
+                { StoryId = story.Aggregate.Id
                   StoryTitle = title
                   StoryDescription = description
                   UpdatedAt = updatedAt }
@@ -168,8 +169,8 @@ module StoryAggregate =
     let delete (story: Story) : DomainEvent =
         // Depending on the domain, we might want to explicitly delete the story's tasks
         // and emit task deleted domain events. In this case, we leave cascade delete
-        // to the store. 
-        DomainEvent.StoryDeletedEvent({ StoryId = story.Root.Id })
+        // to the store.
+        DomainEvent.StoryDeletedEvent({ StoryId = story.Aggregate.Id })
 
     open TaskEntity
 
@@ -184,7 +185,7 @@ module StoryAggregate =
             Ok(
                 { story with Tasks = task :: story.Tasks },
                 DomainEvent.TaskAddedToStoryEvent(
-                    { StoryId = story.Root.Id
+                    { StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
                       TaskTitle = task.Title
                       TaskDescription = task.Description
@@ -212,7 +213,7 @@ module StoryAggregate =
             let story = { story with Tasks = updatedTask :: tasks }
             let event =
                 DomainEvent.TaskUpdatedEvent(
-                    { StoryId = story.Root.Id
+                    { StoryId = story.Aggregate.Id
                       TaskId = taskId
                       TaskTitle = title
                       TaskDescription = description
@@ -230,7 +231,7 @@ module StoryAggregate =
             let tasks = story.Tasks |> List.removeAt idx
             let story = { story with Tasks = tasks }
             let event =
-                DomainEvent.TaskDeletedEvent({ StoryId = story.Root.Id; TaskId = taskId })
+                DomainEvent.TaskDeletedEvent({ StoryId = story.Aggregate.Id; TaskId = taskId })
             Ok(story, event)
         | None -> Error(TaskNotFound taskId)
 

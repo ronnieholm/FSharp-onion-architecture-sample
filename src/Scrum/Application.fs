@@ -105,7 +105,7 @@ module StoryAggregateRequest =
                     let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
                     do! stories.ApplyEventAsync ct event
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
-                    return StoryId.value story.Root.Id
+                    return StoryId.value story.Aggregate.Id
                     // TODO: Who's going to call commit?
                 }
 
@@ -152,7 +152,7 @@ module StoryAggregateRequest =
                     let now = clock.CurrentUtc()
                     let story, event = StoryAggregate.update story cmd.Title cmd.Description now
                     do! stories.ApplyEventAsync ct event
-                    return StoryId.value story.Root.Id
+                    return StoryId.value story.Aggregate.Id
                 }
 
             runWithDecoratorAsync logger (nameof UpdateStoryCommand) cmd aux
@@ -186,7 +186,7 @@ module StoryAggregateRequest =
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                     let event = StoryAggregate.delete story
                     do! stories.ApplyEventAsync ct event
-                    return StoryId.value story.Root.Id
+                    return StoryId.value story.Aggregate.Id
                 }
 
             runWithDecoratorAsync logger (nameof DeleteStoryCommand) cmd aux
@@ -354,8 +354,7 @@ module StoryAggregateRequest =
                 return { Id = storyId }
             }
 
-        // TODO: Missing CreatedAt and UpdatedAt.
-        type TaskDto = { Id: Guid; Title: string; Description: string }
+        type TaskDto = { Id: Guid; Title: string; Description: string; CreatedAt: DateTime; UpdatedAt: DateTime option }
 
         module TaskDto =
             let from (task: Task) : TaskDto =
@@ -364,7 +363,9 @@ module StoryAggregateRequest =
                   Description =
                     match task.Description with
                     | Some d -> d |> TaskDescription.value
-                    | None -> null }
+                    | None -> null
+                  CreatedAt = task.Entity.CreatedAt
+                  UpdatedAt = task.Entity.UpdatedAt }
 
         type StoryDto =
             { Id: Guid
@@ -376,20 +377,19 @@ module StoryAggregateRequest =
 
         module StoryDto =
             let from (story: Story) : StoryDto =
-                { Id = story.Root.Id |> StoryId.value
+                { Id = story.Aggregate.Id |> StoryId.value
                   Title = story.Title |> StoryTitle.value
                   Description =
                     // TODO: doesn't None end up being null with JSON serialization anyway?
                     story.Description
                     |> Option.map StoryDescription.value
                     |> Option.defaultValue null
-                  CreatedAt = story.Root.CreatedAt
-                  UpdatedAt = story.Root.UpdatedAt
+                  CreatedAt = story.Aggregate.CreatedAt
+                  UpdatedAt = story.Aggregate.UpdatedAt
                   Tasks = story.Tasks |> List.map TaskDto.from }
 
         type GetStoryByIdError =
-            // TODO: Write ADR on input and output types
-            | ValidationErrors of ValidationError list // TODO: list isn't a C# friendly type, but it's native to F#, not the domain. Rule it not to return domain internal types to outside world
+            | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync

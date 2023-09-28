@@ -15,11 +15,10 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 module Seedwork =
     module Option =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
-        
+
     module Repository =
         let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
         let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
-        
 
 open Seedwork
 open Seedwork.Repository
@@ -74,7 +73,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 let ok, _ = parsedStories.TryGetValue(storyId)
                 if not ok then
                     let story =
-                        { Root =
+                        { Aggregate =
                             { Id = id
                               CreatedAt = parseCreatedAt r["s_created_at"]
                               UpdatedAt = parseUpdatedAt r["s_updated_at"] }
@@ -85,7 +84,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 parseTask r storyId
 
             // With ADO.NET, each field must be explicitly aliased for it to appears in the result.
-            let sql = """
+            let sql =
+                """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                        t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                 from stories s
@@ -115,7 +115,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     parsedStories.Values
                     |> Seq.toList
                     |> Seq.map (fun story ->
-                        let ok, tasks = parsedTasks.TryGetValue(story.Root.Id)
+                        let ok, tasks = parsedTasks.TryGetValue(story.Aggregate.Id)
                         { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
                     |> Seq.toList
 
@@ -140,7 +140,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 let p = cmd.Parameters
                 p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
                 p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
-                p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj) |> ignore
+                p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
+                |> ignore
                 p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
 
                 task {
@@ -153,7 +154,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 use cmd = new SQLiteCommand(sql, connection, transaction)
                 let p = cmd.Parameters
                 p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
-                p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj) |> ignore
+                p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
+                |> ignore
                 p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
                 p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
 
@@ -164,8 +166,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
             | DomainEvent.StoryDeletedEvent e ->
                 let sql = "delete from stories where id = @id"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
-                cmd.Parameters.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
-                
+                cmd.Parameters.AddWithValue("@id", e.StoryId |> StoryId.value |> string)
+                |> ignore
+
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     // TODO: with cascade delete of tasks, does count > 1?
@@ -179,7 +182,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                 p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
                 p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
-                p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj) |> ignore
+                p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
+                |> ignore
                 p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
 
                 task {
@@ -192,7 +196,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 use cmd = new SQLiteCommand(sql, connection, transaction)
                 let p = cmd.Parameters
                 p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
-                p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj) |> ignore
+                p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
+                |> ignore
                 p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
                 p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                 p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
@@ -200,14 +205,14 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
-                }                                            
+                }
             | DomainEvent.TaskDeletedEvent e ->
                 let sql = "delete from tasks where id = @id and story_id = @storyId"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
                 let p = cmd.Parameters
                 p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                 p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
-                
+
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
