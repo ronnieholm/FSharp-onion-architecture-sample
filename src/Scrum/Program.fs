@@ -40,6 +40,8 @@ module Rfc7807Error =
         r.ContentType <- if h then "application/problem+json" else "application/json"
         r
 
+type StoryCreateDto = { title: string; description: string }
+
 [<ApiController>]
 [<Route("[controller]")>]
 type ScrumController() =
@@ -82,10 +84,12 @@ type StoriesController() =
                 return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
         }
 
-    // curl https://localhost:5000/stories --insecure --request post
+    // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
+    // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}'
 
     [<HttpPost>]
-    member x.Create(ct: CancellationToken) : Task<ActionResult> =
+    //member x.Create([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
+    member x.Create([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
@@ -95,7 +99,9 @@ type StoriesController() =
                         x.Env.SystemClock
                         x.Env.Logger
                         ct
-                        { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
+                        { Id = Guid.NewGuid()
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
