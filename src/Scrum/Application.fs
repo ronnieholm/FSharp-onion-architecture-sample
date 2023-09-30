@@ -29,6 +29,7 @@ module Seedwork =
     type ILogger =
         abstract LogRequestPayload: string -> obj -> unit
         abstract LogRequestTime: string -> uint<ms> -> unit
+        abstract LogException: exn -> unit
 
     [<Interface>]
     type ILoggerFactory =
