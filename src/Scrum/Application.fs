@@ -44,6 +44,7 @@ module Seedwork =
         inherit ISystemClockFactory
         inherit ILoggerFactory
         inherit IStoryRepositoryFactory
+         inherit IDisposable
         abstract CommitAsync: CancellationToken -> System.Threading.Tasks.Task
         abstract RollbackAsync: CancellationToken -> System.Threading.Tasks.Task
 

@@ -42,23 +42,30 @@ module Rfc7807Error =
 
 [<ApiController>]
 [<Route("[controller]")>]
-type StoriesController() =
+type ScrumController() =
     inherit ControllerBase()
 
     let env = new AppEnv("URI=file:/home/rh/Downloads/scrumfs.sqlite") :> IAppEnv
 
+    member _.Env = env
+
+    interface IDisposable with
+        member this.Dispose() = this.Env.Dispose()
+
+[<ApiController>]
+[<Route("[controller]")>]
+type StoriesController() =
+    inherit ScrumController()
+
+    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
+
     [<HttpGet>]
     [<Route("{id}")>]
-    member this.GetById(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+    member x.GetById(id: Guid, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = this.Request.Headers.Accept
+            let acceptHeaders = x.Request.Headers.Accept
             try
-                let! result =
-                    StoryAggregateRequest.GetStoryByIdQuery.runAsync
-                        env.StoryRepository
-                        env.Logger
-                        ct
-                        { Id = id }
+                let! result = StoryAggregateRequest.GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
                 return
                     match result with
                     | Ok s -> OkObjectResult(s) :> ActionResult
@@ -68,29 +75,28 @@ type StoriesController() =
                             es
                             |> Rfc7807Error.fromValidationError
                             |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult                            
-                        | StoryNotFound e -> failwith "todo"
+                            :> ActionResult
+                        | StoryNotFound e -> NotFoundResult()
             with e ->
-                env.Logger.LogException(e)
-                // TODO: Why does app hang (db locked) without this rollback?
+                x.Env.Logger.LogException(e)
                 return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
         }
 
-    // curl https://localhost:5000/stories --insecure --request post 
-    
+    // curl https://localhost:5000/stories --insecure --request post
+
     [<HttpPost>]
-    member this.Create(ct: CancellationToken) : Task<ActionResult> =
+    member x.Create(ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = this.Request.Headers.Accept
+            let acceptHeaders = x.Request.Headers.Accept
             try
                 let! result =
                     StoryAggregateRequest.CreateStoryCommand.runAsync
-                        env.StoryRepository
-                        env.SystemClock
-                        env.Logger
+                        x.Env.StoryRepository
+                        x.Env.SystemClock
+                        x.Env.Logger
                         ct
                         { Id = Guid.NewGuid(); Title = "Abc"; Description = Some "Def" }
-                do! env.CommitAsync(ct)
+                do! x.Env.CommitAsync(ct)
                 return
                     match result with
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
@@ -103,8 +109,8 @@ type StoriesController() =
                             :> ActionResult
                         | DuplicateStory e -> raise (UnreachableException(string e))
             with e ->
-                do! env.RollbackAsync(ct)
-                env.Logger.LogException(e)
+                do! x.Env.RollbackAsync(ct)
+                x.Env.Logger.LogException(e)
                 return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
         }
 
@@ -122,6 +128,10 @@ type Startup() =
         app.UseResponseCaching() |> ignore
         app.UseRouting() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
+
+module JsonSerialization =
+
+    ()
 
 module Program =
     let createHostBuilder args : IHostBuilder =
