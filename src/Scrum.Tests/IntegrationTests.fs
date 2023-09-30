@@ -77,185 +77,185 @@ type StoryAggregateRequestTests() =
     [<Fact>]
     let ``create story with task`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! result = f.CreateStory cmd
+            let! result = fns.CreateStory cmd
             test <@ result = Ok(cmd.Id) @>
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! result = f.AddTaskToStory cmd
+            let! result = fns.AddTaskToStory cmd
             test <@ result = Ok(cmd.TaskId) @>
-            let! result = f.GetStoryById { Id = cmd.StoryId }
+            let! result = fns.GetStoryById { Id = cmd.StoryId }
             //test <@ result = Ok(_) @>
-            do! f.Commit()
+            do! fns.Commit()
         }
 
     [<Fact>]
     let ``create duplicate story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
-            let! result = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
+            let! result = fns.CreateStory cmd
             test <@ result = Error(CreateStoryCommand.DuplicateStory(cmd.Id)) @>
         }
 
     [<Fact>]
     let ``delete story without tasks`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
-            let! result = f.DeleteStory { Id = cmd.Id }
+            let! _ = fns.CreateStory cmd
+            let! result = fns.DeleteStory { Id = cmd.Id }
             test <@ result = Ok(cmd.Id) @>
-            let! result = f.GetStoryById { Id = cmd.Id }
+            let! result = fns.GetStoryById { Id = cmd.Id }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
     let ``delete story with task`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = f.AddTaskToStory cmd
-            let! result = f.DeleteStory { Id = cmd.StoryId }
+            let! _ = fns.AddTaskToStory cmd
+            let! result = fns.DeleteStory { Id = cmd.StoryId }
             test <@ result = Ok(cmd.StoryId) @>
-            let! result = f.GetStoryById { Id = cmd.StoryId }
+            let! result = fns.GetStoryById { Id = cmd.StoryId }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
     let ``add duplicate task to story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let createStoryCmd = A.createStoryCommand ()
             let addTaskCmd = { A.addTaskToStoryCommand () with StoryId = createStoryCmd.Id }
-            let! _ = f.CreateStory createStoryCmd
-            let! _ = f.AddTaskToStory addTaskCmd
-            let! result = f.AddTaskToStory addTaskCmd
+            let! _ = fns.CreateStory createStoryCmd
+            let! _ = fns.AddTaskToStory addTaskCmd
+            let! result = fns.AddTaskToStory addTaskCmd
             test <@ result = Error(AddTaskToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
         }
 
     [<Fact>]
     let ``add task to non-existing story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = { A.addTaskToStoryCommand () with StoryId = missing () }
-            let! result = f.AddTaskToStory cmd
+            let! result = fns.AddTaskToStory cmd
             test <@ result = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
     let ``delete existing task on story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = f.AddTaskToStory cmd
+            let! _ = fns.AddTaskToStory cmd
             let cmd = { StoryId = cmd.StoryId; TaskId = cmd.TaskId }
-            let! result = f.DeleteTask cmd
+            let! result = fns.DeleteTask cmd
             test <@ result = Ok(cmd.TaskId) @>
-            do! f.Commit()
+            do! fns.Commit()
         }
 
     [<Fact>]
     let ``delete task on non-existing story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
             let cmd = { StoryId = missing (); TaskId = cmd.TaskId }
-            let! result = f.DeleteTask cmd
+            let! result = fns.DeleteTask cmd
             test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
     let ``delete non-existing task on story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { StoryId = cmd.Id; TaskId = missing () }
-            let! result = f.DeleteTask cmd
+            let! result = fns.DeleteTask cmd
             test <@ result = Error(DeleteTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
     let ``update existing story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = A.updateStoryCommand cmd
-            let! result = f.UpdateStory cmd
+            let! result = fns.UpdateStory cmd
             test <@ result = Ok(cmd.Id) @>
-            do! f.Commit()
+            do! fns.Commit()
         }
 
     [<Fact>]
     let ``update non-existing story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
             let cmd = A.updateStoryCommand cmd
-            let! result = f.UpdateStory cmd
+            let! result = fns.UpdateStory cmd
             test <@ result = Error(UpdateStoryCommand.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
     let ``update existing task`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = f.AddTaskToStory cmd
+            let! _ = fns.AddTaskToStory cmd
             let cmd = A.updateTaskCommand cmd
-            let! result = f.UpdateTask cmd
+            let! result = fns.UpdateTask cmd
             test <@ result = Ok(cmd.TaskId) @>
-            do! f.Commit()
+            do! fns.Commit()
         }
 
     [<Fact>]
     let ``update non-existing task on existing story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = f.AddTaskToStory cmd
+            let! _ = fns.AddTaskToStory cmd
             let cmd = { A.updateTaskCommand cmd with TaskId = missing () }
-            let! result = f.UpdateTask cmd
+            let! result = fns.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
     let ``update task on non-existing story`` () =
         use env = new AppEnv(connectionString)
-        let f = env |> setup
+        let fns = env |> setup
         task {
             let cmd = A.createStoryCommand ()
-            let! _ = f.CreateStory cmd
+            let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = f.AddTaskToStory cmd
+            let! _ = fns.AddTaskToStory cmd
             let cmd = { A.updateTaskCommand cmd with StoryId = missing () }
-            let! result = f.UpdateTask cmd
+            let! result = fns.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
