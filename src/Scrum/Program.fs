@@ -20,7 +20,7 @@ type Rfc7807Error = { Type: string; Title: string; Status: int; Detail: string }
 module Rfc7807Error =
     let create type_ title status detail : Rfc7807Error = { Type = type_; Title = title; Status = status; Detail = detail }
 
-    let createInternalServerError: Rfc7807Error =
+    let internalServerError: Rfc7807Error =
         create "Error" "Error" StatusCodes.Status500InternalServerError "Internal server error"
 
     let fromValidationError (errors: ValidationError list) : Rfc7807Error =
@@ -40,18 +40,20 @@ module Rfc7807Error =
 
 [<ApiController>]
 [<Route("[controller]")>]
-type StoriesController() as this =
+type StoriesController() =
     inherit ControllerBase()
 
     let env = new AppEnv("URI=file:/home/rh/Downloads/scrumfs.sqlite") :> IAppEnv
-    let acceptHeaders = this.Request.Headers.Accept
 
     [<HttpGet>]
     //[<Route("test")>]
     member _.GetById() : string = "Hello from F# and ASP.NET Core!"
 
+    // curl https://localhost:5000/stories --insecure --request post 
+    
     [<HttpPost>]
-    member _.Create(ct: CancellationToken) : Task<ActionResult> =
+    member this.Create(ct: CancellationToken) : Task<ActionResult> =
+        let acceptHeaders = this.Request.Headers.Accept
         task {
             try
                 let! result =
@@ -76,7 +78,7 @@ type StoriesController() as this =
             with e ->
                 do! env.RollbackAsync(ct)
                 env.Logger.LogException(e)
-                return Rfc7807Error.createInternalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
         }
 
 type Startup() =
