@@ -8,6 +8,7 @@ open System.Collections.Generic
 open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Scrum.Application.Seedwork
+open Scrum.Domain
 open Scrum.Domain.Seedwork
 open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
@@ -20,10 +21,50 @@ module Seedwork =
         let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
         let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
 
+        let persistDomainEventAsync
+            (connection: SQLiteConnection)
+            (transaction: SQLiteTransaction)
+            (ct: CancellationToken)
+            (aggregateType: string)  // TODO: match on type instead for robustness?
+            (createdAt: DateTime)
+            (event: DomainEvent)
+            =
+            task {
+                // TODO: Maybe use SRTP to assert that event must have member StoryId of type StoryId? 
+                let aggregateId =
+                    (match aggregateType with
+                     | nameof Story ->
+                         match event with
+                         | StoryCreatedEvent e -> e.StoryId 
+                         | StoryUpdatedEvent e -> e.StoryId
+                         | StoryDeletedEvent e -> e.StoryId
+                         | TaskAddedToStoryEvent e -> e.StoryId
+                         | TaskUpdatedEvent e -> e.StoryId
+                         | TaskDeletedEvent e -> e.StoryId
+                     | _ -> failwithf $"Unknown aggregate: '{aggregateType}'")
+                    |> StoryId.value                
+                let sql =
+                    "insert into domain_events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
+                let cmd = new SQLiteCommand(sql, connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@id", Guid.NewGuid() |> string) |> ignore
+                p.AddWithValue("@aggregateType", aggregateType) |> ignore
+                p.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
+                p.AddWithValue("@eventType", event.GetType().Name) |> ignore
+                p.AddWithValue("@eventPayload", sprintf $"%A{event}") |> ignore
+                p.AddWithValue("@createdAt", createdAt |> string) |> ignore
+                let! count = cmd.ExecuteNonQueryAsync(ct)
+                assert (count = 1)
+            }
+
 open Seedwork
 open Seedwork.Repository
 
-type SqliteStoryRepository(transaction: SQLiteTransaction) =
+type SystemClock() =
+    interface ISystemClock with
+        member _.CurrentUtc() = DateTime.UtcNow
+
+type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) =
     let connection = transaction.Connection
 
     interface IStoryRepository with
@@ -131,7 +172,10 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
         // worry about events evolving over time. For this domain, we don't require full event sourcing;
         // only enough event data to keep the store up to date.
         member _.ApplyEventAsync (ct: CancellationToken) (event: DomainEvent) : Task<unit> =
-            // TODO: persist event to DomainEvents table
+            task {
+                return persistDomainEventAsync connection transaction ct (nameof Story) (clock.CurrentUtc()) event
+            } |> ignore
+
             match event with
             | DomainEvent.StoryCreatedEvent e ->
                 let sql =
@@ -218,10 +262,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction) =
                     assert (count = 1)
                 }
 
-type SystemClock() =
-    interface ISystemClock with
-        member _.CurrentUtc() = DateTime.UtcNow
-
 type Logger() =
     interface ILogger with
         member _.LogRequestPayload (useCase: string) (request: obj) : unit = printfn $"%s{useCase}: %A{request}"
@@ -252,11 +292,11 @@ type AppEnv(connectionString: string, ?systemClock, ?logger, ?storyRepository) =
             connection.Open()
             connection.BeginTransaction()
 
-    let storyRepository' =
-        lazy (storyRepository |> Option.defaultValue (SqliteStoryRepository transaction.Value))
-
     let systemClock' = lazy (systemClock |> Option.defaultValue (SystemClock()))
     let logger' = lazy (logger |> Option.defaultValue (Logger()))
+
+    let storyRepository' =
+        lazy SqliteStoryRepository(transaction.Value, systemClock'.Value)
 
     interface IDisposable with
         member _.Dispose() =

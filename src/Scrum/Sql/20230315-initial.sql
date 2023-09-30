@@ -19,8 +19,11 @@ create table tasks(
     updated_at text null    
 ) strict;
 
--- TODO: extend with more field from actual solution
 create table domain_events(
     id text primary key,
-    payload text not null
+    aggregate_type text not null,
+    aggregate_id text not null, -- TODO: add index
+    event_type text not null,                    
+    event_payload text not null,
+    created_at text not null -- TODO: add index                          
 ) strict;
