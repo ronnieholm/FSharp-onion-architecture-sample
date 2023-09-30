@@ -102,51 +102,50 @@ module StoryAggregate =
           Description: StoryDescription option
           Tasks: TaskEntity.Task list }
 
-    type StoryCreatedEvent =
+    type StoryCreated =
         { StoryId: StoryId
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option
           CreatedAt: DateTime }
 
-    type StoryUpdatedEvent =
+    type StoryUpdated =
         { StoryId: StoryId
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option
           UpdatedAt: DateTime }
 
-    type StoryDeletedEvent = { StoryId: StoryId }
+    type StoryDeleted = { StoryId: StoryId }
 
-    type TaskAddedToStoryEvent =
+    type TaskAddedToStory =
         { StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option
           CreatedAt: DateTime }
 
-    type TaskUpdatedEvent =
+    type TaskUpdated =
         { StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option
           UpdatedAt: DateTime }
 
-    type TaskDeletedEvent = { StoryId: StoryId; TaskId: TaskEntity.TaskId }
+    type TaskDeleted = { StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
-    // TODO: redundant Event postfix?
     type DomainEvent =
-        | StoryCreatedEvent of StoryCreatedEvent
-        | StoryUpdatedEvent of StoryUpdatedEvent
-        | StoryDeletedEvent of StoryDeletedEvent
-        | TaskAddedToStoryEvent of TaskAddedToStoryEvent
-        | TaskUpdatedEvent of TaskUpdatedEvent
-        | TaskDeletedEvent of TaskDeletedEvent
+        | StoryCreated of StoryCreated
+        | StoryUpdated of StoryUpdated
+        | StoryDeleted of StoryDeleted
+        | TaskAddedToStory of TaskAddedToStory
+        | TaskUpdated of TaskUpdated
+        | TaskDeleted of TaskDeleted
 
     let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (createdAt: DateTime) : Story * DomainEvent =
         { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
           Title = title
           Description = description
           Tasks = [] },
-        DomainEvent.StoryCreatedEvent(
+        DomainEvent.StoryCreated(
             { StoryId = id
               StoryTitle = title
               StoryDescription = description
@@ -158,7 +157,7 @@ module StoryAggregate =
         let story =
             { story with Aggregate = root; Title = title; Description = description }
         let event =
-            DomainEvent.StoryUpdatedEvent(
+            DomainEvent.StoryUpdated(
                 { StoryId = story.Aggregate.Id
                   StoryTitle = title
                   StoryDescription = description
@@ -170,7 +169,7 @@ module StoryAggregate =
         // Depending on the domain, we might want to explicitly delete the story's tasks
         // and emit task deleted domain events. In this case, we leave cascade delete
         // to the store.
-        DomainEvent.StoryDeletedEvent({ StoryId = story.Aggregate.Id })
+        DomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id })
 
     open TaskEntity
 
@@ -184,7 +183,7 @@ module StoryAggregate =
         else
             Ok(
                 { story with Tasks = task :: story.Tasks },
-                DomainEvent.TaskAddedToStoryEvent(
+                DomainEvent.TaskAddedToStory(
                     { StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
                       TaskTitle = task.Title
@@ -212,7 +211,7 @@ module StoryAggregate =
                 { task with Entity = entity; Title = title; Description = description }
             let story = { story with Tasks = updatedTask :: tasks }
             let event =
-                DomainEvent.TaskUpdatedEvent(
+                DomainEvent.TaskUpdated(
                     { StoryId = story.Aggregate.Id
                       TaskId = taskId
                       TaskTitle = title
@@ -231,7 +230,7 @@ module StoryAggregate =
             let tasks = story.Tasks |> List.removeAt idx
             let story = { story with Tasks = tasks }
             let event =
-                DomainEvent.TaskDeletedEvent({ StoryId = story.Aggregate.Id; TaskId = taskId })
+                DomainEvent.TaskDeleted({ StoryId = story.Aggregate.Id; TaskId = taskId })
             Ok(story, event)
         | None -> Error(TaskNotFound taskId)
 
