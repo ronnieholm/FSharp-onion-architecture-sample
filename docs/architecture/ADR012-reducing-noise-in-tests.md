@@ -86,14 +86,14 @@ let setup (env: IAppEnv) =
 let ``create story with task`` () =
     use env = new AppEnv(connectionString)
     task {
-        let f = env |> setup
+        let fns = env |> setup
         let cmd = A.createStoryCommand ()
-        let! result = f.CreateStory cmd
+        let! result = fns.CreateStory cmd
         test <@ result = Ok(cmd.Id) @>
         let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-        let! result = f.AddTaskToStory cmd
+        let! result = fns.AddTaskToStory cmd
         test <@ result = Ok(cmd.TaskId) @>
-        let! result = f.GetStoryById { Id = cmd.StoryId }
+        let! result = fns.GetStoryById { Id = cmd.StoryId }
         //test <@ result = Ok(_) @>
         do! f.Commit ()
     }              
