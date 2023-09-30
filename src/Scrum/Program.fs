@@ -14,6 +14,7 @@ open Microsoft.Extensions.Primitives
 open Scrum.Application
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
+open Scrum.Application.StoryAggregateRequest.AddTaskToStoryCommand
 open Scrum.Application.StoryAggregateRequest.CreateStoryCommand
 open Scrum.Application.StoryAggregateRequest.GetStoryByIdQuery
 open Scrum.Infrastructure
@@ -40,8 +41,6 @@ module Rfc7807Error =
         r.ContentType <- if h then "application/problem+json" else "application/json"
         r
 
-type StoryCreateDto = { title: string; description: string }
-
 [<ApiController>]
 [<Route("[controller]")>]
 type ScrumController() =
@@ -54,13 +53,16 @@ type ScrumController() =
     interface IDisposable with
         member this.Dispose() = this.Env.Dispose()
 
+type StoryCreateDto = { title: string; description: string }
+type AddTaskToStoryDto = { storyId: Guid; title: string; description: string }
+
 [<ApiController>]
 [<Route("[controller]")>]
 type StoriesController() =
     inherit ScrumController()
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
-
+      
     [<HttpGet>]
     [<Route("{id}")>]
     member x.GetById(id: Guid, ct: CancellationToken) : Task<ActionResult> =
@@ -88,8 +90,7 @@ type StoriesController() =
     // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}'
 
     [<HttpPost>]
-    //member x.Create([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
-    member x.Create([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
+    member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
@@ -113,11 +114,48 @@ type StoriesController() =
                             |> Rfc7807Error.fromValidationError
                             |> Rfc7807Error.toJsonResult acceptHeaders
                             :> ActionResult
-                        | DuplicateStory e -> raise (UnreachableException(string e))
+                        | DuplicateStory id -> raise (UnreachableException(string id))
             with e ->
                 do! x.Env.RollbackAsync(ct)
                 x.Env.Logger.LogException(e)
                 return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+        }
+
+    // Success: curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
+    
+    [<HttpPost>]
+    [<Route("{storyId}/tasks")>]
+    member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
+        task {
+            let acceptHeaders = x.Request.Headers.Accept
+            try
+                let! result =
+                    StoryAggregateRequest.AddTaskToStoryCommand.runAsync
+                        x.Env.StoryRepository
+                        x.Env.SystemClock
+                        x.Env.Logger
+                        ct
+                        { TaskId = Guid.NewGuid()
+                          StoryId = storyId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                do! x.Env.CommitAsync(ct)
+                return
+                    match result with
+                    | Ok id -> CreatedResult($"/stories/{storyId}/tasks/{id}", id) :> ActionResult
+                    | Error e ->
+                        match e with
+                        | AddTaskToStoryCommand.ValidationErrors es ->
+                            es
+                            |> Rfc7807Error.fromValidationError
+                            |> Rfc7807Error.toJsonResult acceptHeaders
+                            :> ActionResult                            
+                        | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
+                        | DuplicateTask id -> raise (UnreachableException(string id))            
+            with e ->
+                do! x.Env.RollbackAsync(ct)
+                x.Env.Logger.LogException(e)
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult                
         }
 
 type Startup() =
