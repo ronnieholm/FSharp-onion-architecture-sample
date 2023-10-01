@@ -87,7 +87,7 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | CreateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | CreateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | DuplicateStory id -> raise (UnreachableException(string id))
             with e ->
                 x.Env.Logger.LogException(e)
@@ -118,7 +118,7 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | UpdateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
@@ -134,14 +134,14 @@ type StoriesController() =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
-                let! result = StoryAggregateRequest.DeleteStoryCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                let! result = DeleteStoryCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
                     | Ok id -> OkObjectResult(id) :> ActionResult // TODO: status code on delete?
                     | Error e ->
                         match e with
-                        | DeleteStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | DeleteStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | DeleteStoryCommand.StoryNotFound e -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
@@ -157,9 +157,8 @@ type StoriesController() =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
-                // TODO: rename to DeleteTaskFromStoryCommand?
                 let! result =
-                    StoryAggregateRequest.DeleteTaskCommand.runAsync
+                    DeleteTaskCommand.runAsync
                         x.Env.StoryRepository
                         x.Env.Logger
                         ct
@@ -170,7 +169,7 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteTaskCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | DeleteTaskCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
                         | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
             with e ->
@@ -188,7 +187,7 @@ type StoriesController() =
             let acceptHeaders = x.Request.Headers.Accept
             try
                 let! result =
-                    StoryAggregateRequest.AddTaskToStoryCommand.runAsync
+                    AddTaskToStoryCommand.runAsync
                         x.Env.StoryRepository
                         x.Env.SystemClock
                         x.Env.Logger
@@ -203,7 +202,7 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | AddTaskToStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | AddTaskToStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
                         | DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
@@ -228,7 +227,7 @@ type StoriesController() =
             try
                 // TODO: UpdateStoryTaskCommand rename?
                 let! result =
-                    StoryAggregateRequest.UpdateTaskCommand.runAsync
+                    UpdateTaskCommand.runAsync
                         x.Env.StoryRepository
                         x.Env.SystemClock
                         x.Env.Logger
@@ -243,7 +242,7 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | StoryNotFound id -> NotFoundResult()
                         | TaskNotFound id -> NotFoundResult()
             with e ->
@@ -260,13 +259,13 @@ type StoriesController() =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
-                let! result = StoryAggregateRequest.GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                let! result = GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
                 return
                     match result with
                     | Ok s -> OkObjectResult(s) :> ActionResult
                     | Error e ->
                         match e with
-                        | GetStoryByIdQuery.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
+                        | GetStoryByIdQuery.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
             with e ->
                 x.Env.Logger.LogException(e)
