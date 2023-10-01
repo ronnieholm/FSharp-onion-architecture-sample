@@ -13,6 +13,7 @@ module Seedwork =
     type ms
 
     type ValidationError = { Field: string; Message: string }
+
     module ValidationError =
         let create (field: string) (message: string) = { Field = field; Message = message }
         let mapError (field: string) : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
@@ -63,6 +64,10 @@ module Seedwork =
         // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
         logger.LogRequestTime useCase elapsed
         result
+        
+module SharedModels =
+    // Data transfer objects shared across queries across aggregates. 
+    ()
 
 open Seedwork
 
@@ -408,3 +413,7 @@ module StoryAggregateRequest =
                 }
 
             runWithDecoratorAsync logger (nameof GetStoryByIdQuery) qry aux
+
+module ApplicationService =
+    // Logic shared across requests.
+    ()

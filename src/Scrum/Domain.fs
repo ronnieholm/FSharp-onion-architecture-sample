@@ -9,6 +9,7 @@ module Seedwork =
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
 
 module SharedValueObjects =
+    // Value object shared across aggregates.
     ()
 
 module StoryAggregate =
@@ -239,3 +240,7 @@ module StoryAggregate =
         abstract ExistAsync: CancellationToken -> StoryId -> Task<bool>
         abstract GetByIdAsync: CancellationToken -> StoryId -> Task<Story option>
         abstract ApplyEventAsync: CancellationToken -> DomainEvent -> Task<unit>
+
+module DomainService =
+    // Logic shared across aggregates.
+    ()
