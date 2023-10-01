@@ -79,8 +79,11 @@ connection objects.
 
 ## Consequences
 
-Keeping save outside each handler makes for a more robust and flexible design.
+Keeping save outside each handler makes for a more robust and flexible approach.
 
 ## See also
 
-- [Life Beyond Distributed Transactions: An Apostate's Implementation - Jimmy Bogard](https://www.youtube.com/watch?v=1fjGPG-v76s)
+- [Life beyond Distributed Transactions: an Apostate’s Opinion (paper, 2007 version) - Pat Helland](https://ics.uci.edu/~cs223/papers/cidr07p15.pdf).
+- [Life beyond Distributed Transactions: an Apostate’s Opinion (paper, 2016 version) - Pat Helland](https://dl.acm.org/doi/pdf/10.1145/3012426.3025012).
+- [Life Beyond Distributed Transactions: An Apostate's Implementation (talk) - Jimmy Bogard](https://www.youtube.com/watch?v=AUrKofVRHV4) with [code](https://github.com/jbogard/AdventureWorksCosmos).
+- [Sean T. Allen on Life Beyond Distributed Transactions: An Apostate’s Opinion [PWL SF] 07/2018](https://www.youtube.com/watch?v=xI56ox7dcRQ).
