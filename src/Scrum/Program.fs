@@ -26,7 +26,7 @@ module Rfc7807Error =
     let internalServerError: Rfc7807Error =
         create "Error" "Error" StatusCodes.Status500InternalServerError "Internal server error"
 
-    let toJsonResult (acceptHeaders: StringValues) (error: Rfc7807Error) : JsonResult =
+    let toJsonResult (acceptHeaders: StringValues) (error: Rfc7807Error) : ActionResult =
         let r = JsonResult(error)
         r.StatusCode <- error.Status
 
@@ -35,13 +35,12 @@ module Rfc7807Error =
             acceptHeaders.ToArray()
             |> Array.exists (fun v -> v = "application/problem+json")
         r.ContentType <- if h then "application/problem+json" else "application/json"
-        r
+        r :> ActionResult
 
-    let fromValidationError (acceptHeaders: StringValues) (errors: ValidationError list) : ActionResult =
+    let fromValidationErrors (acceptHeaders: StringValues) (errors: ValidationError list) : ActionResult =
         let errors = "field error collection goes here"
         create "Error" "Error" StatusCodes.Status400BadRequest errors
         |> toJsonResult acceptHeaders
-        :> ActionResult
 
 [<ApiController>]
 [<Route("[controller]")>]
@@ -88,12 +87,12 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | CreateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | CreateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | DuplicateStory id -> raise (UnreachableException(string id))
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
@@ -119,12 +118,12 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | UpdateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
     // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
@@ -142,12 +141,12 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult // TODO: status code on delete?
                     | Error e ->
                         match e with
-                        | DeleteStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | DeleteStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | DeleteStoryCommand.StoryNotFound e -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/57db7489-722f-4d66-97d5-d5c2501eb89e --insecure --request delete
@@ -171,13 +170,13 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteTaskCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | DeleteTaskCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
                         | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
     // Success: curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
@@ -204,13 +203,13 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | AddTaskToStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | AddTaskToStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
                         | DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/916397d3-0c10-495c-a6e3-a081d41f644c --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
@@ -244,13 +243,13 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | StoryNotFound id -> NotFoundResult()
                         | TaskNotFound id -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
@@ -267,11 +266,11 @@ type StoriesController() =
                     | Ok s -> OkObjectResult(s) :> ActionResult
                     | Error e ->
                         match e with
-                        | GetStoryByIdQuery.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
+                        | GetStoryByIdQuery.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationErrors
                         | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
             with e ->
                 x.Env.Logger.LogException(e)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders
         }
 
 type Startup() =
