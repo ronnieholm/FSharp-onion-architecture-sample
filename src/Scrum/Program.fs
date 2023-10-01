@@ -26,10 +26,6 @@ module Rfc7807Error =
     let internalServerError: Rfc7807Error =
         create "Error" "Error" StatusCodes.Status500InternalServerError "Internal server error"
 
-    let fromValidationError (errors: ValidationError list) : Rfc7807Error =
-        let errors = "field error collection goes here"
-        create "Error" "Error" StatusCodes.Status400BadRequest errors
-
     let toJsonResult (acceptHeaders: StringValues) (error: Rfc7807Error) : JsonResult =
         let r = JsonResult(error)
         r.StatusCode <- error.Status
@@ -40,6 +36,12 @@ module Rfc7807Error =
             |> Array.exists (fun v -> v = "application/problem+json")
         r.ContentType <- if h then "application/problem+json" else "application/json"
         r
+
+    let fromValidationError (acceptHeaders: StringValues) (errors: ValidationError list) : ActionResult =
+        let errors = "field error collection goes here"
+        create "Error" "Error" StatusCodes.Status400BadRequest errors
+        |> toJsonResult acceptHeaders
+        :> ActionResult
 
 [<ApiController>]
 [<Route("[controller]")>]
@@ -86,11 +88,7 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | CreateStoryCommand.ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | CreateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | DuplicateStory id -> raise (UnreachableException(string id))
             with e ->
                 x.Env.Logger.LogException(e)
@@ -121,11 +119,7 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateStoryCommand.ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | UpdateStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
@@ -148,11 +142,7 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult // TODO: status code on delete?
                     | Error e ->
                         match e with
-                        | DeleteStoryCommand.ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | DeleteStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | DeleteStoryCommand.StoryNotFound e -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
@@ -181,11 +171,7 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteTaskCommand.ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | DeleteTaskCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
                         | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
             with e ->
@@ -218,11 +204,7 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | AddTaskToStoryCommand.ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | AddTaskToStoryCommand.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
                         | DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
@@ -262,11 +244,7 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | StoryNotFound id -> NotFoundResult()
                         | TaskNotFound id -> NotFoundResult()
             with e ->
@@ -289,11 +267,7 @@ type StoriesController() =
                     | Ok s -> OkObjectResult(s) :> ActionResult
                     | Error e ->
                         match e with
-                        | GetStoryByIdQuery.ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
+                        | GetStoryByIdQuery.ValidationErrors ve -> (acceptHeaders, ve) ||> Rfc7807Error.fromValidationError
                         | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
             with e ->
                 x.Env.Logger.LogException(e)
