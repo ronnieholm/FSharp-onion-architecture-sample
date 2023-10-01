@@ -48,6 +48,13 @@ type ScrumController() =
 
     member _.Env = env
 
+    member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
+        task {
+            x.Env.Logger.LogException(e)
+            do! x.Env.RollbackAsync(ct)
+            return Rfc7807Error.fromException acceptHeaders
+        }
+
     interface IDisposable with
         member this.Dispose() = this.Env.Dispose()
 
@@ -86,10 +93,8 @@ type StoriesController() =
                         match e with
                         | CreateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
-            with e ->                        
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.fromException acceptHeaders
+            with e ->
+                return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
@@ -118,10 +123,7 @@ type StoriesController() =
                         | UpdateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
             with e ->
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.fromException acceptHeaders
-        }
+                return! x.HandleExceptionAsync e acceptHeaders ct        }
 
     // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
 
@@ -141,9 +143,7 @@ type StoriesController() =
                         | DeleteStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | DeleteStoryCommand.StoryNotFound e -> NotFoundResult()
             with e ->
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.fromException acceptHeaders
+                return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/57db7489-722f-4d66-97d5-d5c2501eb89e --insecure --request delete
@@ -164,10 +164,8 @@ type StoriesController() =
                         | DeleteTaskCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
                         | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
-            with e ->                       
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.fromException acceptHeaders
+            with e ->
+                return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
     // Success: curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
@@ -198,9 +196,7 @@ type StoriesController() =
                         | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
                         | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.fromException acceptHeaders
+                return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/916397d3-0c10-495c-a6e3-a081d41f644c --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
@@ -237,9 +233,7 @@ type StoriesController() =
                         | UpdateTaskCommand.StoryNotFound id -> NotFoundResult()
                         | UpdateTaskCommand.TaskNotFound id -> NotFoundResult()
             with e ->
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return Rfc7807Error.fromException acceptHeaders
+                return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
@@ -259,8 +253,7 @@ type StoriesController() =
                         | GetStoryByIdQuery.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
             with e ->
-                x.Env.Logger.LogException(e)
-                return Rfc7807Error.fromException acceptHeaders
+                return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
 type Startup() =
