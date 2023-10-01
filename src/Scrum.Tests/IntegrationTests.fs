@@ -29,6 +29,19 @@ module A =
           Title = cmd.Title
           Description = cmd.Description }
 
+module Database =
+    let reset (connectionString: string) =
+        // Organize in reverse dependency order.
+        let sql = [| "delete from tasks"; "delete from stories" |]
+        use connection = new SQLiteConnection(connectionString)
+        connection.Open()
+        let transaction = connection.BeginTransaction()
+        sql
+        |> Array.iter (fun sql ->
+            use cmd = new SQLiteCommand(sql, connection, transaction)
+            cmd.ExecuteNonQuery() |> ignore)
+        transaction.Commit()
+
 [<CollectionDefinition(nameof DisableParallelization, DisableParallelization = true)>]
 type DisableParallelization() =
     class
@@ -59,21 +72,7 @@ type StoryAggregateRequestTests() =
            UpdateStory = UpdateStoryCommand.runAsync r s l ct
            UpdateTask = UpdateTaskCommand.runAsync r s l ct
            Commit = fun _ -> env.CommitAsync ct |}
-
-    // TODO: move function out of any specific test as it clean all tables
-    let resetDatabase () =
-        // Run SQL statements in reverse dependency order.
-        let sql = [| "delete from tasks"; "delete from stories" |]
-        use connection = new SQLiteConnection(connectionString)
-        connection.Open()
-        let transaction = connection.BeginTransaction()
-        sql
-        |> Array.iter (fun sql ->
-            use cmd = new SQLiteCommand(sql, connection, transaction)
-            // TODO: use fold to accumulate records affected for debugging
-            cmd.ExecuteNonQuery() |> ignore)
-        transaction.Commit()
-
+    
     [<Fact>]
     let ``create story with task`` () =
         use env = new AppEnv(connectionString)
@@ -102,7 +101,7 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``delete story without tasks`` () =
+    let ``delete story without task`` () =
         use env = new AppEnv(connectionString)
         let fns = env |> setup
         task {
@@ -153,7 +152,7 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``delete existing task on story`` () =
+    let ``delete task on story`` () =
         use env = new AppEnv(connectionString)
         let fns = env |> setup
         task {
@@ -193,7 +192,7 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``update existing story`` () =
+    let ``update story`` () =
         use env = new AppEnv(connectionString)
         let fns = env |> setup
         task {
@@ -217,7 +216,7 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``update existing task`` () =
+    let ``update task`` () =
         use env = new AppEnv(connectionString)
         let fns = env |> setup
         task {
@@ -232,7 +231,7 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``update non-existing task on existing story`` () =
+    let ``update non-existing task on story`` () =
         use env = new AppEnv(connectionString)
         let fns = env |> setup
         task {
@@ -260,4 +259,4 @@ type StoryAggregateRequestTests() =
         }
 
     interface IDisposable with
-        member _.Dispose() = resetDatabase ()
+        member _.Dispose() = Database.reset connectionString
