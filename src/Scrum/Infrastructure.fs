@@ -257,7 +257,7 @@ type Logger() =
 // Are Open and BeginTransaction on the connection idempotent?
 // AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locater tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
 // This is our composition root: https://blog.ploeh.dk/2011/07/28/CompositionRoot/
-type AppEnv(connectionString: string, ?systemClock, ?logger, ?storyRepository) =
+type AppEnv(connectionString: string, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
     // Instantiate the connection and transaction with a let binding, and not a use binding, or
     // repository operations error will fail with:
     //
