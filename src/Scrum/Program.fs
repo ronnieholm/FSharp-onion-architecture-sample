@@ -11,12 +11,8 @@ open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
 open Microsoft.Extensions.Primitives
-open Scrum.Application
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
-open Scrum.Application.StoryAggregateRequest.AddTaskToStoryCommand
-open Scrum.Application.StoryAggregateRequest.CreateStoryCommand
-open Scrum.Application.StoryAggregateRequest.UpdateTaskCommand
 open Scrum.Infrastructure
 
 type Rfc7807Error = { Type: string; Title: string; Status: int; Detail: string }
@@ -42,7 +38,6 @@ module Rfc7807Error =
     let fromException (acceptHeaders: StringValues) : ActionResult =
         create "Error" "Error" StatusCodes.Status500InternalServerError "Internal server error"
         |> toJsonResult acceptHeaders
-        
 
 [<ApiController>]
 [<Route("[controller]")>]
@@ -75,7 +70,7 @@ type StoriesController() =
             let acceptHeaders = x.Request.Headers.Accept
             try
                 let! result =
-                    StoryAggregateRequest.CreateStoryCommand.runAsync
+                    CreateStoryCommand.runAsync
                         x.Env.StoryRepository
                         x.Env.SystemClock
                         x.Env.Logger
@@ -90,8 +85,8 @@ type StoriesController() =
                     | Error e ->
                         match e with
                         | CreateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
-                        | DuplicateStory id -> raise (UnreachableException(string id))
-            with e ->
+                        | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
+            with e ->                        
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
                 return Rfc7807Error.fromException acceptHeaders
@@ -106,7 +101,7 @@ type StoriesController() =
             let acceptHeaders = x.Request.Headers.Accept
             try
                 let! result =
-                    StoryAggregateRequest.UpdateStoryCommand.runAsync
+                    UpdateStoryCommand.runAsync
                         x.Env.StoryRepository
                         x.Env.SystemClock
                         x.Env.Logger
@@ -159,12 +154,7 @@ type StoriesController() =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
-                let! result =
-                    DeleteTaskCommand.runAsync
-                        x.Env.StoryRepository
-                        x.Env.Logger
-                        ct
-                        { StoryId = storyId; TaskId = taskId }
+                let! result = DeleteTaskCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
@@ -174,7 +164,7 @@ type StoriesController() =
                         | DeleteTaskCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
                         | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
-            with e ->
+            with e ->                       
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
                 return Rfc7807Error.fromException acceptHeaders
@@ -206,7 +196,7 @@ type StoriesController() =
                         match e with
                         | AddTaskToStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
                         | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
-                        | DuplicateTask id -> raise (UnreachableException(string id))
+                        | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
@@ -227,7 +217,6 @@ type StoriesController() =
         task {
             let acceptHeaders = x.Request.Headers.Accept
             try
-                // TODO: UpdateStoryTaskCommand rename?
                 let! result =
                     UpdateTaskCommand.runAsync
                         x.Env.StoryRepository
@@ -244,9 +233,9 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
-                        | StoryNotFound id -> NotFoundResult()
-                        | TaskNotFound id -> NotFoundResult()
+                        | UpdateTaskCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | UpdateTaskCommand.StoryNotFound id -> NotFoundResult()
+                        | UpdateTaskCommand.TaskNotFound id -> NotFoundResult()
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
