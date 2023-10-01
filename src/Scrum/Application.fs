@@ -29,7 +29,7 @@ module Seedwork =
     [<Interface>]
     type ILogger =
         abstract LogRequestPayload: string -> obj -> unit
-        abstract LogRequestTime: string -> uint<ms> -> unit
+        abstract LogRequestDuration: string -> uint<ms> -> unit
         abstract LogException: exn -> unit
 
     [<Interface>]
@@ -62,7 +62,7 @@ module Seedwork =
                 logger.LogRequestPayload useCase cmd
                 taskResult { return! fn () })
         // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
-        logger.LogRequestTime useCase elapsed
+        logger.LogRequestDuration useCase elapsed
         result
         
 module SharedModels =

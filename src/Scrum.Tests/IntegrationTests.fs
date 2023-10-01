@@ -30,12 +30,12 @@ module A =
 
 module Database =
     // Call before a test run (constructor), not after (Dispose). This way data is left in the database for troubleshooting.
-    let reset (connectionString: string) =
+    let reset (connectionString: string) : unit =
         // Organize in reverse dependency order.
         let sql = [| "delete from tasks"; "delete from stories" |]
         use connection = new SQLiteConnection(connectionString)
         connection.Open()
-        let transaction = connection.BeginTransaction()
+        use transaction = connection.BeginTransaction()
         sql
         |> Array.iter (fun sql ->
             use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -66,6 +66,8 @@ type StoryAggregateRequestTests() =
         let s = env.SystemClock
         let l = env.Logger
         let ct = CancellationToken.None
+        
+        // While these functions are async, we forgo the Async prefix to reduce noise.
         {| CreateStory = CreateStoryCommand.runAsync r s l ct
            AddTaskToStory = AddTaskToStoryCommand.runAsync r s l ct
            GetStoryById = GetStoryByIdQuery.runAsync r l ct
@@ -82,7 +84,7 @@ type StoryAggregateRequestTests() =
     let nullLogger =
         { new ILogger with
             member _.LogRequestPayload _ _ = ()
-            member _.LogRequestTime _ _ = ()
+            member _.LogRequestDuration _ _ = ()
             member _.LogException _ = () }
     
     [<Fact>]

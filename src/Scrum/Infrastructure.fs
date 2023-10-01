@@ -244,7 +244,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
 type Logger() =
     interface ILogger with
         member _.LogRequestPayload (useCase: string) (request: obj) : unit = printfn $"%s{useCase}: %A{request}"
-        member _.LogRequestTime (useCase: string) (elapsed: uint<ms>) : unit = printfn $"%s{useCase}: %d{elapsed}"
+        member _.LogRequestDuration (useCase: string) (elapsed: uint<ms>) : unit = printfn $"%s{useCase}: %d{elapsed}"
         member _.LogException (e: exn) : unit = printfn $"%A{e}"
 
 // Pass into ctor IOptions<config>.
