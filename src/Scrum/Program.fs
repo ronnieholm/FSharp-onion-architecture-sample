@@ -49,6 +49,7 @@ type ScrumController() =
 
     member _.Env = env
 
+    [<NonAction>]
     member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
         task {
             x.Env.Logger.LogException(e)
@@ -238,7 +239,7 @@ type StoriesController() =
                 return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
-    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
+    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get | jq
 
     [<HttpGet>]
     [<Route("{id}")>]
@@ -258,6 +259,10 @@ type StoriesController() =
                 return! x.HandleExceptionAsync e acceptHeaders ct
         }
 
+module JsonSerialization =
+    
+    ()
+
 type Startup() =
     member _.ConfigureServices(services: IServiceCollection) : unit =
         services.AddMvc(fun options -> options.EnableEndpointRouting <- false) |> ignore
@@ -272,10 +277,6 @@ type Startup() =
         app.UseResponseCaching() |> ignore
         app.UseRouting() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
-
-module JsonSerialization =
-
-    ()
 
 module Program =
     let createHostBuilder args : IHostBuilder =
