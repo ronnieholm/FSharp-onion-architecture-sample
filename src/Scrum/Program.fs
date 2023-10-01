@@ -15,11 +15,12 @@ open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Infrastructure
 
-type Rfc7807Error = { Type: string; Title: string; Status: int; Detail: string }
-module Rfc7807Error =
-    let create type_ title status detail : Rfc7807Error = { Type = type_; Title = title; Status = status; Detail = detail }
+// RFC7807 error format
+type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
+module ErrorDto =
+    let create type_ title status detail : ErrorDto = { Type = type_; Title = title; Status = status; Detail = detail }
 
-    let toJsonResult (acceptHeaders: StringValues) (error: Rfc7807Error) : ActionResult =
+    let toJsonResult (acceptHeaders: StringValues) (error: ErrorDto) : ActionResult =
         let r = JsonResult(error)
         r.StatusCode <- error.Status
 
@@ -52,7 +53,7 @@ type ScrumController() =
         task {
             x.Env.Logger.LogException(e)
             do! x.Env.RollbackAsync(ct)
-            return Rfc7807Error.fromException acceptHeaders
+            return ErrorDto.fromException acceptHeaders
         }
 
     interface IDisposable with
@@ -91,7 +92,7 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | CreateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | CreateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
             with e ->
                 return! x.HandleExceptionAsync e acceptHeaders ct
@@ -120,10 +121,11 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | UpdateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct        }
+                return! x.HandleExceptionAsync e acceptHeaders ct
+        }
 
     // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
 
@@ -140,7 +142,7 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult // TODO: status code on delete?
                     | Error e ->
                         match e with
-                        | DeleteStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | DeleteStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | DeleteStoryCommand.StoryNotFound e -> NotFoundResult()
             with e ->
                 return! x.HandleExceptionAsync e acceptHeaders ct
@@ -161,7 +163,7 @@ type StoriesController() =
                     | Ok id -> OkObjectResult(id) :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteTaskCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | DeleteTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
                         | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
             with e ->
@@ -192,7 +194,7 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | AddTaskToStoryCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | AddTaskToStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
                         | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
@@ -229,7 +231,7 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateTaskCommand.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | UpdateTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | UpdateTaskCommand.StoryNotFound id -> NotFoundResult()
                         | UpdateTaskCommand.TaskNotFound id -> NotFoundResult()
             with e ->
@@ -250,7 +252,7 @@ type StoriesController() =
                     | Ok s -> OkObjectResult(s) :> ActionResult
                     | Error e ->
                         match e with
-                        | GetStoryByIdQuery.ValidationErrors ve -> Rfc7807Error.fromValidationErrors acceptHeaders ve
+                        | GetStoryByIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
                         | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
             with e ->
                 return! x.HandleExceptionAsync e acceptHeaders ct
