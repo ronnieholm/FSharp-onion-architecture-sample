@@ -16,8 +16,7 @@ open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Application.StoryAggregateRequest.AddTaskToStoryCommand
 open Scrum.Application.StoryAggregateRequest.CreateStoryCommand
-open Scrum.Application.StoryAggregateRequest.DeleteTaskCommand
-open Scrum.Application.StoryAggregateRequest.GetStoryByIdQuery
+open Scrum.Application.StoryAggregateRequest.UpdateTaskCommand
 open Scrum.Infrastructure
 
 type Rfc7807Error = { Type: string; Title: string; Status: int; Detail: string }
@@ -55,37 +54,14 @@ type ScrumController() =
         member this.Dispose() = this.Env.Dispose()
 
 type StoryCreateDto = { title: string; description: string }
-type AddTaskToStoryDto = { storyId: Guid; title: string; description: string }
+type StoryUpdateDto = { title: string; description: string }
+type AddTaskToStoryDto = { title: string; description: string }
+type StoryTaskUpdateDto = { title: string; description: string }
 
 [<ApiController>]
 [<Route("[controller]")>]
 type StoriesController() =
     inherit ScrumController()
-
-    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
-
-    [<HttpGet>]
-    [<Route("{id}")>]
-    member x.GetById(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-        task {
-            let acceptHeaders = x.Request.Headers.Accept
-            try
-                let! result = StoryAggregateRequest.GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
-                return
-                    match result with
-                    | Ok s -> OkObjectResult(s) :> ActionResult
-                    | Error e ->
-                        match e with
-                        | ValidationErrors es ->
-                            es
-                            |> Rfc7807Error.fromValidationError
-                            |> Rfc7807Error.toJsonResult acceptHeaders
-                            :> ActionResult
-                        | StoryNotFound e -> NotFoundResult() // TODO: Search for NotFoundResult for how to include actual Id
-            with e ->
-                x.Env.Logger.LogException(e)
-                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
-        }
 
     // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
     // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}'
@@ -122,6 +98,41 @@ type StoriesController() =
                 return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
         }
 
+    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
+
+    [<HttpPut>]
+    [<Route("{id}")>]
+    member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
+        task {
+            let acceptHeaders = x.Request.Headers.Accept
+            try
+                let! result =
+                    StoryAggregateRequest.UpdateStoryCommand.runAsync
+                        x.Env.StoryRepository
+                        x.Env.SystemClock
+                        x.Env.Logger
+                        ct
+                        { Id = id
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                do! x.Env.CommitAsync(ct)
+                return
+                    match result with
+                    | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                    | Error e ->
+                        match e with
+                        | UpdateStoryCommand.ValidationErrors es ->
+                            es
+                            |> Rfc7807Error.fromValidationError
+                            |> Rfc7807Error.toJsonResult acceptHeaders
+                            :> ActionResult
+                        | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
+            with e ->
+                x.Env.Logger.LogException(e)
+                do! x.Env.RollbackAsync(ct)
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+        }
+
     // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
 
     [<HttpDelete>]
@@ -150,7 +161,7 @@ type StoriesController() =
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/57db7489-722f-4d66-97d5-d5c2501eb89e --insecure --request delete
-    
+
     [<HttpDelete>]
     [<Route("{storyId}/tasks/{taskId}")>]
     member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
@@ -176,7 +187,7 @@ type StoriesController() =
                             |> Rfc7807Error.toJsonResult acceptHeaders
                             :> ActionResult
                         | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
-                        | TaskNotFound id -> NotFoundResult() :> ActionResult
+                        | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
@@ -204,7 +215,7 @@ type StoriesController() =
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok id -> CreatedResult($"/stories/{storyId}/tasks/{id}", id) :> ActionResult
+                    | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
                         | AddTaskToStoryCommand.ValidationErrors es ->
@@ -217,6 +228,75 @@ type StoriesController() =
             with e ->
                 x.Env.Logger.LogException(e)
                 do! x.Env.RollbackAsync(ct)
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+        }
+
+    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/916397d3-0c10-495c-a6e3-a081d41f644c --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
+
+    [<HttpPut>]
+    [<Route("{storyId}/tasks/{taskId}")>]
+    member x.UpdateTaskOnStory
+        (
+            [<FromBody>] request: StoryTaskUpdateDto,
+            storyId: Guid,
+            taskId: Guid,
+            ct: CancellationToken
+        ) : Task<ActionResult> =
+        task {
+            let acceptHeaders = x.Request.Headers.Accept
+            try
+                // TODO: UpdateStoryTaskCommand rename?
+                let! result =
+                    StoryAggregateRequest.UpdateTaskCommand.runAsync
+                        x.Env.StoryRepository
+                        x.Env.SystemClock
+                        x.Env.Logger
+                        ct
+                        { StoryId = storyId
+                          TaskId = taskId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                do! x.Env.CommitAsync(ct)
+                return
+                    match result with
+                    | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
+                    | Error e ->
+                        match e with
+                        | ValidationErrors es ->
+                            es
+                            |> Rfc7807Error.fromValidationError
+                            |> Rfc7807Error.toJsonResult acceptHeaders
+                            :> ActionResult
+                        | StoryNotFound id -> NotFoundResult()
+                        | TaskNotFound id -> NotFoundResult()
+            with e ->
+                x.Env.Logger.LogException(e)
+                do! x.Env.RollbackAsync(ct)
+                return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
+        }
+
+    // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get
+
+    [<HttpGet>]
+    [<Route("{id}")>]
+    member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+        task {
+            let acceptHeaders = x.Request.Headers.Accept
+            try
+                let! result = StoryAggregateRequest.GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                return
+                    match result with
+                    | Ok s -> OkObjectResult(s) :> ActionResult
+                    | Error e ->
+                        match e with
+                        | GetStoryByIdQuery.ValidationErrors es ->
+                            es
+                            |> Rfc7807Error.fromValidationError
+                            |> Rfc7807Error.toJsonResult acceptHeaders
+                            :> ActionResult
+                        | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
+            with e ->
+                x.Env.Logger.LogException(e)
                 return Rfc7807Error.internalServerError |> Rfc7807Error.toJsonResult acceptHeaders :> ActionResult
         }
 
