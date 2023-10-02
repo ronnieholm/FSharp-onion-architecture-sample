@@ -14,6 +14,7 @@ open Microsoft.Extensions.Primitives
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Infrastructure
+open System.Text.Json
 
 // RFC7807 error format
 type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
@@ -31,8 +32,13 @@ module ErrorDto =
 
     let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
 
+    type ValidationErrorDto = { Field: string; Message: string }
+    
     let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
-        let errors = "field error collection goes here"
+        let errors =
+            errors
+            |> List.map (fun e -> { Field = e.Field; Message = e.Message })
+            |> JsonSerializer.Serialize // TODO: Use same options and formatters and ASP.NET pipeline.
         createJsonResult accept StatusCodes.Status400BadRequest errors
 
     let fromException (accept: StringValues) : ActionResult =
@@ -69,7 +75,7 @@ type StoriesController() =
     inherit ScrumController()
 
     // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
-    // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}'
+    // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}' | jq
 
     [<HttpPost>]
     member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
