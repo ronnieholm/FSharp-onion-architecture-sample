@@ -210,6 +210,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      | TaskDeleted e -> e.StoryId)
                     |> StoryId.value
 
+                // TODO: Probably move comment to saveDomainEventAsync function.
                 // We don't serialize the event to JSON as F# discriminated unions aren't supported by
                 // System.Text.Json (https://github.com/dotnet/runtime/issues/55744). The event is intended
                 // for consumption inside application core and we therefore use F# constructs. Instead of
