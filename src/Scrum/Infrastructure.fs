@@ -57,8 +57,8 @@ module Seedwork =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
     module Repository =
-        let parseCreatedAt (v: obj) : DateTime = v |> string |> DateTime.Parse
-        let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (string >> DateTime.Parse)
+        let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
+        let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
 
         let saveDomainEventAsync
             (transaction: SQLiteTransaction)
@@ -79,7 +79,7 @@ module Seedwork =
                 p.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
                 p.AddWithValue("@eventType", eventType) |> ignore
                 p.AddWithValue("@eventPayload", payload) |> ignore
-                p.AddWithValue("@createdAt", createdAt |> string) |> ignore
+                p.AddWithValue("@createdAt", createdAt.Ticks) |> ignore
                 let! count = cmd.ExecuteNonQueryAsync(ct)
                 assert (count = 1)
             }
@@ -229,7 +229,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
                     p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
+                    p.AddWithValue("@createdAt", e.CreatedAt.Ticks) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
                 | StoryUpdated e ->
@@ -240,7 +240,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
                     p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
+                    p.AddWithValue("@updatedAt", e.UpdatedAt.Ticks) |> ignore
                     p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
@@ -262,7 +262,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
                     p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@createdAt", string e.CreatedAt) |> ignore
+                    p.AddWithValue("@createdAt", e.CreatedAt.Ticks) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
                 | TaskUpdated e ->
@@ -273,7 +273,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
                     p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@updatedAt", string e.UpdatedAt) |> ignore
+                    p.AddWithValue("@updatedAt", e.UpdatedAt.Ticks) |> ignore
                     p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                     p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)

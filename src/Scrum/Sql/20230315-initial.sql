@@ -8,8 +8,8 @@ create table stories(
     id text primary key,
     title text not null,
     description text null,
-    created_at text not null,
-    updated_at text null
+    created_at integer not null,
+    updated_at integer null
 ) strict;
 
 create table tasks(
@@ -17,8 +17,8 @@ create table tasks(
     story_id text not null, -- TODO: add index of foreign key
     title text not null,
     description text null,
-    created_at text not null,
-    updated_at text null    
+    created_at integer not null,
+    updated_at integer null    
 ) strict;
 
 create table domain_events(
@@ -27,5 +27,5 @@ create table domain_events(
     aggregate_id text not null, -- TODO: add index
     event_type text not null,                    
     event_payload text not null,
-    created_at text not null -- TODO: add index                          
+    created_at integer not null -- TODO: add index                          
 ) strict;

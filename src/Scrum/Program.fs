@@ -390,8 +390,6 @@ type JwtAuthenticationOptions () =
             raise (ArgumentException(nameof x.SigningKey))
         if x.ExpirationInSeconds < 60ul then
             raise (ArgumentException(nameof x.ExpirationInSeconds))
-    
-module JwtAuthenticationOptions =
 
 type Startup(configuration: IConfiguration) =
     // This method gets called by the runtime. Use this method to add services
