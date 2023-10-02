@@ -31,7 +31,7 @@ module Seedwork =
     type ControllerWithinModule() =
         inherit ControllerFeatureProvider()
 
-        override this.IsController(typeInfo: TypeInfo) : bool =
+        override _.IsController(typeInfo: TypeInfo) : bool =
             // By default only a public top-level type ending in Controller is considered one.
             // It means controllers inside a module isn't found. A module compiles to a class
             // with nested classes for controllers.
@@ -44,15 +44,15 @@ module Seedwork =
         // The converters works around the issue by limiting serialization to the most relevant parts of the exception.
         type ExceptionJsonConverter() =
             inherit JsonConverter<Exception>()
-            override this.Read(_, _, _) = raise (UnreachableException())
+            override _.Read(_, _, _) = raise (UnreachableException())
 
-            override this.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
+            override x.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
                 writer.WriteStartObject()
                 writer.WriteString(nameof value.Message, value.Message)
 
                 if value.InnerException <> null then
                     writer.WriteStartObject(nameof value.InnerException)
-                    this.Write(writer, value.InnerException, options)
+                    x.Write(writer, value.InnerException, options)
                     writer.WriteEndObject()
 
                 if value.TargetSite <> null then
@@ -95,22 +95,18 @@ module Seedwork =
 open Seedwork
 
 module Controller =
-    [<ApiController>]
-    [<Route("[controller]")>]
     type ScrumController() =
         inherit ControllerBase()
-
-        // TODO: use attribute NonControllerAttribute?
 
         let env = new AppEnv("URI=file:/home/rh/Downloads/scrumfs.sqlite") :> IAppEnv
 
         member _.Env = env
 
         [<NonAction>]
-        member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
+        member this.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
             task {
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
+                this.Env.Logger.LogException(e)
+                do! this.Env.RollbackAsync(ct)
                 return ErrorDto.fromUncaughtException acceptHeaders
             }
 
@@ -327,7 +323,7 @@ module Controller =
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
         interface IHealthCheck with
-            member this.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
+            member _.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
                 task {
                     // TODO: Use units of measure
                     let mb = 1024 * 1024
@@ -353,7 +349,7 @@ module HealthCheck =
 
     type SQLiteHealthCheck(connectionString: string) =
         interface IHealthCheck with
-            member this.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
+            member _.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
                 let description = "Reports unhealthy status if SQLite is unavailable"
                 task {
                     try
