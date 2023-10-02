@@ -2,9 +2,10 @@
 
 open System
 open System.Collections.Generic
+open System.Data.SQLite
 open System.Diagnostics
 open System.IO.Compression
-open System.Runtime.CompilerServices
+open System.Text.Json.Serialization
 open System.Threading
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
@@ -25,6 +26,35 @@ open Microsoft.AspNetCore.ResponseCompression
 open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
+    module Json =
+        // System.Text.Json cannot serialize an exception without itself throwing an exception:
+        // System.NotSupportedException: Serialization and deserialization of 'System.Reflection.MethodBase' instances are not supported. Path: $.Result.Exception.TargetSite.
+        // The converters works around the issue by limiting serialization to the most relevant parts of the exception.
+        type ExceptionJsonConverter() =
+            inherit JsonConverter<Exception>()
+            override this.Read(_, _, _) = raise (UnreachableException())
+
+            override this.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
+                writer.WriteStartObject()
+                writer.WriteString(nameof value.Message, value.Message)
+
+                if value.InnerException <> null then
+                    writer.WriteStartObject(nameof value.InnerException)
+                    this.Write(writer, value.InnerException, options)
+                    writer.WriteEndObject()
+
+                if value.TargetSite <> null then
+                    writer.WriteStartObject(nameof value.TargetSite)
+                    writer.WriteString(nameof value.TargetSite.Name, value.TargetSite.Name)
+                    writer.WriteString(nameof value.TargetSite.DeclaringType, value.TargetSite.DeclaringType.FullName)
+                    writer.WriteEndObject()
+
+                if value.StackTrace <> null then
+                    writer.WriteString(nameof value.StackTrace, value.StackTrace)
+
+                writer.WriteString(nameof Type, value.GetType().FullName)
+                writer.WriteEndObject()                    
+
     // RFC7807 error format per https://opensource.zalando.com/restful-api-guidelines/#176.
     type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
     module ErrorDto =
@@ -293,18 +323,37 @@ type MemoryHealthCheck(allocatedThresholdInMb: int64) =
                 data.Add("Gen0CollectionCount", GC.CollectionCount(0))
                 data.Add("Gen1CollectionCount", GC.CollectionCount(1))
                 data.Add("Gen2CollectionCount", GC.CollectionCount(2))
-                let result =
+                return
                     HealthCheckResult(
                         (if allocatedInBytes < allocatedThresholdInMb * int64 mb then
                              HealthStatus.Healthy
                          else
                              HealthStatus.Degraded),
-                        // TODO: ed \u003E= 5120 MB", JSON serialized
                         $"Reports degraded status if process has allocated >= {allocatedThresholdInMb} MB",
                         null,
                         data
-                    )                
-                return result
+                    )
+            }
+
+type SQLiteHealthCheck(connectionString: string) =
+    interface IHealthCheck with
+        member this.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
+            let description = "Reports unhealthy status if SQLite is unavailable"
+            task {
+                try
+                    // TODO: implementing timing helper
+                    let sw = Stopwatch()
+                    sw.Start()
+                    use connection = new SQLiteConnection(connectionString)
+                    do! connection.OpenAsync(ct)
+                    use cmd = new SQLiteCommand("select 1", connection)
+                    let! _ = cmd.ExecuteScalarAsync(ct)
+                    sw.Stop()
+                    let data = Dictionary<string, obj>()
+                    data.Add("ResponseTimeMilliseconds", sw.ElapsedMilliseconds)
+                    return HealthCheckResult(HealthStatus.Healthy, description, null, data)
+                with e ->
+                    return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
             }
 
 type Startup() =
@@ -332,6 +381,7 @@ type Startup() =
         services
             .AddHealthChecks()
             .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
+            .AddTypeActivatedCheck<SQLiteHealthCheck>("Database", HealthStatus.Degraded, Seq.empty, args = [| "URI=file:/home/rh/Downloads/scrumfs.sqlite" |])
         |> ignore
 
         services.AddControllers() |> ignore
@@ -383,6 +433,9 @@ type Startup() =
         |> ignore
 
         let healthCheckOptions =
+            let jsonOptions =
+                JsonSerializerOptions(PropertyNamingPolicy = SnakeCaseLowerNamingPolicy(), WriteIndented = true)
+            jsonOptions.Converters.Add(Json.ExceptionJsonConverter())
             HealthCheckOptions(
                 ResponseWriter =
                     fun context report ->
@@ -398,12 +451,14 @@ type Startup() =
                                                Value = e.Value.Status.ToString()
                                                Description = e.Value.Description
                                                Data = e.Value.Data
-                                               Exception = e.Value.Exception |}) |}
-                                ) // TODO: Add indentation with custom json options
+                                               Exception = e.Value.Exception |}) |},
+                                    jsonOptions
+                                )
                             return! context.Response.WriteAsync(result)
                         }
             )
 
+        // curl https://localhost:5000/health --insecure | jq
         app.UseHealthChecks("/health", healthCheckOptions) |> ignore
         app.UseResponseCompression() |> ignore
         app.UseRouting() |> ignore
