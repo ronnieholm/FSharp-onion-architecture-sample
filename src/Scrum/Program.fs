@@ -299,6 +299,7 @@ type MemoryHealthCheck(allocatedThresholdInMb: int64) =
                              HealthStatus.Healthy
                          else
                              HealthStatus.Degraded),
+                        // TODO: ed \u003E= 5120 MB", JSON serialized
                         $"Reports degraded status if process has allocated >= {allocatedThresholdInMb} MB",
                         null,
                         data
@@ -393,7 +394,7 @@ type Startup() =
                 r.GetTypedHeaders().CacheControl <-
                     CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(0), NoCache = true, NoStore = true)
                 r.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
-                return next.Invoke(context)
+                return! next.Invoke(context)
             }
             :> Task)
         |> ignore
@@ -402,7 +403,6 @@ type Startup() =
             HealthCheckOptions(
                 ResponseWriter =
                     fun context report ->
-                        let x = 1
                         task {
                             context.Response.ContentType <- "application/json; charset=utf-8"
                             let result =
@@ -420,15 +420,8 @@ type Startup() =
                             return! context.Response.WriteAsync(result)
                         }
             )
-            
-        let h = HealthCheckOptions()
-        h.ResponseWriter <-
-            fun context report ->
-                task {
-                    return context.Response.WriteAsync("Test")
-                }
 
-        app.UseHealthChecks("/health", h) |> ignore
+        app.UseHealthChecks("/health", healthCheckOptions) |> ignore
         app.UseResponseCompression() |> ignore
         app.UseRouting() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
