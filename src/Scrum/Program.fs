@@ -75,13 +75,12 @@ module Seedwork =
         type ValidationErrorDto = { Field: string; Message: string }
 
         let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
-            let errors =
-                errors
-                |> List.map (fun e -> { Field = e.Field; Message = e.Message })
-                |> JsonSerializer.Serialize // TODO: Use same options and formatters and ASP.NET pipeline.
-            createJsonResult accept StatusCodes.Status400BadRequest errors
+            errors
+            |> List.map (fun e -> { Field = e.Field; Message = e.Message })
+            |> JsonSerializer.Serialize // TODO: Use same options and formatters and ASP.NET pipeline.
+            |> createJsonResult accept StatusCodes.Status400BadRequest
 
-        let fromException (accept: StringValues) : ActionResult =
+        let fromUncaughtException (accept: StringValues) : ActionResult =
             createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
 
 open Seedwork
@@ -100,7 +99,7 @@ type ScrumController() =
         task {
             x.Env.Logger.LogException(e)
             do! x.Env.RollbackAsync(ct)
-            return ErrorDto.fromException acceptHeaders
+            return ErrorDto.fromUncaughtException acceptHeaders
         }
 
     interface IDisposable with
