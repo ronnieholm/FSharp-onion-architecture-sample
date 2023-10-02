@@ -307,23 +307,6 @@ type MemoryHealthCheck(allocatedThresholdInMb: int64) =
                 return result
             }
 
-[<Extension>]
-type IHealthChecksBuilderExtensions =
-    [<Extension>]
-    static member AddMemory
-        (
-            builder: IHealthChecksBuilder,
-            name: string,
-            failureStatus: HealthStatus,
-            tags: string seq,
-            allocatedThresholdInMb: int64
-        ) : IHealthChecksBuilder =
-        if String.IsNullOrWhiteSpace(name) then
-            raise (ArgumentException(null, nameof name))
-        if allocatedThresholdInMb <= 0 then
-            raise (ArgumentOutOfRangeException(nameof allocatedThresholdInMb))
-        builder.AddTypeActivatedCheck<MemoryHealthCheck>(name, failureStatus, tags, args = [| allocatedThresholdInMb |])
-
 type Startup() =
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
@@ -348,7 +331,7 @@ type Startup() =
 
         services
             .AddHealthChecks()
-            .AddMemory("Memory", HealthStatus.Degraded, Seq.empty, int64 (5 * 1024))
+            .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
         |> ignore
 
         services.AddControllers() |> ignore
