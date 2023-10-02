@@ -2,6 +2,7 @@
 
 open System
 open System.Diagnostics
+open System.IO.Compression
 open System.Threading
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
@@ -15,6 +16,46 @@ open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Infrastructure
 open System.Text.Json
+open System.Text.Json.Serialization
+open Microsoft.AspNetCore.ResponseCompression
+
+module Seedwork =
+    // As per https://opensource.zalando.com/restful-api-guidelines/#118.
+    type SnakeCaseLowerNamingPolicy() =
+        inherit JsonNamingPolicy()
+        // SnakeCaseLower will be part of .NET 8 which releases on Nov 14, 2023.
+        override _.ConvertName(name: string) : string =
+            (name
+             |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
+             |> String.Concat)
+                .ToLower()
+
+    // As per https://opensource.zalando.com/restful-api-guidelines/#169.
+    type DateTimeJsonConverter() =
+        inherit JsonConverter<DateTime>()
+        // https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/converters-how-to?pivots=dotnet-7-0
+        override this.Read(_, _, _) = failwith "todo"
+        override this.Write(writer, value, _) =
+            writer.WriteStringValue(value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ"))
+
+    // As per https://opensource.zalando.com/restful-api-guidelines/#240.
+    type EnumJsonConverter() =
+        inherit JsonConverter<ValueType>()
+
+        override this.Read(reader, _, _) = failwith "todo"
+        override this.Write(writer, value, _) =
+            let t = value.GetType()
+            if
+                t.IsEnum
+                || (t.IsGenericType
+                    && t.GenericTypeArguments.Length = 1
+                    && t.GenericTypeArguments[0].IsEnum)
+            then
+                (value.ToString()
+                 |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
+                 |> String.Concat)
+                    .ToUpperInvariant()
+                |> writer.WriteStringValue
 
 // RFC7807 error format
 type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
@@ -33,7 +74,7 @@ module ErrorDto =
     let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
 
     type ValidationErrorDto = { Field: string; Message: string }
-    
+
     let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
         let errors =
             errors
@@ -271,22 +312,104 @@ type StoriesController() =
                 return! x.HandleExceptionAsync e accept ct
         }
 
-module JsonSerialization =
-
-    ()
+open Seedwork
 
 type Startup() =
+
+    // This method gets called by the runtime. Use this method to add services
+    // to the container. For more information on how to configure your
+    // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
     member _.ConfigureServices(services: IServiceCollection) : unit =
-        services.AddMvc(fun options -> options.EnableEndpointRouting <- false) |> ignore
+        services.AddCors(fun options ->
+            options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
+        |> ignore
+
+        services
+            .AddMvc(fun options -> options.EnableEndpointRouting <- false)
+            .AddJsonOptions(fun options ->
+                let o = options.JsonSerializerOptions
+                o.PropertyNamingPolicy <- SnakeCaseLowerNamingPolicy()
+                o.Converters.Add(DateTimeJsonConverter())
+                o.Converters.Add(EnumJsonConverter())
+                o.WriteIndented <- true)
+        |> ignore
+
         services.AddControllers() |> ignore
         services.AddResponseCaching() |> ignore
         services.AddEndpointsApiExplorer() |> ignore
 
+        // If in Azure we're hosting the API under a Linux based app
+        // service, behind the scenes Azure is running the API in a container.
+        // Inside the container, the API is run using the dotnet command, meaning
+        // it's Kestrel serving traffic (can also be confirmed by the HTTP
+        // response header of Server: Kestrel which curl displays. Kestrel
+        // doesn't have build-in compression which is why the API is doing the
+        // compression.
+        //
+        // Beware of possible security issue with HTTPS encryption and
+        // man-in-the-middle attacks
+        // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression?view=aspnetcore-6.0.
+        // The possible security issue is irrelevant for this API case.
+        services
+            .AddResponseCompression(fun options ->
+                options.EnableForHttps <- true
+                options.Providers.Add<GzipCompressionProvider>())
+            .Configure<GzipCompressionProviderOptions>(fun (options: GzipCompressionProviderOptions) ->
+                options.Level <- CompressionLevel.SmallestSize)
+            .Configure<BrotliCompressionProviderOptions>(fun (options: BrotliCompressionProviderOptions) ->
+                options.Level <- CompressionLevel.SmallestSize)
+        |> ignore
+
+    // This method gets called by the runtime. Use this method to configure the
+    // HTTP request pipeline.
     member _.Configure (app: IApplicationBuilder) (env: IWebHostEnvironment) : unit =
         if env.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
 
         app.UseHttpsRedirection() |> ignore
+        app.UseCors() |> ignore
+
+        // As per https://opensource.zalando.com/restful-api-guidelines/#227 and
+        // https://learn.microsoft.com/en-us/aspnet/core/performance/caching/middleware
         app.UseResponseCaching() |> ignore
+        // app.Use(async (context, next) =>
+        // {
+        //     context.Response.GetTypedHeaders().CacheControl =
+        //         new CacheControlHeaderValue
+        //         {
+        //             MustRevalidate = true,
+        //             MaxAge = TimeSpan.FromSeconds(0),
+        //             NoCache = true,
+        //             NoStore = true
+        //         };
+        //     context.Response.Headers[HeaderNames.Vary] =
+        //         new[] { "Accept, Accept-Encoding" };
+        //     await next(context);
+        // });
+
+        // var healthCheckOptions = new HealthCheckOptions
+        // {
+        //     ResponseWriter = async (ctx, report) =>
+        //     {
+        //         ctx.Response.ContentType = "application/json; charset=utf-8";
+        //         var result = JsonConvert.SerializeObject(new
+        //         {
+        //             status = report.Status.ToString(),
+        //             results = report.Entries.Select(e =>
+        //                 new
+        //                 {
+        //                     key = e.Key,
+        //                     value = e.Value.Status.ToString(),
+        //                     description = e.Value.Description,
+        //                     data = e.Value.Data,
+        //                     exception = e.Value.Exception
+        //                 })
+        //         }, Formatting.Indented);
+        //         await ctx.Response.WriteAsync(result);
+        //     }
+        // };
+
+        // app.UseHealthChecks("/health", healthCheckOptions);
+        app.UseResponseCompression() |> ignore
         app.UseRouting() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
 
