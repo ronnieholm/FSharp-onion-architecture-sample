@@ -16,68 +16,30 @@ open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Infrastructure
 open System.Text.Json
-open System.Text.Json.Serialization
 open Microsoft.AspNetCore.ResponseCompression
+open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
-    // As per https://opensource.zalando.com/restful-api-guidelines/#118.
-    type SnakeCaseLowerNamingPolicy() =
-        inherit JsonNamingPolicy()
-        // SnakeCaseLower will be part of .NET 8 which releases on Nov 14, 2023.
-        override _.ConvertName(name: string) : string =
-            (name
-             |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
-             |> String.Concat)
-                .ToLower()
-
-    // As per https://opensource.zalando.com/restful-api-guidelines/#169.
-    type DateTimeJsonConverter() =
-        inherit JsonConverter<DateTime>()
-
-        override this.Read(_, _, _) = raise (UnreachableException())
-        override this.Write(writer, value, _) =
-            value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
-            |> writer.WriteStringValue
-
-    // As per https://opensource.zalando.com/restful-api-guidelines/#240.
-    type EnumJsonConverter() =
-        inherit JsonConverter<ValueType>()
-
-        override this.Read(_, _, _) = raise (UnreachableException())
-        override this.Write(writer, value, _) =
-            let t = value.GetType()
-            if
-                t.IsEnum
-                || (t.IsGenericType
-                    && t.GenericTypeArguments.Length = 1
-                    && t.GenericTypeArguments[0].IsEnum)
-            then
-                (value.ToString()
-                 |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
-                 |> String.Concat)
-                    .ToUpperInvariant()
-                |> writer.WriteStringValue
-
-    // RFC7807 error format as per https://opensource.zalando.com/restful-api-guidelines/#176.
+    // RFC7807 error format per https://opensource.zalando.com/restful-api-guidelines/#176.
     type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
     module ErrorDto =
         let create status detail : ErrorDto = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
         let toJsonResult (accept: StringValues) (error: ErrorDto) : ActionResult =
-            let r = JsonResult(error)
-            r.StatusCode <- error.Status
             let h = accept.ToArray() |> Array.exists (fun v -> v = "application/problem+json")
-            r.ContentType <- if h then "application/problem+json" else "application/json"
-            r :> ActionResult
+            JsonResult(error, StatusCode = error.Status, ContentType = (if h then "application/problem+json" else "application/json"))
+            :> ActionResult
 
         let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
 
         type ValidationErrorDto = { Field: string; Message: string }
 
+        let errorMessageSerializationOptions =
+            JsonSerializerOptions(PropertyNamingPolicy = SnakeCaseLowerNamingPolicy())
+
         let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
-            errors
-            |> List.map (fun e -> { Field = e.Field; Message = e.Message })
-            |> JsonSerializer.Serialize // TODO: Use same options and formatters and ASP.NET pipeline.
+            (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
+            |> JsonSerializer.Serialize
             |> createJsonResult accept StatusCodes.Status400BadRequest
 
         let fromUncaughtException (accept: StringValues) : ActionResult =
@@ -325,8 +287,11 @@ type Startup() =
             .AddMvc(fun options -> options.EnableEndpointRouting <- false)
             .AddJsonOptions(fun options ->
                 let o = options.JsonSerializerOptions
+                // Per https://opensource.zalando.com/restful-api-guidelines/#118.                
                 o.PropertyNamingPolicy <- SnakeCaseLowerNamingPolicy()
+                // Per https://opensource.zalando.com/restful-api-guidelines/#169.                
                 o.Converters.Add(DateTimeJsonConverter())
+                // Per https://opensource.zalando.com/restful-api-guidelines/#240.                
                 o.Converters.Add(EnumJsonConverter())
                 o.WriteIndented <- true)
         |> ignore
@@ -365,7 +330,7 @@ type Startup() =
         app.UseHttpsRedirection() |> ignore
         app.UseCors() |> ignore
 
-        // As per https://opensource.zalando.com/restful-api-guidelines/#227 and
+        // Per https://opensource.zalando.com/restful-api-guidelines/#227 and
         // https://learn.microsoft.com/en-us/aspnet/core/performance/caching/middleware
         app.UseResponseCaching() |> ignore
         // app.Use(async (context, next) =>

@@ -2,6 +2,9 @@
 
 open System
 open System.Data.Common
+open System.Diagnostics
+open System.Text.Json
+open System.Text.Json.Serialization
 open System.Threading
 open System.Threading.Tasks
 open System.Collections.Generic
@@ -14,6 +17,42 @@ open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
 
 module Seedwork =
+    module Json =
+        type SnakeCaseLowerNamingPolicy() =
+            inherit JsonNamingPolicy()
+            // SnakeCaseLower will be part of .NET 8 which releases on Nov 14, 2023.
+            override _.ConvertName(name: string) : string =
+                (name
+                 |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
+                 |> String.Concat)
+                    .ToLower()
+
+        type DateTimeJsonConverter() =
+            inherit JsonConverter<DateTime>()
+
+            override this.Read(_, _, _) = raise (UnreachableException())
+            override this.Write(writer, value, _) =
+                value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
+                |> writer.WriteStringValue
+
+        type EnumJsonConverter() =
+            inherit JsonConverter<ValueType>()
+
+            override this.Read(_, _, _) = raise (UnreachableException())
+            override this.Write(writer, value, _) =
+                let t = value.GetType()
+                if
+                    t.IsEnum
+                    || (t.IsGenericType
+                        && t.GenericTypeArguments.Length = 1
+                        && t.GenericTypeArguments[0].IsEnum)
+                then
+                    (value.ToString()
+                     |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
+                     |> String.Concat)
+                        .ToUpperInvariant()
+                    |> writer.WriteStringValue
+
     module Option =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
@@ -27,7 +66,7 @@ module Seedwork =
             (aggregateType: string)
             (aggregateId: Guid)
             (eventType: string)
-            (payload: string)
+            (payload: 't)
             (createdAt: DateTime)
             =
             task {
@@ -170,6 +209,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      | TaskUpdated e -> e.StoryId
                      | TaskDeleted e -> e.StoryId)
                     |> StoryId.value
+
+                // We don't serialize the event to JSON as F# discriminated unions aren't supported by
+                // System.Text.Json (https://github.com/dotnet/runtime/issues/55744). The event is intended
+                // for consumption inside application core and we therefore use F# constructs. Instead of
+                // a custom converter, we use the F# type printer as a compact representation. The printer
+                // wouldn't work in a pure event sourced scenario where we'd need to read back the event,
+                // but saving domain event for troubleshooting, the printer suffices.
                 do! saveDomainEventAsync transaction ct (nameof Story) aggregateId (event.GetType().Name) $"%A{event}" (clock.CurrentUtc())
 
                 match event with
@@ -242,10 +288,19 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
             }
 
 type Logger() =
+    static let jsonSerializationOptions =
+        let o =
+            JsonSerializerOptions(PropertyNamingPolicy = Json.SnakeCaseLowerNamingPolicy(), WriteIndented = true)
+        o.Converters.Add(Json.DateTimeJsonConverter())
+        o.Converters.Add(Json.EnumJsonConverter())
+        o
+
     interface ILogger with
-        member _.LogRequestPayload (useCase: string) (request: obj) : unit = printfn $"%s{useCase}: %A{request}"
-        member _.LogRequestDuration (useCase: string) (elapsed: uint<ms>) : unit = printfn $"%s{useCase}: %d{elapsed}"
-        member _.LogException (e: exn) : unit = printfn $"%A{e}"
+        member _.LogRequestPayload (useCase: string) (request: obj) : unit =
+            let json = JsonSerializer.Serialize(request, jsonSerializationOptions)
+            printfn $"%s{useCase}: %s{json}"
+        member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit = printfn $"%s{useCase}: %d{duration}"
+        member _.LogException(e: exn) : unit = printfn $"%A{e}"
 
 // Pass into ctor IOptions<config>.
 // Avoid Singletons dependencies as they make testing hard.
@@ -255,7 +310,7 @@ type Logger() =
 // when we want to switch out the time provider in tests. If we kept currentTime
 // a singleton changing the provider in one test would affect the others.
 // Are Open and BeginTransaction on the connection idempotent?
-// AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locater tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
+// AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locator tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
 // This is our composition root: https://blog.ploeh.dk/2011/07/28/CompositionRoot/
 type AppEnv(connectionString: string, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
     // Instantiate the connection and transaction with a let binding, and not a use binding, or
