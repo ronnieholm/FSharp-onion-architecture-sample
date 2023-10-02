@@ -55,7 +55,10 @@ type DisableParallelization() =
 // test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
-    let connectionString = "URI=file:/home/rh/Downloads/scrumfs.sqlite"
+    // SQLite driver created the database at the path if the file doesn't already exist.
+    // The default directory is ./src/Scrum.Tests/bin/Debug/net7.0/scrum_test.sqlite whereas
+    // we want the database to be at the root of the Git repository.
+    let connectionString = "URI=file:../../../../../scrum_test.sqlite"
 
     do Database.reset connectionString
     

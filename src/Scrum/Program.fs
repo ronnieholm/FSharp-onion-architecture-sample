@@ -13,6 +13,7 @@ open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Mvc.Controllers
+open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Diagnostics.HealthChecks
 open Microsoft.Extensions.Hosting
 open Microsoft.AspNetCore.Hosting
@@ -95,10 +96,11 @@ module Seedwork =
 open Seedwork
 
 module Controller =
-    type ScrumController() =
+    type ScrumController(configuration: IConfiguration) =
         inherit ControllerBase()
-
-        let env = new AppEnv("URI=file:/home/rh/Downloads/scrumfs.sqlite") :> IAppEnv
+        
+        let connectionString = configuration.GetConnectionString("Scrum")        
+        let env = new AppEnv(connectionString) :> IAppEnv
 
         member _.Env = env
 
@@ -120,8 +122,8 @@ module Controller =
 
     [<ApiController>]
     [<Route("[controller]")>]
-    type StoriesController() =
-        inherit ScrumController()
+    type StoriesController(configuration: IConfiguration) =
+        inherit ScrumController(configuration)
 
         // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
         // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}' | jq
@@ -348,9 +350,9 @@ module HealthCheck =
                 }
 
     type SQLiteHealthCheck(connectionString: string) =
+        let description = "Reports unhealthy status if SQLite is unavailable"
         interface IHealthCheck with
             member _.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
-                let description = "Reports unhealthy status if SQLite is unavailable"
                 task {
                     try
                         // TODO: implementing timing helper
@@ -370,11 +372,22 @@ module HealthCheck =
 
 open HealthCheck
 
-type Startup() =
+    // public class JwtAuthenticationOptions
+    // {
+    //     public Uri? Issuer { get; set; }
+    //     public Uri? Audience { get; set; }
+    //     public string? SigningKey { get; set; }
+    //     public uint? CustomerExpirationSeconds { get; set; }
+    //     public uint? BeneficialOwnerExpirationSeconds { get; set; }
+    // }
+
+type Startup(configuration: IConfiguration) =
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
     // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
     member _.ConfigureServices(services: IServiceCollection) : unit =
+        //services.Configure<JwtAuthenticationOptions>(Configuration.GetSection("JwtAuthentication"));
+        
         services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
         |> ignore
@@ -400,7 +413,7 @@ type Startup() =
                 "Database",
                 HealthStatus.Degraded,
                 Seq.empty,
-                args = [| "URI=file:/home/rh/Downloads/scrumfs.sqlite" |]
+                args = [| configuration.GetConnectionString("Scrum") |]
             )
         |> ignore
 

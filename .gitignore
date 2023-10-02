@@ -157,3 +157,5 @@ $RECYCLE.BIN/
 
 .vs
 .idea
+scrum_web.sqlite
+scrum_test.sqlite

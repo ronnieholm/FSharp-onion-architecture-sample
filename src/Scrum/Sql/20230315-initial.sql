@@ -1,6 +1,8 @@
 -- SQLite
 
--- sqlite3 /home/rh/Downloads/scrumfs.sqlite < src/Scrum/Sql/20230315-initial.sql
+-- $ cd ~/git/FSharp-clean-architecture-sample
+-- $ sqlite3 scrum_web.sqlite < src/Scrum/Sql/20230315-initial.sql
+-- $ sqlite3 scrum_test.sqlite < src/Scrum/Sql/20230315-initial.sql
 
 create table stories(
     id text primary key,
