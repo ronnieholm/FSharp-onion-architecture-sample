@@ -318,11 +318,11 @@ type MemoryHealthCheck(allocatedThresholdInMb: int64) =
                 let allocatedInBytes = GC.GetTotalMemory(forceFullCollection = false)
                 let committedInBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
                 let data = Dictionary<string, obj>()
-                data.Add("AllocatedMegabytes", Math.Round(float allocatedInBytes / float mb, 2))
-                data.Add("CommittedMegabytes", Math.Round(float committedInBytes / float mb, 2))
-                data.Add("Gen0CollectionCount", GC.CollectionCount(0))
-                data.Add("Gen1CollectionCount", GC.CollectionCount(1))
-                data.Add("Gen2CollectionCount", GC.CollectionCount(2))
+                data.Add("allocated_megabytes", Math.Round(float allocatedInBytes / float mb, 2))
+                data.Add("committed_megabytes", Math.Round(float committedInBytes / float mb, 2))
+                data.Add("gen0Collection_count", GC.CollectionCount(0))
+                data.Add("gen1Collection_count", GC.CollectionCount(1))
+                data.Add("gen2Collection_count", GC.CollectionCount(2))
                 return
                     HealthCheckResult(
                         (if allocatedInBytes < allocatedThresholdInMb * int64 mb then
@@ -350,7 +350,7 @@ type SQLiteHealthCheck(connectionString: string) =
                     let! _ = cmd.ExecuteScalarAsync(ct)
                     sw.Stop()
                     let data = Dictionary<string, obj>()
-                    data.Add("ResponseTimeMilliseconds", sw.ElapsedMilliseconds)
+                    data.Add("response_time_milliseconds", sw.ElapsedMilliseconds)
                     return HealthCheckResult(HealthStatus.Healthy, description, null, data)
                 with e ->
                     return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
