@@ -1,18 +1,22 @@
 ﻿namespace Scrum.Web
 
 open System
+open System.Collections.Generic
 open System.Diagnostics
 open System.IO.Compression
+open System.Runtime.CompilerServices
 open System.Threading
 open System.Threading.Tasks
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
+open Microsoft.Extensions.Diagnostics.HealthChecks
 open Microsoft.Extensions.Hosting
 open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
 open Microsoft.Extensions.Primitives
 open Microsoft.Net.Http.Headers
+open Microsoft.AspNetCore.Diagnostics.HealthChecks
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Infrastructure
@@ -275,6 +279,50 @@ type StoriesController() =
                 return! x.HandleExceptionAsync e accept ct
         }
 
+type MemoryHealthCheck(allocatedThresholdInMb: int64) =
+    interface IHealthCheck with
+        member this.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
+            task {
+                // TODO: Use units of measure
+                let mb = 1024 * 1024
+                let allocatedInBytes = GC.GetTotalMemory(forceFullCollection = false)
+                let committedInBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
+                let data = Dictionary<string, obj>()
+                data.Add("AllocatedMegabytes", Math.Round(float allocatedInBytes / float mb, 2))
+                data.Add("CommittedMegabytes", Math.Round(float committedInBytes / float mb, 2))
+                data.Add("Gen0CollectionCount", GC.CollectionCount(0))
+                data.Add("Gen1CollectionCount", GC.CollectionCount(1))
+                data.Add("Gen2CollectionCount", GC.CollectionCount(2))
+                let result =
+                    HealthCheckResult(
+                        (if allocatedInBytes < allocatedThresholdInMb * int64 mb then
+                             HealthStatus.Healthy
+                         else
+                             HealthStatus.Degraded),
+                        $"Reports degraded status if process has allocated >= {allocatedThresholdInMb} MB",
+                        null,
+                        data
+                    )                
+                return result
+            }
+
+[<Extension>]
+type IHealthChecksBuilderExtensions =
+    [<Extension>]
+    static member AddMemory
+        (
+            builder: IHealthChecksBuilder,
+            name: string,
+            failureStatus: HealthStatus,
+            tags: string seq,
+            allocatedThresholdInMb: int64
+        ) : IHealthChecksBuilder =
+        if String.IsNullOrWhiteSpace(name) then
+            raise (ArgumentException(null, nameof name))
+        if allocatedThresholdInMb <= 0 then
+            raise (ArgumentOutOfRangeException(nameof allocatedThresholdInMb))
+        builder.AddTypeActivatedCheck<MemoryHealthCheck>(name, failureStatus, tags, args = [| allocatedThresholdInMb |])
+
 type Startup() =
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
@@ -295,6 +343,11 @@ type Startup() =
                 // Per https://opensource.zalando.com/restful-api-guidelines/#240.
                 o.Converters.Add(EnumJsonConverter())
                 o.WriteIndented <- true)
+        |> ignore
+
+        services
+            .AddHealthChecks()
+            .AddMemory("Memory", HealthStatus.Degraded, Seq.empty, int64 (5 * 1024))
         |> ignore
 
         services.AddControllers() |> ignore
@@ -334,38 +387,48 @@ type Startup() =
         // Per https://opensource.zalando.com/restful-api-guidelines/#227 and
         // https://learn.microsoft.com/en-us/aspnet/core/performance/caching/middleware
         app.UseResponseCaching() |> ignore
-        app.Use(fun (context: HttpContext) (next: RequestDelegate) ->
+        app.Use(fun context (next: RequestDelegate) ->
             task {
-                context.Response.GetTypedHeaders().CacheControl <-
+                let r = context.Response
+                r.GetTypedHeaders().CacheControl <-
                     CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(0), NoCache = true, NoStore = true)
-                context.Response.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
+                r.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
                 return next.Invoke(context)
-            } :> Task)                
-            |> ignore
+            }
+            :> Task)
+        |> ignore
 
-        // var healthCheckOptions = new HealthCheckOptions
-        // {
-        //     ResponseWriter = async (ctx, report) =>
-        //     {
-        //         ctx.Response.ContentType = "application/json; charset=utf-8";
-        //         var result = JsonConvert.SerializeObject(new
-        //         {
-        //             status = report.Status.ToString(),
-        //             results = report.Entries.Select(e =>
-        //                 new
-        //                 {
-        //                     key = e.Key,
-        //                     value = e.Value.Status.ToString(),
-        //                     description = e.Value.Description,
-        //                     data = e.Value.Data,
-        //                     exception = e.Value.Exception
-        //                 })
-        //         }, Formatting.Indented);
-        //         await ctx.Response.WriteAsync(result);
-        //     }
-        // };
+        let healthCheckOptions =
+            HealthCheckOptions(
+                ResponseWriter =
+                    fun context report ->
+                        let x = 1
+                        task {
+                            context.Response.ContentType <- "application/json; charset=utf-8"
+                            let result =
+                                JsonSerializer.Serialize(
+                                    {| Status = report.Status.ToString()
+                                       Result =
+                                        report.Entries
+                                        |> Seq.map (fun e ->
+                                            {| Key = e.Key
+                                               Value = e.Value.Status.ToString()
+                                               Description = e.Value.Description
+                                               Data = e.Value.Data
+                                               Exception = e.Value.Exception |}) |}
+                                ) // TODO: Add indentation with custom json options
+                            return! context.Response.WriteAsync(result)
+                        }
+            )
+            
+        let h = HealthCheckOptions()
+        h.ResponseWriter <-
+            fun context report ->
+                task {
+                    return context.Response.WriteAsync("Test")
+                }
 
-        // app.UseHealthChecks("/health", healthCheckOptions);
+        app.UseHealthChecks("/health", h) |> ignore
         app.UseResponseCompression() |> ignore
         app.UseRouting() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
