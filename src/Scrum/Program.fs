@@ -18,27 +18,25 @@ open Scrum.Infrastructure
 // RFC7807 error format
 type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
 module ErrorDto =
-    let create type_ title status detail : ErrorDto = { Type = type_; Title = title; Status = status; Detail = detail }
+    let create status detail : ErrorDto = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
-    let toJsonResult (acceptHeaders: StringValues) (error: ErrorDto) : ActionResult =
+    let toJsonResult (accept: StringValues) (error: ErrorDto) : ActionResult =
         let r = JsonResult(error)
         r.StatusCode <- error.Status
 
         // Support problem JSON as per https://opensource.zalando.com/restful-api-guidelines/#176.
-        let h =
-            acceptHeaders.ToArray()
-            |> Array.exists (fun v -> v = "application/problem+json")
+        let h = accept.ToArray() |> Array.exists (fun v -> v = "application/problem+json")
         r.ContentType <- if h then "application/problem+json" else "application/json"
         r :> ActionResult
 
-    let fromValidationErrors (acceptHeaders: StringValues) (errors: ValidationError list) : ActionResult =
-        let errors = "field error collection goes here"
-        create "Error" "Error" StatusCodes.Status400BadRequest errors
-        |> toJsonResult acceptHeaders
+    let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
 
-    let fromException (acceptHeaders: StringValues) : ActionResult =
-        create "Error" "Error" StatusCodes.Status500InternalServerError "Internal server error"
-        |> toJsonResult acceptHeaders
+    let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
+        let errors = "field error collection goes here"
+        createJsonResult accept StatusCodes.Status400BadRequest errors
+
+    let fromException (accept: StringValues) : ActionResult =
+        createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
 
 [<ApiController>]
 [<Route("[controller]")>]
@@ -76,7 +74,7 @@ type StoriesController() =
     [<HttpPost>]
     member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result =
                     CreateStoryCommand.runAsync
@@ -93,10 +91,10 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | CreateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
+                        | CreateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
                         | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
@@ -105,7 +103,7 @@ type StoriesController() =
     [<Route("{id}")>]
     member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result =
                     UpdateStoryCommand.runAsync
@@ -122,10 +120,11 @@ type StoriesController() =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
-                        | UpdateStoryCommand.StoryNotFound id -> NotFoundResult()
+                        | UpdateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                        | UpdateStoryCommand.StoryNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
     // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
@@ -134,19 +133,20 @@ type StoriesController() =
     [<Route("{id}")>]
     member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result = DeleteStoryCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok id -> OkObjectResult(id) :> ActionResult // TODO: status code on delete?
+                    | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
-                        | DeleteStoryCommand.StoryNotFound e -> NotFoundResult()
+                        | DeleteStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                        | DeleteStoryCommand.StoryNotFound _ ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/57db7489-722f-4d66-97d5-d5c2501eb89e --insecure --request delete
@@ -155,20 +155,22 @@ type StoriesController() =
     [<Route("{storyId}/tasks/{taskId}")>]
     member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result = DeleteTaskCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok id -> OkObjectResult(id) :> ActionResult
+                    | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
-                        | DeleteTaskCommand.StoryNotFound id -> NotFoundResult() :> ActionResult
-                        | DeleteTaskCommand.TaskNotFound id -> NotFoundResult() :> ActionResult
+                        | DeleteTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                        | DeleteTaskCommand.StoryNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                        | DeleteTaskCommand.TaskNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
     // Success: curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
@@ -177,7 +179,7 @@ type StoriesController() =
     [<Route("{storyId}/tasks")>]
     member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result =
                     AddTaskToStoryCommand.runAsync
@@ -195,11 +197,12 @@ type StoriesController() =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | AddTaskToStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
-                        | AddTaskToStoryCommand.StoryNotFound id -> OkResult() :> ActionResult
+                        | AddTaskToStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                        | AddTaskToStoryCommand.StoryNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                         | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/916397d3-0c10-495c-a6e3-a081d41f644c --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
@@ -214,7 +217,7 @@ type StoriesController() =
             ct: CancellationToken
         ) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result =
                     UpdateTaskCommand.runAsync
@@ -229,14 +232,16 @@ type StoriesController() =
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
+                    | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
-                        | UpdateTaskCommand.StoryNotFound id -> NotFoundResult()
-                        | UpdateTaskCommand.TaskNotFound id -> NotFoundResult()
+                        | UpdateTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                        | UpdateTaskCommand.StoryNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                        | UpdateTaskCommand.TaskNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
     // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request get | jq
@@ -245,7 +250,7 @@ type StoriesController() =
     [<Route("{id}")>]
     member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
         task {
-            let acceptHeaders = x.Request.Headers.Accept
+            let accept = x.Request.Headers.Accept
             try
                 let! result = GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
                 return
@@ -253,14 +258,15 @@ type StoriesController() =
                     | Ok s -> OkObjectResult(s) :> ActionResult
                     | Error e ->
                         match e with
-                        | GetStoryByIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors acceptHeaders ve
-                        | GetStoryByIdQuery.StoryNotFound e -> NotFoundResult() :> ActionResult // TODO: Search for NotFoundResult for how to include actual Id
+                        | GetStoryByIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                        | GetStoryByIdQuery.StoryNotFound id ->
+                            ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             with e ->
-                return! x.HandleExceptionAsync e acceptHeaders ct
+                return! x.HandleExceptionAsync e accept ct
         }
 
 module JsonSerialization =
-    
+
     ()
 
 type Startup() =
