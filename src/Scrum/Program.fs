@@ -19,6 +19,7 @@ open Microsoft.Extensions.Hosting
 open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
+open Microsoft.Extensions.Options
 open Microsoft.Extensions.Primitives
 open Microsoft.Net.Http.Headers
 open Microsoft.AspNetCore.Diagnostics.HealthChecks
@@ -98,8 +99,8 @@ open Seedwork
 module Controller =
     type ScrumController(configuration: IConfiguration) =
         inherit ControllerBase()
-        
-        let connectionString = configuration.GetConnectionString("Scrum")        
+
+        let connectionString = configuration.GetConnectionString("Scrum")
         let env = new AppEnv(connectionString) :> IAppEnv
 
         member _.Env = env
@@ -372,22 +373,38 @@ module HealthCheck =
 
 open HealthCheck
 
-    // public class JwtAuthenticationOptions
-    // {
-    //     public Uri? Issuer { get; set; }
-    //     public Uri? Audience { get; set; }
-    //     public string? SigningKey { get; set; }
-    //     public uint? CustomerExpirationSeconds { get; set; }
-    //     public uint? BeneficialOwnerExpirationSeconds { get; set; }
-    // }
+// TODO: Getting ready for the future
+type JwtAuthenticationOptions () =    
+    static member JwtAuthentication with get() : string = nameof JwtAuthenticationOptions.JwtAuthentication
+    member val Issuer: Uri = null with get, set
+    member val Audience: Uri = null with get, set
+    member val SigningKey: string = null with get, set
+    member val ExpirationInSeconds: uint = 0ul with get, set
+    
+    member x.Validate (options: JwtAuthenticationOptions) : unit =
+        if x.Issuer = null then
+            raise (NullReferenceException(nameof options.Issuer))
+        if x.Audience = null then
+            raise (NullReferenceException(nameof x.Audience))
+        if String.IsNullOrWhiteSpace(x.SigningKey) then
+            raise (ArgumentException(nameof x.SigningKey))
+        if x.ExpirationInSeconds < 60ul then
+            raise (ArgumentException(nameof x.ExpirationInSeconds))
+    
+module JwtAuthenticationOptions =
 
 type Startup(configuration: IConfiguration) =
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
     // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
     member _.ConfigureServices(services: IServiceCollection) : unit =
-        //services.Configure<JwtAuthenticationOptions>(Configuration.GetSection("JwtAuthentication"));
-        
+        services.Configure<JwtAuthenticationOptions>(configuration.GetSection(JwtAuthenticationOptions.JwtAuthentication))
+        |> ignore
+        let serviceProvider = services.BuildServiceProvider()
+        let jwtAuthenticationOptions =
+            serviceProvider.GetService<IOptions<JwtAuthenticationOptions>>().Value
+        jwtAuthenticationOptions.Validate jwtAuthenticationOptions
+
         services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
         |> ignore
@@ -421,18 +438,10 @@ type Startup(configuration: IConfiguration) =
         services.AddResponseCaching() |> ignore
         services.AddEndpointsApiExplorer() |> ignore
 
-        // If in Azure we're hosting the API under a Linux based app
-        // service, behind the scenes Azure is running the API in a container.
-        // Inside the container, the API is run using the dotnet command, meaning
-        // it's Kestrel serving traffic (can also be confirmed by the HTTP
-        // response header of Server: Kestrel which curl displays. Kestrel
-        // doesn't have build-in compression which is why the API is doing the
-        // compression.
-        //
-        // Beware of possible security issue with HTTPS encryption and
-        // man-in-the-middle attacks
-        // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression?view=aspnetcore-6.0.
-        // The possible security issue is irrelevant for this API case.
+        // Azure hosting under a Linux based app means the API is running a container.
+        // Inside the container, the API is run using the dotnet command, meaning Kestrel is serving
+        // traffic. Kestrel doesn't have build-in compression which is why the API is doing the compression:
+        // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
         services
             .AddResponseCompression(fun options ->
                 options.EnableForHttps <- true
