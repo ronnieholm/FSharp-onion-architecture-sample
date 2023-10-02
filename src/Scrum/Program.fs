@@ -33,16 +33,17 @@ module Seedwork =
     // As per https://opensource.zalando.com/restful-api-guidelines/#169.
     type DateTimeJsonConverter() =
         inherit JsonConverter<DateTime>()
-        // https://learn.microsoft.com/en-us/dotnet/standard/serialization/system-text-json/converters-how-to?pivots=dotnet-7-0
-        override this.Read(_, _, _) = failwith "todo"
+
+        override this.Read(_, _, _) = raise (UnreachableException())
         override this.Write(writer, value, _) =
-            writer.WriteStringValue(value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ"))
+            value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
+            |> writer.WriteStringValue
 
     // As per https://opensource.zalando.com/restful-api-guidelines/#240.
     type EnumJsonConverter() =
         inherit JsonConverter<ValueType>()
 
-        override this.Read(reader, _, _) = failwith "todo"
+        override this.Read(_, _, _) = raise (UnreachableException())
         override this.Write(writer, value, _) =
             let t = value.GetType()
             if
@@ -57,33 +58,33 @@ module Seedwork =
                     .ToUpperInvariant()
                 |> writer.WriteStringValue
 
-// RFC7807 error format
-type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
-module ErrorDto =
-    let create status detail : ErrorDto = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
+    // RFC7807 error format as per https://opensource.zalando.com/restful-api-guidelines/#176.
+    type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
+    module ErrorDto =
+        let create status detail : ErrorDto = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
-    let toJsonResult (accept: StringValues) (error: ErrorDto) : ActionResult =
-        let r = JsonResult(error)
-        r.StatusCode <- error.Status
+        let toJsonResult (accept: StringValues) (error: ErrorDto) : ActionResult =
+            let r = JsonResult(error)
+            r.StatusCode <- error.Status
+            let h = accept.ToArray() |> Array.exists (fun v -> v = "application/problem+json")
+            r.ContentType <- if h then "application/problem+json" else "application/json"
+            r :> ActionResult
 
-        // Support problem JSON as per https://opensource.zalando.com/restful-api-guidelines/#176.
-        let h = accept.ToArray() |> Array.exists (fun v -> v = "application/problem+json")
-        r.ContentType <- if h then "application/problem+json" else "application/json"
-        r :> ActionResult
+        let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
 
-    let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
+        type ValidationErrorDto = { Field: string; Message: string }
 
-    type ValidationErrorDto = { Field: string; Message: string }
+        let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
+            let errors =
+                errors
+                |> List.map (fun e -> { Field = e.Field; Message = e.Message })
+                |> JsonSerializer.Serialize // TODO: Use same options and formatters and ASP.NET pipeline.
+            createJsonResult accept StatusCodes.Status400BadRequest errors
 
-    let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
-        let errors =
-            errors
-            |> List.map (fun e -> { Field = e.Field; Message = e.Message })
-            |> JsonSerializer.Serialize // TODO: Use same options and formatters and ASP.NET pipeline.
-        createJsonResult accept StatusCodes.Status400BadRequest errors
+        let fromException (accept: StringValues) : ActionResult =
+            createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
 
-    let fromException (accept: StringValues) : ActionResult =
-        createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
+open Seedwork
 
 [<ApiController>]
 [<Route("[controller]")>]
@@ -312,10 +313,7 @@ type StoriesController() =
                 return! x.HandleExceptionAsync e accept ct
         }
 
-open Seedwork
-
 type Startup() =
-
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
     // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
