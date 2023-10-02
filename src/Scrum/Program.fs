@@ -12,6 +12,7 @@ open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
 open Microsoft.Extensions.Primitives
+open Microsoft.Net.Http.Headers
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Infrastructure
@@ -287,11 +288,11 @@ type Startup() =
             .AddMvc(fun options -> options.EnableEndpointRouting <- false)
             .AddJsonOptions(fun options ->
                 let o = options.JsonSerializerOptions
-                // Per https://opensource.zalando.com/restful-api-guidelines/#118.                
+                // Per https://opensource.zalando.com/restful-api-guidelines/#118.
                 o.PropertyNamingPolicy <- SnakeCaseLowerNamingPolicy()
-                // Per https://opensource.zalando.com/restful-api-guidelines/#169.                
+                // Per https://opensource.zalando.com/restful-api-guidelines/#169.
                 o.Converters.Add(DateTimeJsonConverter())
-                // Per https://opensource.zalando.com/restful-api-guidelines/#240.                
+                // Per https://opensource.zalando.com/restful-api-guidelines/#240.
                 o.Converters.Add(EnumJsonConverter())
                 o.WriteIndented <- true)
         |> ignore
@@ -333,20 +334,14 @@ type Startup() =
         // Per https://opensource.zalando.com/restful-api-guidelines/#227 and
         // https://learn.microsoft.com/en-us/aspnet/core/performance/caching/middleware
         app.UseResponseCaching() |> ignore
-        // app.Use(async (context, next) =>
-        // {
-        //     context.Response.GetTypedHeaders().CacheControl =
-        //         new CacheControlHeaderValue
-        //         {
-        //             MustRevalidate = true,
-        //             MaxAge = TimeSpan.FromSeconds(0),
-        //             NoCache = true,
-        //             NoStore = true
-        //         };
-        //     context.Response.Headers[HeaderNames.Vary] =
-        //         new[] { "Accept, Accept-Encoding" };
-        //     await next(context);
-        // });
+        app.Use(fun (context: HttpContext) (next: RequestDelegate) ->
+            task {
+                context.Response.GetTypedHeaders().CacheControl <-
+                    CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(0), NoCache = true, NoStore = true)
+                context.Response.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
+                return next.Invoke(context)
+            } :> Task)                
+            |> ignore
 
         // var healthCheckOptions = new HealthCheckOptions
         // {
