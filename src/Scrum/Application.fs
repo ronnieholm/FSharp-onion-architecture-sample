@@ -26,6 +26,19 @@ module Seedwork =
           EventPayload: string
           CreatedAt: DateTime }
 
+    type ScrumIdentity =
+         | Anonymous
+         | Regular of UserId: string
+         | Admin of UserId: string    
+    
+    [<Interface>]
+    type IUserIdentityService =
+        abstract GetCurrentIdentity: unit -> ScrumIdentity                                   
+        
+    [<Interface>]
+    type IUserIdentityServiceFactory =
+        abstract UserIdentityService: IUserIdentityService
+        
     [<Interface>]
     type ISystemClock =
         abstract CurrentUtc: unit -> DateTime
@@ -64,6 +77,7 @@ module Seedwork =
     type IAppEnv =
         inherit ISystemClockFactory
         inherit ILoggerFactory
+        inherit IUserIdentityServiceFactory
         inherit IStoryRepositoryFactory
         inherit IDomainEventRepositoryFactory
         inherit IDisposable

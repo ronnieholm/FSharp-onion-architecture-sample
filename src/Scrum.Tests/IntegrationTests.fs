@@ -51,7 +51,13 @@ module Database =
             cmd.ExecuteNonQuery() |> ignore)
         transaction.Commit()
 
+open Database
+
 module Fake =
+    let userIdentityService =
+        { new IUserIdentityService with
+            member _.GetCurrentIdentity() = ScrumIdentity.Regular("1") }
+
     let fixedClock =
         { new ISystemClock with
             member _.CurrentUtc() = DateTime(2023, 1, 1, 6, 0, 0) }
@@ -61,6 +67,8 @@ module Fake =
             member _.LogRequestPayload _ _ = ()
             member _.LogRequestDuration _ _ = ()
             member _.LogException _ = () }
+
+    let defaultAppEnv () = new AppEnv(connectionString, userIdentityService, systemClock = fixedClock, logger = nullLogger)
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
@@ -85,7 +93,6 @@ module Setup =
         let ct = CancellationToken.None
         {| GetByAggregateIdQuery = GetByAggregateIdQuery.runAsync r l ct |}
 
-open Database
 open Fake
 open Setup
 
@@ -103,11 +110,10 @@ type DisableParallelization() =
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
     do reset ()
-
+    
     [<Fact>]
     let ``create story with task`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -123,8 +129,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``create duplicate story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -135,8 +140,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete story without task`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -149,8 +153,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete story with task`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -165,8 +168,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``add duplicate task to story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let createStoryCmd = A.createStoryCommand ()
@@ -179,8 +181,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``add task to non-existing story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = { A.addTaskToStoryCommand () with StoryId = missingId () }
@@ -190,8 +191,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete task on story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -206,8 +206,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete task on non-existing story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -220,8 +219,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete non-existing task on story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -233,8 +231,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -247,8 +244,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update non-existing story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -259,8 +255,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update task`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -275,8 +270,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update non-existing task on story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -290,8 +284,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update task on non-existing story`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
@@ -311,8 +304,7 @@ type DomainEventRequestTests() =
 
     [<Fact>]
     let ``query domain events`` () =
-        use env =
-            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        use env = defaultAppEnv ()
         let sfns = env |> setupStoryAggregateRequests
         let dfns = env |> setupDomainEventRequests
 

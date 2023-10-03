@@ -60,18 +60,18 @@ module Seedwork =
                 writer.WriteStartObject()
                 writer.WriteString(nameof value.Message, value.Message)
 
-                if value.InnerException <> null then
+                if not (isNull value.InnerException) then
                     writer.WriteStartObject(nameof value.InnerException)
                     x.Write(writer, value.InnerException, options)
                     writer.WriteEndObject()
 
-                if value.TargetSite <> null then
+                if not (isNull value.TargetSite) then
                     writer.WriteStartObject(nameof value.TargetSite)
                     writer.WriteString(nameof value.TargetSite.Name, value.TargetSite.Name)
                     writer.WriteString(nameof value.TargetSite.DeclaringType, value.TargetSite.DeclaringType.FullName)
                     writer.WriteEndObject()
 
-                if value.StackTrace <> null then
+                if not (isNull value.StackTrace) then
                     writer.WriteString(nameof value.StackTrace, value.StackTrace)
 
                 writer.WriteString(nameof Type, value.GetType().FullName)
@@ -124,10 +124,54 @@ module Configuration =
 open Configuration
 
 module Service =
-    module IdentityProviderService =
+    // Names of claims shared between services.
+    module ScrumClaims =
         let UserIdClaim = "userId"
         let RoleClaim = "role"
 
+    // Web specific implementation of IUserIdentityService so it belongs in Program.fs rather than
+    // Infrastructure.fs.
+    type UserIdentityService(context: HttpContext) =
+        interface IUserIdentityService with
+            member x.GetCurrentIdentity() : ScrumIdentity =
+                // Access to HttpContext from outside a controller goes through IHttpContextAccess per
+                // https://docs.microsoft.com/en-us/aspnet/core/migration/claimsprincipal-current.
+                // Running in a non-HTTP context, HttpContext is therefore null.
+                if isNull context then
+                    Anonymous
+                else
+                    let claimsPrincipal = context.User
+                    if isNull claimsPrincipal then
+                        Anonymous
+                    else
+                        let claimsIdentity = context.User.Identity :?> ClaimsIdentity
+                        let claims = claimsIdentity.Claims
+                        if Seq.isEmpty claims then
+                            Anonymous
+                        else
+                            let roleClaim =
+                                claims |> Seq.filter (fun c -> c.Type = ClaimTypes.Role) |> Seq.exactlyOne
+                            let userIdClaim =
+                                claims
+                                |> Seq.filter (fun c -> c.Type = ScrumClaims.UserIdClaim)
+                                |> Seq.exactlyOne
+
+                            // With an actual identity provider, claims would likely vary by role.
+                            match roleClaim.Value with
+                            | "regular" -> Regular(userIdClaim.Value)
+                            | "admin" -> Admin(userIdClaim.Value)
+                            | _ -> failwith $"Unsupported role: '%s{roleClaim.Value}'"
+
+    // IUserIdentityService is defined in the Application.fs because application code
+    // needs to consult the current identity as part of running use cases. Its implementation
+    // is host dependent (the web implementation require HttpContext), so its implemented in
+    // Program.fs rather Infrastructure.fs. It's then injected into AppEnv.
+    // IdentityProviderService, on the other hand, is of no concern to application layer,
+    // and how to do it is host dependent. Specifying an IIdentityProviderService interface
+    // is of no use as AppEnv will never have to resolve this service. We couldn't implemented
+    // this logic inside the Authentication controller, but instead the implementation here as a
+    // service, even though it's only used by the controller to simplify testing.
+    module IdentityProviderService =
         let sign (clock: ISystemClock) (options: JwtAuthenticationOptions) (claims: Claim array) : string =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
@@ -142,24 +186,35 @@ module Service =
                 )
             JwtSecurityTokenHandler().WriteToken(token)
 
-        let issueToken (clock: ISystemClock) (options: JwtAuthenticationOptions) (userId: string) (role: string) =
+        let issueToken (clock: ISystemClock) (options: JwtAuthenticationOptions) (userId: string) (role: string) : string =
             // With an actual user store, we'd validate the user here. Here we assume userId and role are valid.
             // Role must either be "regular" or "admin"
             // TODO: assert role with DU parse method or is that overkill?
             [| Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-               Claim(UserIdClaim, userId)
-               Claim(RoleClaim, role) |]
+               Claim(ScrumClaims.UserIdClaim, userId)
+               Claim(ScrumClaims.RoleClaim, role) |]
             |> sign clock options
+
+        let renewToken
+            (userIdentityService: IUserIdentityService)
+            (clock: ISystemClock)
+            (options: JwtAuthenticationOptions)
+            : Result<string, string> =
+            match userIdentityService.GetCurrentIdentity() with
+            | Anonymous -> Error "User is anonymous"
+            | Regular ri -> Ok(issueToken clock options ri "regular")
+            | Admin ai -> Ok(issueToken clock options ai "admin")
 
 open Seedwork
 open Service
 
 module Controller =
-    type ScrumController(configuration: IConfiguration) =
+    type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
         inherit ControllerBase()
 
         let connectionString = configuration.GetConnectionString("Scrum")
-        let env = new AppEnv(connectionString) :> IAppEnv
+        let userIdentityService = UserIdentityService(httpContext.HttpContext)
+        let env = new AppEnv(connectionString, userIdentityService) :> IAppEnv
 
         member _.Env = env
 
@@ -179,9 +234,9 @@ module Controller =
     type AddTaskToStoryDto = { title: string; description: string }
     type StoryTaskUpdateDto = { title: string; description: string }
 
-     [<Authorize; Route("[controller]")>]
-     type StoriesController(configuration: IConfiguration) =
-        inherit ScrumController(configuration)
+    [<Authorize; Route("[controller]")>]
+    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+        inherit ScrumController(configuration, httpContext)
 
         // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
         // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}' | jq
@@ -376,8 +431,8 @@ module Controller =
 
     // TODO: check zalando for dash in controller name
     [<Authorize; Route("[controller]")>]
-    type DomainEventsController(configuration: IConfiguration) =
-        inherit ScrumController(configuration)
+    type DomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+        inherit ScrumController(configuration, httpContext)
 
         // curl https://localhost:5000/domainEvents/20e86071-a4f2-4576-89cd-5e33e64d50d0 --insecure -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkMTM4NjNhOC1kNDExLTRlOWItYTliYi01ZWRmZDJiOGYwNjEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoicmVndWxhciIsImV4cCI6MTY5NjQyOTAzOSwiaXNzIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIiwiYXVkIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIn0.x5DE_A5rvQUkb7UED4Ook8pBm5hpRmRauPNzpuvTQM0" | jq
 
@@ -402,16 +457,10 @@ module Controller =
     type AuthenticationResponse = { Token: string }
 
     // TODO: check zalando for dash in controller name
+    // Loosely modeled after OAuth2 authentication.
     [<Route("[controller]")>]
-    type AuthenticationController
-        (
-            configuration: IConfiguration,
-            jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>,
-            httpContextAccessor: IHttpContextAccessor
-        ) =
-        inherit ScrumController(configuration)
-
-        // Loosely modelled after OAuth2 authentication.
+    type AuthenticationController(configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>) =
+        inherit ScrumController(configuration, httpContext)
 
         // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
 
@@ -428,11 +477,25 @@ module Controller =
         // TODO: Add Renew and Logging. Add three log levels to ILogger.
         // TODO: ADR on authentication/authorization.
 
-        // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkMTM4NjNhOC1kNDExLTRlOWItYTliYi01ZWRmZDJiOGYwNjEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoicmVndWxhciIsImV4cCI6MTY5NjQyOTAzOSwiaXNzIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIiwiYXVkIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIn0.x5DE_A5rvQUkb7UED4Ook8pBm5hpRmRauPNzpuvTQM0" | jq
+        // curl https://localhost:5000/authentication/renew --insecure --request post -H "Authorization: Bearer <token>" | jq
+        
+        [<Authorize; HttpPost("renewToken")>]
+        member x.RenewToken() : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                let token =
+                    IdentityProviderService.renewToken x.Env.UserIdentityService x.Env.SystemClock jwtAuthenticationOptions.Value
+                return
+                    (match token with
+                     | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
+                     | Error e -> ErrorDto.createJsonResult accept StatusCodes.Status400BadRequest e)
+            }
+
+        // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
 
         [<Authorize; HttpPost("introspect")>]
-        member _.Introspect() : IDictionary<string, obj> =
-            let claimsPrincipal = httpContextAccessor.HttpContext.User
+        member x.Introspect() : IDictionary<string, obj> =
+            let claimsPrincipal = x.HttpContext.User
             let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
             claimsIdentity.Claims
             |> Seq.map (fun c ->
@@ -441,7 +504,11 @@ module Controller =
                     // Special case non-string value or it becomes a string in string in
                     // the HTTP response.
                     t, Int32.Parse(v) :> obj
-                | ClaimTypes.Role, v -> IdentityProviderService.RoleClaim, v :> obj
+                | ClaimTypes.Role, v ->
+                    // For reasons unknown, ASP.NET maps our Scrum RoleClaim from the bearer token to
+                    // ClaimTypes.Role. The claim's type deserialized becomes
+                    // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
+                    ScrumClaims.RoleClaim, v :> obj
                 | _ -> c.Type, c.Value :> obj)
             |> dict
 
@@ -541,7 +608,7 @@ type Startup(configuration: IConfiguration) =
         |> ignore
 
         services.AddHttpContextAccessor() |> ignore
-
+        
         services
             .AddMvc(fun options -> options.EnableEndpointRouting <- false)
             .ConfigureApplicationPartManager(fun pm -> pm.FeatureProviders.Add(ControllerWithinModule()))
