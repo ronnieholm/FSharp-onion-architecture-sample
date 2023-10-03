@@ -58,7 +58,10 @@ module Seedwork =
 
     module Repository =
         let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
-        let parseUpdatedAt (v: obj) : DateTime option = v |> Option.ofDBNull |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
+        let parseUpdatedAt (v: obj) : DateTime option =
+            v
+            |> Option.ofDBNull
+            |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
 
         let saveDomainEventAsync
             (transaction: SQLiteTransaction)
@@ -91,15 +94,45 @@ type SystemClock() =
     interface ISystemClock with
         member _.CurrentUtc() = DateTime.UtcNow
 
+type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
+    let connection = transaction.Connection
+
+    interface IDomainEventRepository with
+        member _.GetByAggregateIdAsync (ct: CancellationToken) (aggregateId: Guid) : Task<SavedDomainEvent list> =
+            let sql =
+                "select id, aggregate_id, event_type, event_payload, created_at from domain_events where aggregate_id = @aggregateId order by created_at desc"
+            use cmd = new SQLiteCommand(sql, connection, transaction)
+            cmd.Parameters.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
+
+            task {
+                let! r = cmd.ExecuteReaderAsync(ct)
+                let mutable keepGoing = true
+                let events = ResizeArray<SavedDomainEvent>()
+
+                while keepGoing do
+                    match! r.ReadAsync(ct) with
+                    | true ->
+                        let e =
+                            { Id = r["id"] |> string |> Guid
+                              AggregateId = r["aggregate_id"] |> string |> Guid
+                              EventType = r["event_type"] |> string
+                              EventPayload = r["event_payload"] |> string
+                              CreatedAt = parseCreatedAt r["created_at"] }
+                        events.Add(e)
+                    | false -> keepGoing <- false
+
+                return events |> Seq.toList
+            }
+
 type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) =
     let connection = transaction.Connection
 
     interface IStoryRepository with
         member _.ExistAsync (ct: CancellationToken) (id: StoryId) : Task<bool> =
-            let sql = "select count(*) from stories where id = @id"
-            use cmd = new SQLiteCommand(sql, connection, transaction)
-            cmd.Parameters.AddWithValue("@id", id |> StoryId.value |> string) |> ignore
             task {
+                let sql = "select count(*) from stories where id = @id"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                cmd.Parameters.AddWithValue("@id", id |> StoryId.value |> string) |> ignore
                 let! count = cmd.ExecuteScalarAsync(ct)
                 return
                     (match count :?> int64 with
@@ -151,7 +184,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     parsedStories.Add(storyId, story)
                 parseTask r storyId
 
-            // With ADO.NET, each field must be explicitly aliased for it to appears in the result.
+            // ADO.NET requires aliasing each field to extract it from the result.
             let sql =
                 """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
@@ -182,10 +215,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                 let stories =
                     parsedStories.Values
                     |> Seq.toList
-                    |> Seq.map (fun story ->
+                    |> List.map (fun story ->
                         let ok, tasks = parsedTasks.TryGetValue(story.Aggregate.Id)
                         { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
-                    |> Seq.toList
 
                 return
                     (let count = stories |> List.length
@@ -334,6 +366,8 @@ type AppEnv(connectionString: string, ?systemClock: ISystemClock, ?logger: ILogg
     let storyRepository' =
         lazy SqliteStoryRepository(transaction.Value, systemClock'.Value)
 
+    let domainEventRepository = lazy SqliteDomainEventRepository(transaction.Value)
+
     interface IDisposable with
         member _.Dispose() =
             if transaction.IsValueCreated then
@@ -363,3 +397,4 @@ type AppEnv(connectionString: string, ?systemClock: ISystemClock, ?logger: ILogg
         member _.SystemClock = systemClock'.Value
         member _.Logger = logger'.Value
         member _.StoryRepository = storyRepository'.Value
+        member _.DomainEventRepository = domainEventRepository.Value

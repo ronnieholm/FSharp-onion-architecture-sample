@@ -18,6 +18,13 @@ module Seedwork =
         let create (field: string) (message: string) = { Field = field; Message = message }
         let mapError (field: string) : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
 
+    type SavedDomainEvent =
+        { Id: Guid
+          AggregateId: Guid
+          EventType: string
+          EventPayload: string
+          CreatedAt: DateTime }
+
     [<Interface>]
     type ISystemClock =
         abstract CurrentUtc: unit -> DateTime
@@ -41,10 +48,23 @@ module Seedwork =
         abstract StoryRepository: IStoryRepository
 
     [<Interface>]
+    // A repository not defined in the domain layer. While domain events are part of
+    // the domain, persisted domain events aren't. After events have been applied they're
+    // no longer needed, except as a troubleshooting tool. Therefore, this the get
+    // operation isn't part of IStoryRepository.
+    type IDomainEventRepository =
+        abstract GetByAggregateIdAsync: CancellationToken -> Guid -> System.Threading.Tasks.Task<SavedDomainEvent list>
+
+    [<Interface>]
+    type IDomainEventRepositoryFactory =
+        abstract DomainEventRepository: IDomainEventRepository
+
+    [<Interface>]
     type IAppEnv =
         inherit ISystemClockFactory
         inherit ILoggerFactory
         inherit IStoryRepositoryFactory
+        inherit IDomainEventRepositoryFactory
         inherit IDisposable
         abstract CommitAsync: CancellationToken -> System.Threading.Tasks.Task
         abstract RollbackAsync: CancellationToken -> System.Threading.Tasks.Task
@@ -64,12 +84,58 @@ module Seedwork =
         // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
         logger.LogRequestDuration useCase elapsed
         result
-        
+
 module SharedModels =
-    // Data transfer objects shared across queries across aggregates. 
+    // Data transfer objects shared across queries across aggregates.
     ()
 
 open Seedwork
+
+module DomainEventRequest =
+    type GetByAggregateIdQuery = { Id: Guid }
+
+    module GetByAggregateIdQuery =
+        type GetByAggregateIdValidatedQuery = { Id: Guid }
+
+        let validate (q: GetByAggregateIdQuery) : Validation<GetByAggregateIdValidatedQuery, ValidationError> =
+            validation {
+                // TODO: We could define an AggregateId type in application layer.
+                let validatedId = if q.Id = Guid.Empty then Error "Should be non-empty" else Ok q.Id
+                let! id = validatedId |> ValidationError.mapError (nameof q.Id)
+                return { Id = id }
+            }
+
+        type SavedDomainEventDto =
+            { Id: Guid
+              AggregateId: Guid
+              EventType: string
+              EventPayload: string
+              CreatedAt: DateTime }
+
+        module SavedDomainEventDto =
+            let from (event: SavedDomainEvent) : SavedDomainEventDto =
+                { Id = event.Id
+                  AggregateId = event.AggregateId
+                  EventType = event.EventType
+                  EventPayload = event.EventPayload
+                  CreatedAt = event.CreatedAt }
+
+        type GetStoryEventsByIdError = ValidationErrors of ValidationError list
+
+        let runAsync
+            (events: IDomainEventRepository)
+            (logger: ILogger)
+            (ct: CancellationToken)
+            (qry: GetByAggregateIdQuery)
+            : TaskResult<SavedDomainEventDto list, GetStoryEventsByIdError> =
+            let aux () =
+                taskResult {
+                    let! qry = validate qry |> Result.mapError ValidationErrors
+                    let! events = events.GetByAggregateIdAsync ct qry.Id
+                    return events |> List.map SavedDomainEventDto.from
+                }
+
+            runWithDecoratorAsync logger (nameof GetByAggregateIdQuery) qry aux
 
 module StoryAggregateRequest =
     type CreateStoryCommand = { Id: Guid; Title: string; Description: string option }
@@ -113,7 +179,7 @@ module StoryAggregateRequest =
                     do! stories.ApplyEventAsync ct event
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                     return StoryId.value story.Aggregate.Id
-                    // TODO: Who's going to call commit?
+                // TODO: Who's going to call commit?
                 }
 
             runWithDecoratorAsync logger (nameof CreateStoryCommand) cmd aux
@@ -361,7 +427,12 @@ module StoryAggregateRequest =
                 return { Id = storyId }
             }
 
-        type TaskDto = { Id: Guid; Title: string; Description: string; CreatedAt: DateTime; UpdatedAt: DateTime option }
+        type TaskDto =
+            { Id: Guid
+              Title: string
+              Description: string
+              CreatedAt: DateTime
+              UpdatedAt: DateTime option }
 
         module TaskDto =
             let from (task: Task) : TaskDto =
@@ -408,7 +479,9 @@ module StoryAggregateRequest =
             let aux () =
                 taskResult {
                     let! qry = validate qry |> Result.mapError ValidationErrors
-                    let! story = stories.GetByIdAsync ct qry.Id |> TaskResult.requireSome (StoryNotFound (StoryId.value qry.Id))
+                    let! story =
+                        stories.GetByIdAsync ct qry.Id
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value qry.Id))
                     return StoryDto.from story
                 }
 

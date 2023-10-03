@@ -26,6 +26,7 @@ open Microsoft.AspNetCore.Diagnostics.HealthChecks
 open Microsoft.AspNetCore.ResponseCompression
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
+open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 open Scrum.Infrastructure.Seedwork.Json
 
@@ -71,6 +72,7 @@ module Seedwork =
 
     // RFC7807 error format per https://opensource.zalando.com/restful-api-guidelines/#176.
     type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
+
     module ErrorDto =
         let create status detail : ErrorDto = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
@@ -115,6 +117,31 @@ module Controller =
 
         interface IDisposable with
             member this.Dispose() = this.Env.Dispose()
+
+    [<ApiController>] // TODO: Is this required or can it be on parent class only?
+    // TODO: check zalando for dash in controller name
+    [<Route("[controller]")>]
+    type DomainEventsController(configuration: IConfiguration) =
+        inherit ScrumController(configuration)
+
+        // curl https://localhost:5000/domainEvents/15443e47-544a-477a-bc01-915ffd434ab6 --insecure | jq
+
+        [<HttpGet>]
+        [<Route("{id}")>]
+        member x.GetEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = GetByAggregateIdQuery.runAsync x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                    return
+                        match result with
+                        | Ok s -> OkObjectResult(s) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | GetByAggregateIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
 
     type StoryCreateDto = { title: string; description: string }
     type StoryUpdateDto = { title: string; description: string }
@@ -374,18 +401,18 @@ module HealthCheck =
 open HealthCheck
 
 // TODO: Getting ready for the future
-type JwtAuthenticationOptions () =    
-    static member JwtAuthentication with get() : string = nameof JwtAuthenticationOptions.JwtAuthentication
+type JwtAuthenticationOptions() =
+    static member JwtAuthentication: string = nameof JwtAuthenticationOptions.JwtAuthentication
     member val Issuer: Uri = null with get, set
     member val Audience: Uri = null with get, set
     member val SigningKey: string = null with get, set
     member val ExpirationInSeconds: uint = 0ul with get, set
-    
-    member x.Validate (options: JwtAuthenticationOptions) : unit =
-        if x.Issuer = null then
-            raise (NullReferenceException(nameof options.Issuer))
-        if x.Audience = null then
-            raise (NullReferenceException(nameof x.Audience))
+
+    member x.Validate() : unit =
+        if isNull x.Issuer then
+            nullArg (nameof x.Issuer)
+        if isNull x.Audience then
+            nullArg (nameof x.Audience)
         if String.IsNullOrWhiteSpace(x.SigningKey) then
             raise (ArgumentException(nameof x.SigningKey))
         if x.ExpirationInSeconds < 60ul then
@@ -401,7 +428,7 @@ type Startup(configuration: IConfiguration) =
         let serviceProvider = services.BuildServiceProvider()
         let jwtAuthenticationOptions =
             serviceProvider.GetService<IOptions<JwtAuthenticationOptions>>().Value
-        jwtAuthenticationOptions.Validate jwtAuthenticationOptions
+        jwtAuthenticationOptions.Validate()
 
         services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
