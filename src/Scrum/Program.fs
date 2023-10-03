@@ -5,13 +5,18 @@ open System.Collections.Generic
 open System.Data.SQLite
 open System.Diagnostics
 open System.IO.Compression
+open System.IdentityModel.Tokens.Jwt
 open System.Reflection
+open System.Security.Claims
+open System.Text
 open System.Text.Json
 open System.Text.Json.Serialization
 open System.Threading
 open System.Threading.Tasks
+open Microsoft.AspNetCore.Authorization
 open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
+open Microsoft.AspNetCore.Authentication.JwtBearer
 open Microsoft.AspNetCore.Mvc.Controllers
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Diagnostics.HealthChecks
@@ -21,6 +26,8 @@ open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
 open Microsoft.Extensions.Options
 open Microsoft.Extensions.Primitives
+open Microsoft.IdentityModel.JsonWebTokens
+open Microsoft.IdentityModel.Tokens
 open Microsoft.Net.Http.Headers
 open Microsoft.AspNetCore.Diagnostics.HealthChecks
 open Microsoft.AspNetCore.ResponseCompression
@@ -96,7 +103,56 @@ module Seedwork =
         let fromUncaughtException (accept: StringValues) : ActionResult =
             createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
 
+module Configuration =
+    type JwtAuthenticationOptions() =
+        static member JwtAuthentication: string = nameof JwtAuthenticationOptions.JwtAuthentication
+        member val Issuer: Uri = null with get, set
+        member val Audience: Uri = null with get, set
+        member val SigningKey: string = null with get, set
+        member val ExpirationInSeconds: uint = 0ul with get, set
+
+        member x.Validate() : unit =
+            if isNull x.Issuer then
+                nullArg (nameof x.Issuer)
+            if isNull x.Audience then
+                nullArg (nameof x.Audience)
+            if String.IsNullOrWhiteSpace(x.SigningKey) then
+                raise (ArgumentException(nameof x.SigningKey))
+            if x.ExpirationInSeconds < 60ul then
+                raise (ArgumentException(nameof x.ExpirationInSeconds))
+
+open Configuration
+
+module Service =
+    module IdentityProviderService =
+        let UserIdClaim = "userId"
+        let RoleClaim = "role"
+
+        let sign (clock: ISystemClock) (options: JwtAuthenticationOptions) (claims: Claim array) : string =
+            let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey))
+            let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
+            let validUntilUtc = clock.CurrentUtc().AddSeconds(int options.ExpirationInSeconds)
+            let token =
+                JwtSecurityToken(
+                    options.Issuer.ToString(),
+                    options.Audience.ToString(),
+                    claims,
+                    expires = validUntilUtc,
+                    signingCredentials = credentials
+                )
+            JwtSecurityTokenHandler().WriteToken(token)
+
+        let issueToken (clock: ISystemClock) (options: JwtAuthenticationOptions) (userId: string) (role: string) =
+            // With an actual user store, we'd validate the user here. Here we assume userId and role are valid.
+            // Role must either be "regular" or "admin"
+            // TODO: assert role with DU parse method or is that overkill?
+            [| Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+               Claim(UserIdClaim, userId)
+               Claim(RoleClaim, role) |]
+            |> sign clock options
+
 open Seedwork
+open Service
 
 module Controller =
     type ScrumController(configuration: IConfiguration) =
@@ -333,7 +389,7 @@ module Controller =
 
         // curl https://localhost:5000/domainEvents/15443e47-544a-477a-bc01-915ffd434ab6 --insecure | jq
 
-        [<HttpGet>]
+        [<HttpGet>] // TODO: Combine HttpGet (and others with Route)
         [<Route("{id}")>]
         member x.GetEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -349,6 +405,53 @@ module Controller =
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
+
+    // As the token is supposed to be opaque, we could either expose some of the claims in
+    // next to token or have clients call the introspect endpoint. We chose the latter.
+    type AuthenticationResponse = { Token: string }
+
+    [<ApiController>] // TODO: Is this required or can it be on parent class only?
+    // TODO: check zalando for dash in controller name
+    [<Route("[controller]")>]
+    type AuthenticationController
+        (
+            configuration: IConfiguration,
+            jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>,
+            httpContextAccessor: IHttpContextAccessor
+        ) =
+        inherit ScrumController(configuration)
+
+        // Loosely modelled after OAuth authentication.
+
+        // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
+
+        [<HttpPost("issueToken")>]
+        member x.IssueToken(userId: string, role: string) : Task<ActionResult> =
+            task {
+                // Get user from hypothetical user store and pass to issueRegularToken
+                // to include information about the user as claims in the token.
+                let token =
+                    IdentityProviderService.issueToken x.Env.SystemClock jwtAuthenticationOptions.Value userId role
+                return CreatedResult("/authentication/introspect", { Token = token })
+            }
+
+        // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkMTM4NjNhOC1kNDExLTRlOWItYTliYi01ZWRmZDJiOGYwNjEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoicmVndWxhciIsImV4cCI6MTY5NjQyOTAzOSwiaXNzIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIiwiYXVkIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIn0.x5DE_A5rvQUkb7UED4Ook8pBm5hpRmRauPNzpuvTQM0" | jq
+
+        [<HttpPost("introspect")>]
+        [<Authorize>]
+        member _.Introspect() : IDictionary<string, obj> =
+            let claimsPrincipal = httpContextAccessor.HttpContext.User
+            let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
+            claimsIdentity.Claims
+            |> Seq.map (fun c ->
+                match c.Type, c.Value with
+                | "exp" as t, v ->
+                    // Special case non-string value or it becomes a string in string in
+                    // the HTTP response.
+                    t, Int32.Parse(v) :> obj
+                | ClaimTypes.Role, v -> IdentityProviderService.RoleClaim, v :> obj
+                | _ -> c.Type, c.Value :> obj)
+            |> dict
 
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
@@ -400,24 +503,6 @@ module HealthCheck =
 
 open HealthCheck
 
-// TODO: Getting ready for the future
-type JwtAuthenticationOptions() =
-    static member JwtAuthentication: string = nameof JwtAuthenticationOptions.JwtAuthentication
-    member val Issuer: Uri = null with get, set
-    member val Audience: Uri = null with get, set
-    member val SigningKey: string = null with get, set
-    member val ExpirationInSeconds: uint = 0ul with get, set
-
-    member x.Validate() : unit =
-        if isNull x.Issuer then
-            nullArg (nameof x.Issuer)
-        if isNull x.Audience then
-            nullArg (nameof x.Audience)
-        if String.IsNullOrWhiteSpace(x.SigningKey) then
-            raise (ArgumentException(nameof x.SigningKey))
-        if x.ExpirationInSeconds < 60ul then
-            raise (ArgumentException(nameof x.ExpirationInSeconds))
-
 type Startup(configuration: IConfiguration) =
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
@@ -430,9 +515,38 @@ type Startup(configuration: IConfiguration) =
             serviceProvider.GetService<IOptions<JwtAuthenticationOptions>>().Value
         jwtAuthenticationOptions.Validate()
 
+        services
+            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(fun options ->
+                options.TokenValidationParameters <-
+                    TokenValidationParameters(
+                        ValidateIssuer = true,
+                        ValidateAudience = true,
+                        ValidateIssuerSigningKey = true,
+                        ValidIssuer = jwtAuthenticationOptions.Issuer.ToString(),
+                        ValidAudience = jwtAuthenticationOptions.Audience.ToString(),
+                        ClockSkew = TimeSpan.Zero,
+                        IssuerSigningKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtAuthenticationOptions.SigningKey))
+                    )
+
+                // Leave in callbacks for troubleshooting JWT issues. Set a breakpoint on the
+                // relevant lines below to inspect the JWT authentication process.
+                options.Events <-
+                    JwtBearerEvents(
+                        OnAuthenticationFailed = (fun _ -> Task.CompletedTask),
+                        OnTokenValidated = (fun _ -> Task.CompletedTask),
+                        OnForbidden = (fun _ -> Task.CompletedTask),
+                        OnChallenge = (fun _ -> Task.CompletedTask)
+                    ))
+        |> ignore
+
+        // TODO: read from appsettings?
+        // TODO: options.Conventions.Add(new RouteTokenTransformerConvention(new CamelCaseTransformer()));
         services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
         |> ignore
+
+        services.AddHttpContextAccessor() |> ignore
 
         services
             .AddMvc(fun options -> options.EnableEndpointRouting <- false)
@@ -529,6 +643,8 @@ type Startup(configuration: IConfiguration) =
         app.UseHealthChecks("/health", healthCheckOptions) |> ignore
         app.UseResponseCompression() |> ignore
         app.UseRouting() |> ignore
+        app.UseAuthentication() |> ignore
+        app.UseAuthorization() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
 
 module Program =
