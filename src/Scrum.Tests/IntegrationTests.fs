@@ -79,7 +79,7 @@ module Setup =
            UpdateTask = UpdateTaskCommand.runAsync r s l ct
            Commit = fun _ -> env.CommitAsync ct |}
 
-    let setupDomainEventRequest (env: IAppEnv) =
+    let setupDomainEventRequests (env: IAppEnv) =
         let r = env.DomainEventRepository
         let l = env.Logger
         let ct = CancellationToken.None
@@ -312,7 +312,7 @@ type DomainEventRequestTests() =
         use env =
             new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
         let sfns = env |> setupStoryAggregateRequests
-        let dfns = env |> setupDomainEventRequest
+        let dfns = env |> setupDomainEventRequests
 
         task {
             let cmd = A.createStoryCommand ()
