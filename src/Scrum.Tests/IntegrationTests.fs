@@ -303,6 +303,8 @@ type StoryAggregateRequestTests() =
             test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
+// TODO: is xunit running tests across classes in parallel? Then we need to mark assembly with attribute.
+
 [<Collection(nameof DisableParallelization)>]
 type DomainEventRequestTests() =
     do reset ()
