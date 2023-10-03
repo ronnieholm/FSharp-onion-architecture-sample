@@ -179,9 +179,8 @@ module Controller =
     type AddTaskToStoryDto = { title: string; description: string }
     type StoryTaskUpdateDto = { title: string; description: string }
 
-    [<ApiController>]
-    [<Route("[controller]")>]
-    type StoriesController(configuration: IConfiguration) =
+     [<Authorize; Route("[controller]")>]
+     type StoriesController(configuration: IConfiguration) =
         inherit ScrumController(configuration)
 
         // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
@@ -215,8 +214,7 @@ module Controller =
 
         // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
 
-        [<HttpPut>]
-        [<Route("{id}")>]
+        [<HttpPut("{id}")>]
         member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
@@ -245,8 +243,7 @@ module Controller =
 
         // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
 
-        [<HttpDelete>]
-        [<Route("{id}")>]
+        [<HttpDelete("{id}")>]
         member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
@@ -267,8 +264,7 @@ module Controller =
 
         // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/57db7489-722f-4d66-97d5-d5c2501eb89e --insecure --request delete
 
-        [<HttpDelete>]
-        [<Route("{storyId}/tasks/{taskId}")>]
+        [<HttpDelete("{storyId}/tasks/{taskId}")>]
         member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
@@ -291,8 +287,7 @@ module Controller =
 
         // Success: curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
 
-        [<HttpPost>]
-        [<Route("{storyId}/tasks")>]
+        [<HttpPost("{storyId}/tasks")>]
         member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
@@ -323,8 +318,7 @@ module Controller =
 
         // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/916397d3-0c10-495c-a6e3-a081d41f644c --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
 
-        [<HttpPut>]
-        [<Route("{storyId}/tasks/{taskId}")>]
+        [<HttpPut("{storyId}/tasks/{taskId}")>]
         member x.UpdateTaskOnStory
             (
                 [<FromBody>] request: StoryTaskUpdateDto,
@@ -362,8 +356,7 @@ module Controller =
 
         // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure | jq
 
-        [<HttpGet>]
-        [<Route("{id}")>]
+        [<HttpGet("{id}")>]
         member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
@@ -381,16 +374,14 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }
 
-    [<ApiController>] // TODO: Is this required or can it be on parent class only?
     // TODO: check zalando for dash in controller name
-    [<Route("[controller]")>]
+    [<Authorize; Route("[controller]")>]
     type DomainEventsController(configuration: IConfiguration) =
         inherit ScrumController(configuration)
 
-        // curl https://localhost:5000/domainEvents/15443e47-544a-477a-bc01-915ffd434ab6 --insecure | jq
+        // curl https://localhost:5000/domainEvents/20e86071-a4f2-4576-89cd-5e33e64d50d0 --insecure -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkMTM4NjNhOC1kNDExLTRlOWItYTliYi01ZWRmZDJiOGYwNjEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoicmVndWxhciIsImV4cCI6MTY5NjQyOTAzOSwiaXNzIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIiwiYXVkIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIn0.x5DE_A5rvQUkb7UED4Ook8pBm5hpRmRauPNzpuvTQM0" | jq
 
-        [<HttpGet>] // TODO: Combine HttpGet (and others with Route)
-        [<Route("{id}")>]
+        [<HttpGet("{id}")>]
         member x.GetEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
@@ -410,7 +401,6 @@ module Controller =
     // next to token or have clients call the introspect endpoint. We chose the latter.
     type AuthenticationResponse = { Token: string }
 
-    [<ApiController>] // TODO: Is this required or can it be on parent class only?
     // TODO: check zalando for dash in controller name
     [<Route("[controller]")>]
     type AuthenticationController
@@ -421,7 +411,7 @@ module Controller =
         ) =
         inherit ScrumController(configuration)
 
-        // Loosely modelled after OAuth authentication.
+        // Loosely modelled after OAuth2 authentication.
 
         // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
 
@@ -435,10 +425,12 @@ module Controller =
                 return CreatedResult("/authentication/introspect", { Token = token })
             }
 
+        // TODO: Add Renew and Logging. Add three log levels to ILogger.
+        // TODO: ADR on authentication/authorization.
+
         // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkMTM4NjNhOC1kNDExLTRlOWItYTliYi01ZWRmZDJiOGYwNjEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoicmVndWxhciIsImV4cCI6MTY5NjQyOTAzOSwiaXNzIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIiwiYXVkIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIn0.x5DE_A5rvQUkb7UED4Ook8pBm5hpRmRauPNzpuvTQM0" | jq
 
-        [<HttpPost("introspect")>]
-        [<Authorize>]
+        [<Authorize; HttpPost("introspect")>]
         member _.Introspect() : IDictionary<string, obj> =
             let claimsPrincipal = httpContextAccessor.HttpContext.User
             let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
@@ -462,12 +454,14 @@ module HealthCheck =
                     let mb = 1024 * 1024
                     let allocatedInBytes = GC.GetTotalMemory(forceFullCollection = false)
                     let committedInBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
-                    let data = Dictionary<string, obj>()
-                    data.Add("allocated_megabytes", Math.Round(float allocatedInBytes / float mb, 2))
-                    data.Add("committed_megabytes", Math.Round(float committedInBytes / float mb, 2))
-                    data.Add("gen0_collection_count", GC.CollectionCount(0))
-                    data.Add("gen1_collection_count", GC.CollectionCount(1))
-                    data.Add("gen2_collection_count", GC.CollectionCount(2))
+                    let data =
+                        [ "allocated_megabytes", Math.Round(float allocatedInBytes / float mb, 2)
+                          "committed_megabytes", Math.Round(float committedInBytes / float mb, 2)
+                          "gen0_collection_count", GC.CollectionCount(0)
+                          "gen1_collection_count", GC.CollectionCount(1)
+                          "gen2_collection_count", GC.CollectionCount(2) ]
+                        |> dict
+                        :?> Dictionary<string, obj>
                     return
                         HealthCheckResult(
                             (if allocatedInBytes < allocatedThresholdInMb * int64 mb then
