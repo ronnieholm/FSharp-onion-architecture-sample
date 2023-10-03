@@ -18,6 +18,7 @@ module Seedwork =
         let create (field: string) (message: string) = { Field = field; Message = message }
         let mapError (field: string) : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
 
+    // A pseudo-aggregate or an aggregate which resides in the application layer.
     type SavedDomainEvent =
         { Id: Guid
           AggregateId: Guid
@@ -90,52 +91,6 @@ module SharedModels =
     ()
 
 open Seedwork
-
-module DomainEventRequest =
-    type GetByAggregateIdQuery = { Id: Guid }
-
-    module GetByAggregateIdQuery =
-        type GetByAggregateIdValidatedQuery = { Id: Guid }
-
-        let validate (q: GetByAggregateIdQuery) : Validation<GetByAggregateIdValidatedQuery, ValidationError> =
-            validation {
-                // TODO: We could define an AggregateId type in application layer.
-                let validatedId = if q.Id = Guid.Empty then Error "Should be non-empty" else Ok q.Id
-                let! id = validatedId |> ValidationError.mapError (nameof q.Id)
-                return { Id = id }
-            }
-
-        type SavedDomainEventDto =
-            { Id: Guid
-              AggregateId: Guid
-              EventType: string
-              EventPayload: string
-              CreatedAt: DateTime }
-
-        module SavedDomainEventDto =
-            let from (event: SavedDomainEvent) : SavedDomainEventDto =
-                { Id = event.Id
-                  AggregateId = event.AggregateId
-                  EventType = event.EventType
-                  EventPayload = event.EventPayload
-                  CreatedAt = event.CreatedAt }
-
-        type GetStoryEventsByIdError = ValidationErrors of ValidationError list
-
-        let runAsync
-            (events: IDomainEventRepository)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (qry: GetByAggregateIdQuery)
-            : TaskResult<SavedDomainEventDto list, GetStoryEventsByIdError> =
-            let aux () =
-                taskResult {
-                    let! qry = validate qry |> Result.mapError ValidationErrors
-                    let! events = events.GetByAggregateIdAsync ct qry.Id
-                    return events |> List.map SavedDomainEventDto.from
-                }
-
-            runWithDecoratorAsync logger (nameof GetByAggregateIdQuery) qry aux
 
 module StoryAggregateRequest =
     type CreateStoryCommand = { Id: Guid; Title: string; Description: string option }
@@ -486,6 +441,52 @@ module StoryAggregateRequest =
                 }
 
             runWithDecoratorAsync logger (nameof GetStoryByIdQuery) qry aux
+
+module DomainEventRequest =
+    type GetByAggregateIdQuery = { Id: Guid }
+
+    module GetByAggregateIdQuery =
+        type GetByAggregateIdValidatedQuery = { Id: Guid }
+
+        let validate (q: GetByAggregateIdQuery) : Validation<GetByAggregateIdValidatedQuery, ValidationError> =
+            validation {
+                // TODO: We could define an AggregateId type in application layer.
+                let validatedId = if q.Id = Guid.Empty then Error "Should be non-empty" else Ok q.Id
+                let! id = validatedId |> ValidationError.mapError (nameof q.Id)
+                return { Id = id }
+            }
+
+        type SavedDomainEventDto =
+            { Id: Guid
+              AggregateId: Guid
+              EventType: string
+              EventPayload: string
+              CreatedAt: DateTime }
+
+        module SavedDomainEventDto =
+            let from (event: SavedDomainEvent) : SavedDomainEventDto =
+                { Id = event.Id
+                  AggregateId = event.AggregateId
+                  EventType = event.EventType
+                  EventPayload = event.EventPayload
+                  CreatedAt = event.CreatedAt }
+
+        type GetStoryEventsByIdError = ValidationErrors of ValidationError list
+
+        let runAsync
+            (events: IDomainEventRepository)
+            (logger: ILogger)
+            (ct: CancellationToken)
+            (qry: GetByAggregateIdQuery)
+            : TaskResult<SavedDomainEventDto list, GetStoryEventsByIdError> =
+            let aux () =
+                taskResult {
+                    let! qry = validate qry |> Result.mapError ValidationErrors
+                    let! events = events.GetByAggregateIdAsync ct qry.Id
+                    return events |> List.map SavedDomainEventDto.from
+                }
+
+            runWithDecoratorAsync logger (nameof GetByAggregateIdQuery) qry aux
 
 module ApplicationService =
     // Logic shared across requests.

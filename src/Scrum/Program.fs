@@ -118,31 +118,6 @@ module Controller =
         interface IDisposable with
             member this.Dispose() = this.Env.Dispose()
 
-    [<ApiController>] // TODO: Is this required or can it be on parent class only?
-    // TODO: check zalando for dash in controller name
-    [<Route("[controller]")>]
-    type DomainEventsController(configuration: IConfiguration) =
-        inherit ScrumController(configuration)
-
-        // curl https://localhost:5000/domainEvents/15443e47-544a-477a-bc01-915ffd434ab6 --insecure | jq
-
-        [<HttpGet>]
-        [<Route("{id}")>]
-        member x.GetEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = GetByAggregateIdQuery.runAsync x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetByAggregateIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
     type StoryCreateDto = { title: string; description: string }
     type StoryUpdateDto = { title: string; description: string }
     type AddTaskToStoryDto = { title: string; description: string }
@@ -346,6 +321,31 @@ module Controller =
                             | GetStoryByIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
                             | GetStoryByIdQuery.StoryNotFound id ->
                                 ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+    [<ApiController>] // TODO: Is this required or can it be on parent class only?
+    // TODO: check zalando for dash in controller name
+    [<Route("[controller]")>]
+    type DomainEventsController(configuration: IConfiguration) =
+        inherit ScrumController(configuration)
+
+        // curl https://localhost:5000/domainEvents/15443e47-544a-477a-bc01-915ffd434ab6 --insecure | jq
+
+        [<HttpGet>]
+        [<Route("{id}")>]
+        member x.GetEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = GetByAggregateIdQuery.runAsync x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                    return
+                        match result with
+                        | Ok s -> OkObjectResult(s) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | GetByAggregateIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }

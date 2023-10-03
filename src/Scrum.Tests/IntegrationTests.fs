@@ -2,12 +2,13 @@
 
 open System
 open System.Threading
-open Scrum.Application.Seedwork
-open Scrum.Application.StoryAggregateRequest
-open Scrum.Infrastructure
+open System.Data.SQLite
 open Swensen.Unquote
 open Xunit
-open System.Data.SQLite
+open Scrum.Application.Seedwork
+open Scrum.Application.StoryAggregateRequest
+open Scrum.Application.DomainEventRequest
+open Scrum.Infrastructure
 
 // TODO: How to clear database between runs? No need to use typical .NET library, just issue delete * table statements in test class dispose method.
 
@@ -29,10 +30,18 @@ module A =
           Description = cmd.Description }
 
 module Database =
+    // SQLite driver created the database at the path if the file doesn't already exist.
+    // The default directory is ./src/Scrum.Tests/bin/Debug/net7.0/scrum_test.sqlite whereas
+    // we want the database to be at the root of the Git repository.
+    let connectionString = "URI=file:../../../../../scrum_test.sqlite"
+
+    let missingId () = Guid.NewGuid()
+
     // Call before a test run (constructor), not after (Dispose). This way data is left in the database for troubleshooting.
-    let reset (connectionString: string) : unit =
+    let reset () : unit =
         // Organize in reverse dependency order.
-        let sql = [| "delete from tasks"; "delete from stories" |]
+        let sql =
+            [| "delete from tasks"; "delete from stories"; "delete from domain_events" |]
         use connection = new SQLiteConnection(connectionString)
         connection.Open()
         use transaction = connection.BeginTransaction()
@@ -41,6 +50,44 @@ module Database =
             use cmd = new SQLiteCommand(sql, connection, transaction)
             cmd.ExecuteNonQuery() |> ignore)
         transaction.Commit()
+
+module Fake =
+    let fixedClock =
+        { new ISystemClock with
+            member _.CurrentUtc() = DateTime(2023, 1, 1, 6, 0, 0) }
+
+    let nullLogger =
+        { new ILogger with
+            member _.LogRequestPayload _ _ = ()
+            member _.LogRequestDuration _ _ = ()
+            member _.LogException _ = () }
+
+module Setup =
+    let setupStoryAggregateRequests (env: IAppEnv) =
+        let r = env.StoryRepository
+        let s = env.SystemClock
+        let l = env.Logger
+        let ct = CancellationToken.None
+
+        // While these functions are async, we forgo the Async prefix to reduce noise.
+        {| CreateStory = CreateStoryCommand.runAsync r s l ct
+           AddTaskToStory = AddTaskToStoryCommand.runAsync r s l ct
+           GetStoryById = GetStoryByIdQuery.runAsync r l ct
+           DeleteStory = DeleteStoryCommand.runAsync r l ct
+           DeleteTask = DeleteTaskCommand.runAsync r l ct
+           UpdateStory = UpdateStoryCommand.runAsync r s l ct
+           UpdateTask = UpdateTaskCommand.runAsync r s l ct
+           Commit = fun _ -> env.CommitAsync ct |}
+
+    let setupDomainEventRequest (env: IAppEnv) =
+        let r = env.DomainEventRepository
+        let l = env.Logger
+        let ct = CancellationToken.None
+        {| GetByAggregateIdQuery = GetByAggregateIdQuery.runAsync r l ct |}
+
+open Database
+open Fake
+open Setup
 
 [<CollectionDefinition(nameof DisableParallelization, DisableParallelization = true)>]
 type DisableParallelization() =
@@ -55,45 +102,13 @@ type DisableParallelization() =
 // test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
-    // SQLite driver created the database at the path if the file doesn't already exist.
-    // The default directory is ./src/Scrum.Tests/bin/Debug/net7.0/scrum_test.sqlite whereas
-    // we want the database to be at the root of the Git repository.
-    let connectionString = "URI=file:../../../../../scrum_test.sqlite"
+    do reset ()
 
-    do Database.reset connectionString
-    
-    let missing () = Guid.NewGuid()
-
-    let setup (env: IAppEnv) =
-        let r = env.StoryRepository
-        let s = env.SystemClock
-        let l = env.Logger
-        let ct = CancellationToken.None
-        
-        // While these functions are async, we forgo the Async prefix to reduce noise.
-        {| CreateStory = CreateStoryCommand.runAsync r s l ct
-           AddTaskToStory = AddTaskToStoryCommand.runAsync r s l ct
-           GetStoryById = GetStoryByIdQuery.runAsync r l ct
-           DeleteStory = DeleteStoryCommand.runAsync r l ct
-           DeleteTask = DeleteTaskCommand.runAsync r l ct
-           UpdateStory = UpdateStoryCommand.runAsync r s l ct
-           UpdateTask = UpdateTaskCommand.runAsync r s l ct
-           Commit = fun _ -> env.CommitAsync ct |}
-
-    let fixedClock =
-        { new ISystemClock with
-            member _.CurrentUtc() = DateTime(2023, 1, 1, 6, 0, 0) }
-
-    let nullLogger =
-        { new ILogger with
-            member _.LogRequestPayload _ _ = ()
-            member _.LogRequestDuration _ _ = ()
-            member _.LogException _ = () }
-    
     [<Fact>]
     let ``create story with task`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! result = fns.CreateStory cmd
@@ -108,8 +123,9 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``create duplicate story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
@@ -119,8 +135,9 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete story without task`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
@@ -132,8 +149,9 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete story with task`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
@@ -147,8 +165,9 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``add duplicate task to story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let createStoryCmd = A.createStoryCommand ()
             let addTaskCmd = { A.addTaskToStoryCommand () with StoryId = createStoryCmd.Id }
@@ -160,18 +179,20 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``add task to non-existing story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = { A.addTaskToStoryCommand () with StoryId = missing () }
+            let cmd = { A.addTaskToStoryCommand () with StoryId = missingId () }
             let! result = fns.AddTaskToStory cmd
             test <@ result = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
     let ``delete task on story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
@@ -185,33 +206,36 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``delete task on non-existing story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let cmd = { StoryId = missing (); TaskId = cmd.TaskId }
+            let cmd = { StoryId = missingId (); TaskId = cmd.TaskId }
             let! result = fns.DeleteTask cmd
             test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
     let ``delete non-existing task on story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
-            let cmd = { StoryId = cmd.Id; TaskId = missing () }
+            let cmd = { StoryId = cmd.Id; TaskId = missingId () }
             let! result = fns.DeleteTask cmd
             test <@ result = Error(DeleteTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
     let ``update story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
@@ -223,8 +247,9 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update non-existing story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let cmd = A.updateStoryCommand cmd
@@ -234,8 +259,9 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update task`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
@@ -249,28 +275,51 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``update non-existing task on story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddTaskToStory cmd
-            let cmd = { A.updateTaskCommand cmd with TaskId = missing () }
+            let cmd = { A.updateTaskCommand cmd with TaskId = missingId () }
             let! result = fns.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
     let ``update task on non-existing story`` () =
-        use env = new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
-        let fns = env |> setup
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddTaskToStory cmd
-            let cmd = { A.updateTaskCommand cmd with StoryId = missing () }
+            let cmd = { A.updateTaskCommand cmd with StoryId = missingId () }
             let! result = fns.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
+        }
+
+[<Collection(nameof DisableParallelization)>]
+type DomainEventRequestTests() =
+    do reset ()
+
+    [<Fact>]
+    let ``query domain events`` () =
+        use env =
+            new AppEnv(connectionString, systemClock = fixedClock, logger = nullLogger)
+        let sfns = env |> setupStoryAggregateRequests
+        let dfns = env |> setupDomainEventRequest
+
+        task {
+            let cmd = A.createStoryCommand ()
+            let! _ = sfns.CreateStory cmd
+            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let! _ = sfns.AddTaskToStory cmd'
+            let! result = dfns.GetByAggregateIdQuery { Id = cmd.Id }
+            //test <@ assert two domain events @>
+            do! sfns.Commit()
         }
