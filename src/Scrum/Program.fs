@@ -171,8 +171,8 @@ module Service =
     // is of no use as AppEnv will never have to resolve this service. We couldn't implemented
     // this logic inside the Authentication controller, but instead the implementation here as a
     // service, even though it's only used by the controller to simplify testing.
-    module IdentityProviderService =
-        let sign (clock: ISystemClock) (options: JwtAuthenticationOptions) (claims: Claim array) : string =
+    type IdentityProviderService(clock: ISystemClock, options: JwtAuthenticationOptions) =
+        let sign (claims: Claim array) : string =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
             let validUntilUtc = clock.CurrentUtc().AddSeconds(int options.ExpirationInSeconds)
@@ -186,24 +186,19 @@ module Service =
                 )
             JwtSecurityTokenHandler().WriteToken(token)
 
-        let issueToken (clock: ISystemClock) (options: JwtAuthenticationOptions) (userId: string) (role: string) : string =
-            // With an actual user store, we'd validate the user here. Here we assume userId and role are valid.
-            // Role must either be "regular" or "admin"
-            // TODO: assert role with DU parse method or is that overkill?
+        member _.IssueToken (userId: string) (role: string) : string =
+            // With an actual user store, we'd validate user credentials here. But for this app, userId
+            // may be any string and role must be either "regular" or "admin"
             [| Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
                Claim(ScrumClaims.UserIdClaim, userId)
                Claim(ScrumClaims.RoleClaim, role) |]
-            |> sign clock options
+            |> sign
 
-        let renewToken
-            (userIdentityService: IUserIdentityService)
-            (clock: ISystemClock)
-            (options: JwtAuthenticationOptions)
-            : Result<string, string> =
-            match userIdentityService.GetCurrentIdentity() with
+        member x.RenewToken(identity: ScrumIdentity) : Result<string, string> =
+            match identity with
             | Anonymous -> Error "User is anonymous"
-            | Regular ri -> Ok(issueToken clock options ri "regular")
-            | Admin ai -> Ok(issueToken clock options ai "admin")
+            | Regular ri -> Ok(x.IssueToken ri "regular")
+            | Admin ai -> Ok(x.IssueToken ai "admin")
 
 open Seedwork
 open Service
@@ -459,18 +454,23 @@ module Controller =
     // TODO: check zalando for dash in controller name
     // Loosely modeled after OAuth2 authentication.
     [<Route("[controller]")>]
-    type AuthenticationController(configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>) =
+    type AuthenticationController
+        (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>) as x
+        =
         inherit ScrumController(configuration, httpContext)
+
+        let idp = IdentityProviderService(x.Env.SystemClock, jwtAuthenticationOptions.Value)
 
         // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
 
         [<HttpPost("issueToken")>]
         member x.IssueToken(userId: string, role: string) : Task<ActionResult> =
             task {
+                let idp = IdentityProviderService(x.Env.SystemClock, jwtAuthenticationOptions.Value)
+
                 // Get user from hypothetical user store and pass to issueRegularToken
                 // to include information about the user as claims in the token.
-                let token =
-                    IdentityProviderService.issueToken x.Env.SystemClock jwtAuthenticationOptions.Value userId role
+                let token = idp.IssueToken userId role
                 return CreatedResult("/authentication/introspect", { Token = token })
             }
 
@@ -478,13 +478,13 @@ module Controller =
         // TODO: ADR on authentication/authorization.
 
         // curl https://localhost:5000/authentication/renew --insecure --request post -H "Authorization: Bearer <token>" | jq
-        
+
         [<Authorize; HttpPost("renewToken")>]
         member x.RenewToken() : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
-                let token =
-                    IdentityProviderService.renewToken x.Env.UserIdentityService x.Env.SystemClock jwtAuthenticationOptions.Value
+                let identity = x.Env.UserIdentityService.GetCurrentIdentity()
+                let token = idp.RenewToken identity
                 return
                     (match token with
                      | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
@@ -608,7 +608,7 @@ type Startup(configuration: IConfiguration) =
         |> ignore
 
         services.AddHttpContextAccessor() |> ignore
-        
+
         services
             .AddMvc(fun options -> options.EnableEndpointRouting <- false)
             .ConfigureApplicationPartManager(fun pm -> pm.FeatureProviders.Add(ControllerWithinModule()))
