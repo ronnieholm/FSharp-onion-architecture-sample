@@ -38,13 +38,13 @@ open Scrum.Infrastructure
 open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
+    // By default only a public top-level type ending in Controller is considered one.
+    // It means controllers inside a module isn't found. A module compiles to a class
+    // with nested classes for controllers.    
     type ControllerWithinModule() =
-        inherit ControllerFeatureProvider()
-
+        inherit ControllerFeatureProvider()        
+        
         override _.IsController(typeInfo: TypeInfo) : bool =
-            // By default only a public top-level type ending in Controller is considered one.
-            // It means controllers inside a module isn't found. A module compiles to a class
-            // with nested classes for controllers.
             base.IsController(typeInfo)
             || typeInfo.FullName.StartsWith("Scrum.Web.Controller")
 
@@ -447,8 +447,9 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }
 
-    // As the token is supposed to be opaque, we could either expose some of the claims in
-    // next to token or have clients call the introspect endpoint. We chose the latter.
+    // As the token is supposed to be opaque, we can either expose information from claims
+    // inside the token as additional fields or provide clients with an introspect endpoint.
+    // We chose the latter.
     type AuthenticationResponse = { Token: string }
 
     // TODO: check zalando for dash in controller name
@@ -464,10 +465,8 @@ module Controller =
         // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
 
         [<HttpPost("issueToken")>]
-        member x.IssueToken(userId: string, role: string) : Task<ActionResult> =
+        member _.IssueToken(userId: string, role: string) : Task<ActionResult> =
             task {
-                let idp = IdentityProviderService(x.Env.SystemClock, jwtAuthenticationOptions.Value)
-
                 // Get user from hypothetical user store and pass to issueRegularToken
                 // to include information about the user as claims in the token.
                 let token = idp.IssueToken userId role
@@ -480,7 +479,7 @@ module Controller =
         // curl https://localhost:5000/authentication/renew --insecure --request post -H "Authorization: Bearer <token>" | jq
 
         [<Authorize; HttpPost("renewToken")>]
-        member x.RenewToken() : Task<ActionResult> =
+        member _.RenewToken() : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
                 let identity = x.Env.UserIdentityService.GetCurrentIdentity()
@@ -494,7 +493,7 @@ module Controller =
         // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
 
         [<Authorize; HttpPost("introspect")>]
-        member x.Introspect() : IDictionary<string, obj> =
+        member _.Introspect() : IDictionary<string, obj> =
             let claimsPrincipal = x.HttpContext.User
             let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
             claimsIdentity.Claims
