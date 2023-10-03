@@ -77,13 +77,13 @@ module Seedwork =
                 writer.WriteString(nameof Type, value.GetType().FullName)
                 writer.WriteEndObject()
 
-    // RFC7807 error format per https://opensource.zalando.com/restful-api-guidelines/#176.
-    type ErrorDto = { Type: string; Title: string; Status: int; Detail: string }
+    // RFC7807 problem detail format per https://opensource.zalando.com/restful-api-guidelines/#176.
+    type ProblemDetail = { Type: string; Title: string; Status: int; Detail: string }
 
-    module ErrorDto =
-        let create status detail : ErrorDto = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
+    module ProblemDetail =
+        let create status detail : ProblemDetail = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
-        let toJsonResult (accept: StringValues) (error: ErrorDto) : ActionResult =
+        let toJsonResult (accept: StringValues) (error: ProblemDetail) : ActionResult =
             let h = accept.ToArray() |> Array.exists (fun v -> v = "application/problem+json")
             JsonResult(error, StatusCode = error.Status, ContentType = (if h then "application/problem+json" else "application/json"))
             :> ActionResult
@@ -218,7 +218,7 @@ module Controller =
             task {
                 this.Env.Logger.LogException(e)
                 do! this.Env.RollbackAsync(ct)
-                return ErrorDto.fromUncaughtException acceptHeaders
+                return ProblemDetail.fromUncaughtException acceptHeaders
             }
 
         interface IDisposable with
@@ -256,7 +256,7 @@ module Controller =
                         | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                         | Error e ->
                             match e with
-                            | CreateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
@@ -284,9 +284,9 @@ module Controller =
                         | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                         | Error e ->
                             match e with
-                            | UpdateStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | UpdateStoryCommand.StoryNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
@@ -305,9 +305,9 @@ module Controller =
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
-                            | DeleteStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | DeleteStoryCommand.StoryNotFound _ ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
@@ -326,11 +326,11 @@ module Controller =
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
-                            | DeleteTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | DeleteTaskCommand.StoryNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                             | DeleteTaskCommand.TaskNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
@@ -358,9 +358,9 @@ module Controller =
                         | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                         | Error e ->
                             match e with
-                            | AddTaskToStoryCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | AddTaskToStoryCommand.StoryNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                             | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
@@ -395,11 +395,11 @@ module Controller =
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
-                            | UpdateTaskCommand.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | UpdateTaskCommand.StoryNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                             | UpdateTaskCommand.TaskNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
@@ -417,9 +417,9 @@ module Controller =
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
-                            | GetStoryByIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | GetStoryByIdQuery.StoryNotFound id ->
-                                ErrorDto.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
@@ -442,7 +442,7 @@ module Controller =
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
-                            | GetByAggregateIdQuery.ValidationErrors ve -> ErrorDto.fromValidationErrors accept ve
+                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
@@ -488,7 +488,7 @@ module Controller =
                 return
                     (match token with
                      | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
-                     | Error e -> ErrorDto.createJsonResult accept StatusCodes.Status400BadRequest e)
+                     | Error e -> ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
             }
 
         // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
