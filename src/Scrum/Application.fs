@@ -40,6 +40,7 @@ module Seedwork =
             | "member" -> Member
             | "admin" -> Admin
             | unsupported -> failwith $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+
         override x.ToString() =
             match x with
             | Member -> "member"
