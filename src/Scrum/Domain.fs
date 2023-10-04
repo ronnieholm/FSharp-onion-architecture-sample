@@ -31,7 +31,7 @@ module StoryAggregate =
 
             let validate =
                 function
-                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
                 | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
                 | v -> Ok(TaskTitle v)
 
@@ -43,7 +43,7 @@ module StoryAggregate =
 
             let validate =
                 function
-                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
                 | v when v.Length > maxLength -> Error $"Should contain less than or equal to ${maxLength} characters"
                 | v -> Ok(TaskDescription v)
 
@@ -78,7 +78,7 @@ module StoryAggregate =
 
         let create =
             function
-            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
             | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
             | v -> Ok(StoryTitle v)
 
@@ -90,7 +90,7 @@ module StoryAggregate =
 
         let validate =
             function
-            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-empty or non-whitespace"
+            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
             | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
             | v -> Ok(StoryDescription v)
 
@@ -167,7 +167,7 @@ module StoryAggregate =
         story, event
 
     let delete (story: Story) : DomainEvent =
-        // Depending on the domain, we might want to explicitly delete the story's tasks
+        // Depending on domain, we might want to explicitly delete the story's tasks
         // and emit task deleted domain events. In this case, we leave cascade delete
         // to the store.
         DomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id })
