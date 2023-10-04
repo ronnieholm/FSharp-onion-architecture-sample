@@ -29,6 +29,8 @@ module Seedwork =
           EventPayload: string
           CreatedAt: DateTime }
 
+    // Roles a user may possess in the application, not in Scrum as a process.
+    // We're in the application layer, not domain layer, after all.
     type ScrumRole =
         | Member
         | Admin

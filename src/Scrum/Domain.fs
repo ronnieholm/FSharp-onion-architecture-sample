@@ -17,6 +17,7 @@ module StoryAggregate =
 
     module TaskEntity =
         type TaskId = TaskId of Guid
+
         module TaskId =
             let validate =
                 function
@@ -26,6 +27,7 @@ module StoryAggregate =
             let value (TaskId id) = id
 
         type TaskTitle = TaskTitle of string
+
         module TaskTitle =
             let maxLength = 100
 
@@ -38,6 +40,7 @@ module StoryAggregate =
             let value (TaskTitle id) = id
 
         type TaskDescription = TaskDescription of string
+
         module TaskDescription =
             let maxLength = 1000
 
@@ -73,6 +76,7 @@ module StoryAggregate =
         let value (StoryId id) = id
 
     type StoryTitle = StoryTitle of string
+
     module StoryTitle =
         let maxLength = 100
 
@@ -85,6 +89,7 @@ module StoryAggregate =
         let value (StoryTitle id) = id
 
     type StoryDescription = StoryDescription of string
+
     module StoryDescription =
         let maxLength = 1000
 
