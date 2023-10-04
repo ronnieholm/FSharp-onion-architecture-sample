@@ -33,16 +33,18 @@ module Seedwork =
         type DateTimeJsonConverter() =
             inherit JsonConverter<DateTime>()
 
-            override this.Read(_, _, _) = raise (UnreachableException())
-            override this.Write(writer, value, _) =
+            override _.Read(_, _, _) = raise (UnreachableException())
+
+            override _.Write(writer, value, _) =
                 value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
                 |> writer.WriteStringValue
 
         type EnumJsonConverter() =
             inherit JsonConverter<ValueType>()
 
-            override this.Read(_, _, _) = raise (UnreachableException())
-            override this.Write(writer, value, _) =
+            override _.Read(_, _, _) = raise (UnreachableException())
+
+            override _.Write(writer, value, _) =
                 let t = value.GetType()
                 if
                     t.IsEnum

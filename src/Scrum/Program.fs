@@ -37,7 +37,7 @@ open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 open Scrum.Infrastructure.Seedwork.Json
 
-module Seedwork =   
+module Seedwork =
     // By default only a public top-level type ending in Controller is
     // considered one. It means controllers inside a module isn't found. A
     // module compiles to a class with nested classes for controllers.
@@ -230,15 +230,15 @@ module Controller =
         member _.Env = env
 
         [<NonAction>]
-        member this.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
+        member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
             task {
-                this.Env.Logger.LogException(e)
-                do! this.Env.RollbackAsync(ct)
+                x.Env.Logger.LogException(e)
+                do! x.Env.RollbackAsync(ct)
                 return ProblemDetail.fromUncaughtException acceptHeaders
             }
 
         interface IDisposable with
-            member this.Dispose() = this.Env.Dispose()
+            member x.Dispose() = x.Env.Dispose()
 
     // As the token is supposed to be opaque, we can either expose information
     // from claims inside the token as additional fields or provide clients with
@@ -528,7 +528,7 @@ module Controller =
 
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
-        let mb = 1024 * 2024        
+        let mb = 1024 * 2024
         interface IHealthCheck with
             member _.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
                 task {
