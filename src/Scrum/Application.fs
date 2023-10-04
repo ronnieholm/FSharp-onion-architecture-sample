@@ -26,19 +26,33 @@ module Seedwork =
           EventPayload: string
           CreatedAt: DateTime }
 
+    // TODO: move to identity module?
+    type ScrumRole =
+        | Member
+        | Admin
+
+        static member FromString =
+            function
+            | "member" -> Member
+            | "admin" -> Admin
+            | unsupported -> failwith $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+        override x.ToString() =
+            match x with
+            | Member -> "member"
+            | Admin -> "admin"
+
     type ScrumIdentity =
-         | Anonymous
-         | Regular of UserId: string
-         | Admin of UserId: string    
-    
+        | Anonymous
+        | User of UserId: string * Role: ScrumRole list
+
     [<Interface>]
     type IUserIdentityService =
-        abstract GetCurrentIdentity: unit -> ScrumIdentity                                   
-        
+        abstract GetCurrentIdentity: unit -> ScrumIdentity
+
     [<Interface>]
     type IUserIdentityServiceFactory =
         abstract UserIdentityService: IUserIdentityService
-        
+
     [<Interface>]
     type ISystemClock =
         abstract CurrentUtc: unit -> DateTime

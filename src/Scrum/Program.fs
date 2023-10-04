@@ -40,10 +40,10 @@ open Scrum.Infrastructure.Seedwork.Json
 module Seedwork =
     // By default only a public top-level type ending in Controller is considered one.
     // It means controllers inside a module isn't found. A module compiles to a class
-    // with nested classes for controllers.    
+    // with nested classes for controllers.
     type ControllerWithinModule() =
-        inherit ControllerFeatureProvider()        
-        
+        inherit ControllerFeatureProvider()
+
         override _.IsController(typeInfo: TypeInfo) : bool =
             base.IsController(typeInfo)
             || typeInfo.FullName.StartsWith("Scrum.Web.Controller")
@@ -127,7 +127,7 @@ module Service =
     // Names of claims shared between services.
     module ScrumClaims =
         let UserIdClaim = "userId"
-        let RoleClaim = "role"
+        let RolesClaim = "roles"
 
     // Web specific implementation of IUserIdentityService so it belongs in Program.fs rather than
     // Infrastructure.fs.
@@ -149,18 +149,23 @@ module Service =
                         if Seq.isEmpty claims then
                             Anonymous
                         else
-                            let roleClaim =
-                                claims |> Seq.filter (fun c -> c.Type = ClaimTypes.Role) |> Seq.exactlyOne
                             let userIdClaim =
                                 claims
                                 |> Seq.filter (fun c -> c.Type = ScrumClaims.UserIdClaim)
+                                |> Seq.map (fun c -> c.Value)
                                 |> Seq.exactlyOne
+                            let rolesClaim =
+                                claims
+                                |> Seq.filter (fun c -> c.Type = ClaimTypes.Role)
+                                |> Seq.map (fun c -> ScrumRole.FromString(c.Value))
+                                |> List.ofSeq
 
-                            // With an actual identity provider, claims would likely vary by role.
-                            match roleClaim.Value with
-                            | "regular" -> Regular(userIdClaim.Value)
-                            | "admin" -> Admin(userIdClaim.Value)
-                            | _ -> failwith $"Unsupported role: '%s{roleClaim.Value}'"
+                            // With a proper identity provider, it's likely we'd have
+                            // more kinds of authenticated identities, and that we'd
+                            // use a claim's value to determine which one.
+                            match List.length rolesClaim with
+                            | 0 -> Anonymous
+                            | _ -> User(userIdClaim, rolesClaim)
 
     // IUserIdentityService is defined in the Application.fs because application code
     // needs to consult the current identity as part of running use cases. Its implementation
@@ -186,19 +191,22 @@ module Service =
                 )
             JwtSecurityTokenHandler().WriteToken(token)
 
-        member _.IssueToken (userId: string) (role: string) : string =
+        member _.IssueToken (userId: string) (roles: ScrumRole list) : string =
             // With an actual user store, we'd validate user credentials here. But for this app, userId
             // may be any string and role must be either "regular" or "admin"
-            [| Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
-               Claim(ScrumClaims.UserIdClaim, userId)
-               Claim(ScrumClaims.RoleClaim, role) |]
-            |> sign
+            let roles =
+                roles
+                |> List.map (fun r -> Claim(ScrumClaims.RolesClaim, r.ToString()))
+                |> List.toArray
+            let rest =
+                [| Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
+                   Claim(ScrumClaims.UserIdClaim, userId) |]
+            Array.concat [ roles; rest ] |> sign
 
         member x.RenewToken(identity: ScrumIdentity) : Result<string, string> =
             match identity with
             | Anonymous -> Error "User is anonymous"
-            | Regular ri -> Ok(x.IssueToken ri "regular")
-            | Admin ai -> Ok(x.IssueToken ai "admin")
+            | User(id, roles) -> Ok(x.IssueToken id roles)
 
 open Seedwork
 open Service
@@ -465,11 +473,12 @@ module Controller =
         // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
 
         [<HttpPost("issueToken")>]
-        member _.IssueToken(userId: string, role: string) : Task<ActionResult> =
+        member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
             task {
                 // Get user from hypothetical user store and pass to issueRegularToken
                 // to include information about the user as claims in the token.
-                let token = idp.IssueToken userId role
+                let roles = roles.Split(',') |> Array.map ScrumRole.FromString |> Array.toList
+                let token = idp.IssueToken userId roles
                 return CreatedResult("/authentication/introspect", { Token = token })
             }
 
@@ -496,20 +505,27 @@ module Controller =
         member _.Introspect() : IDictionary<string, obj> =
             let claimsPrincipal = x.HttpContext.User
             let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
-            claimsIdentity.Claims
-            |> Seq.map (fun c ->
-                match c.Type, c.Value with
-                | "exp" as t, v ->
-                    // Special case non-string value or it becomes a string in string in
-                    // the HTTP response.
-                    t, Int32.Parse(v) :> obj
-                | ClaimTypes.Role, v ->
+            let map = Dictionary<string, obj>()
+
+            for c in claimsIdentity.Claims do
+                // Special case non-string value or it becomes a string in string in
+                // the HTTP response.
+                if c.Type = "exp" then
+                    map.Add("exp", Int32.Parse(c.Value) :> obj)
+                elif c.Type = ClaimTypes.Role then
                     // For reasons unknown, ASP.NET maps our Scrum RoleClaim from the bearer token to
                     // ClaimTypes.Role. The claim's type deserialized becomes
                     // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
-                    ScrumClaims.RoleClaim, v :> obj
-                | _ -> c.Type, c.Value :> obj)
-            |> dict
+                    let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
+                    if ok then
+                        let values = values :?> ResizeArray<string>
+                        values.Add(c.Value)
+                    else
+                        map.Add(ScrumClaims.RolesClaim, [ c.Value ] |> ResizeArray)
+                else
+                    map.Add(c.Type, c.Value)            
+
+            map
 
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =

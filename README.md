@@ -5,7 +5,7 @@
 Proof of concept F# clean architecture sample.
 
 Focus is on applying functional constructs over cluing together libraries and
-frameworks. Instead of FluentValidation, MediatR, Entity Framework, we use
+frameworks. Instead of FluentValidation, MediatR, Entity Framework, Moq, we use
 functions.
 
 While the template is in F#, many principles are applicable to C#, TypeScript,

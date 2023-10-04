@@ -56,7 +56,7 @@ open Database
 module Fake =
     let userIdentityService =
         { new IUserIdentityService with
-            member _.GetCurrentIdentity() = ScrumIdentity.Regular("1") }
+            member _.GetCurrentIdentity() = ScrumIdentity.User("1", [ Member ]) }
 
     let fixedClock =
         { new ISystemClock with
@@ -68,7 +68,8 @@ module Fake =
             member _.LogRequestDuration _ _ = ()
             member _.LogException _ = () }
 
-    let defaultAppEnv () = new AppEnv(connectionString, userIdentityService, systemClock = fixedClock, logger = nullLogger)
+    let defaultAppEnv () =
+        new AppEnv(connectionString, userIdentityService, systemClock = fixedClock, logger = nullLogger)
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
@@ -110,7 +111,7 @@ type DisableParallelization() =
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
     do reset ()
-    
+
     [<Fact>]
     let ``create story with task`` () =
         use env = defaultAppEnv ()
