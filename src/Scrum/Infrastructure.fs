@@ -253,7 +253,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
                     p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@createdAt", e.CreatedAt.Ticks) |> ignore
+                    p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
                 | StoryUpdated e ->
@@ -264,7 +264,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
                     p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@updatedAt", e.UpdatedAt.Ticks) |> ignore
+                    p.AddWithValue("@updatedAt", e.OccurredAt.Ticks) |> ignore
                     p.AddWithValue("@id", e.StoryId |> StoryId.value |> string) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
@@ -285,7 +285,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
                     p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@createdAt", e.CreatedAt.Ticks) |> ignore
+                    p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
                 | TaskUpdated e ->
@@ -296,7 +296,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
                     p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                     |> ignore
-                    p.AddWithValue("@updatedAt", e.UpdatedAt.Ticks) |> ignore
+                    p.AddWithValue("@updatedAt", e.OccurredAt.Ticks) |> ignore
                     p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                     p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)

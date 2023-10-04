@@ -112,13 +112,13 @@ module StoryAggregate =
         { StoryId: StoryId
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option
-          CreatedAt: DateTime }
+          OccurredAt: DateTime }
 
     type StoryUpdated =
         { StoryId: StoryId
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option
-          UpdatedAt: DateTime }
+          OccurredAt: DateTime }
 
     type StoryDeleted = { StoryId: StoryId }
 
@@ -127,14 +127,14 @@ module StoryAggregate =
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option
-          CreatedAt: DateTime }
+          OccurredAt: DateTime }
 
     type TaskUpdated =
         { StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option
-          UpdatedAt: DateTime }
+          OccurredAt: DateTime }
 
     type TaskDeleted = { StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
@@ -155,7 +155,7 @@ module StoryAggregate =
             { StoryId = id
               StoryTitle = title
               StoryDescription = description
-              CreatedAt = createdAt }
+              OccurredAt = createdAt }
         )
 
     let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * DomainEvent =
@@ -167,7 +167,7 @@ module StoryAggregate =
                 { StoryId = story.Aggregate.Id
                   StoryTitle = title
                   StoryDescription = description
-                  UpdatedAt = updatedAt }
+                  OccurredAt = updatedAt }
             )
         story, event
 
@@ -194,7 +194,7 @@ module StoryAggregate =
                       TaskId = task.Entity.Id
                       TaskTitle = task.Title
                       TaskDescription = task.Description
-                      CreatedAt = createdAt }
+                      OccurredAt = createdAt }
                 )
             )
 
@@ -222,7 +222,7 @@ module StoryAggregate =
                       TaskId = taskId
                       TaskTitle = title
                       TaskDescription = description
-                      UpdatedAt = updatedAt }
+                      OccurredAt = updatedAt }
                 )
             Ok(story, event)
         | None -> Error(TaskNotFound taskId)
