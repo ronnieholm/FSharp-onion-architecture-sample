@@ -486,8 +486,6 @@ module StoryAggregateRequest =
                 { Id = story.Aggregate.Id |> StoryId.value
                   Title = story.Title |> StoryTitle.value
                   Description =
-                    // TODO: doesn't None end up being null with JSON
-                    // serialization anyway?
                     story.Description
                     |> Option.map StoryDescription.value
                     |> Option.defaultValue null

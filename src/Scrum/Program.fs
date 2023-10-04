@@ -536,14 +536,12 @@ module HealthCheck =
                     let mb = 1024 * 1024
                     let allocatedInBytes = GC.GetTotalMemory(forceFullCollection = false)
                     let committedInBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
-                    let data =
-                        [ "allocated_megabytes", Math.Round(float allocatedInBytes / float mb, 2)
-                          "committed_megabytes", Math.Round(float committedInBytes / float mb, 2)
-                          "gen0_collection_count", GC.CollectionCount(0)
-                          "gen1_collection_count", GC.CollectionCount(1)
-                          "gen2_collection_count", GC.CollectionCount(2) ]
-                        |> dict
-                        :?> Dictionary<string, obj>
+                    let data = Dictionary<string, obj>()
+                    data.Add("allocated_megabytes", Math.Round(float allocatedInBytes / float mb, 2))
+                    data.Add("committed_megabytes", Math.Round(float committedInBytes / float mb, 2))
+                    data.Add("gen0_collection_count", GC.CollectionCount(0))
+                    data.Add("gen1_collection_count", GC.CollectionCount(1))
+                    data.Add("gen2_collection_count", GC.CollectionCount(2))
                     return
                         HealthCheckResult(
                             (if allocatedInBytes < allocatedThresholdInMb * int64 mb then
@@ -562,16 +560,17 @@ module HealthCheck =
             member _.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
                 task {
                     try
-                        // TODO: implementing timing helper
-                        let sw = Stopwatch()
-                        sw.Start()
-                        use connection = new SQLiteConnection(connectionString)
-                        do! connection.OpenAsync(ct)
-                        use cmd = new SQLiteCommand("select 1", connection)
-                        let! _ = cmd.ExecuteScalarAsync(ct)
-                        sw.Stop()
+                        let _, elapsed =
+                            time (fun _ ->
+                                task {
+                                    use connection = new SQLiteConnection(connectionString)
+                                    do! connection.OpenAsync(ct)
+                                    use cmd = new SQLiteCommand("select 1", connection)
+                                    let! _ = cmd.ExecuteScalarAsync(ct)
+                                    return ()
+                                })
                         let data = Dictionary<string, obj>()
-                        data.Add("response_time_milliseconds", sw.ElapsedMilliseconds)
+                        data.Add("response_time_milliseconds", elapsed)
                         return HealthCheckResult(HealthStatus.Healthy, description, null, data)
                     with e ->
                         return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
