@@ -10,9 +10,6 @@ open Scrum.Application.StoryAggregateRequest
 open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 
-// TODO: How to clear database between runs? No need to use typical .NET
-// library, just issue delete * table statements in test class dispose method.
-
 module A =
     let createStoryCommand () : CreateStoryCommand = { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
 
