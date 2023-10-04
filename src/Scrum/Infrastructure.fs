@@ -364,8 +364,14 @@ type Logger() =
         member _.LogDebug(message: string) = logger.LogDebug(message)
 
 type AppEnv
-    (connectionString: string, userIdentity: IUserIdentity, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository: IStoryRepository)
-    =
+    (
+        connectionString: string,
+        userIdentity: IUserIdentity,
+        ?systemClock: ISystemClock,
+        ?logger: ILogger,
+        ?storyRepository: IStoryRepository,
+        ?domainEventRepository: IDomainEventRepository
+    ) =
     // Bind connection and transaction with a let, not a use, or repository
     // operations will fail with: "System.ObjectDisposedException: Cannot access
     // a disposed object.". Connection and transaction are unmanaged resources,
@@ -388,12 +394,16 @@ type AppEnv
 
     // No point in making it lazy as we're merely a pass-through.
     let userIdentityFactory = userIdentity
+
     let storyRepository' =
         lazy
             (storyRepository
              |> Option.defaultValue (SqliteStoryRepository(transaction.Value, systemClock'.Value)))
 
-    let domainEventRepository = lazy SqliteDomainEventRepository(transaction.Value)
+    let domainEventRepository =
+        lazy
+            (domainEventRepository
+             |> Option.defaultValue (SqliteDomainEventRepository(transaction.Value)))
 
     interface IDisposable with
         member _.Dispose() =
