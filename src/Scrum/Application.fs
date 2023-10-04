@@ -24,6 +24,7 @@ module Seedwork =
     type PersistedDomainEvent =
         { Id: Guid
           AggregateId: Guid
+          AggregateType: string
           EventType: string
           EventPayload: string
           CreatedAt: DateTime }
@@ -464,7 +465,7 @@ module StoryAggregateRequest =
 
         module TaskDto =
             let from (task: Task) : TaskDto =
-                { Id = Guid.NewGuid()
+                { Id = task.Entity.Id |> TaskId.value
                   Title = task.Title |> TaskTitle.value
                   Description =
                     match task.Description with
@@ -533,6 +534,7 @@ module DomainEventRequest =
         type PersistedDomainEventDto =
             { Id: Guid
               AggregateId: Guid
+              AggregateType: string
               EventType: string
               EventPayload: string
               CreatedAt: DateTime }
@@ -541,6 +543,7 @@ module DomainEventRequest =
             let from (event: PersistedDomainEvent) : PersistedDomainEventDto =
                 { Id = event.Id
                   AggregateId = event.AggregateId
+                  AggregateType = event.AggregateType 
                   EventType = event.EventType
                   EventPayload = event.EventPayload
                   CreatedAt = event.CreatedAt }

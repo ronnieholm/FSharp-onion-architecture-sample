@@ -37,7 +37,7 @@ open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 open Scrum.Infrastructure.Seedwork.Json
 
-module Seedwork =
+module Seedwork =   
     // By default only a public top-level type ending in Controller is
     // considered one. It means controllers inside a module isn't found. A
     // module compiles to a class with nested classes for controllers.
@@ -333,7 +333,6 @@ module Controller =
                         | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                         | Error e ->
                             match e with
-                            // TODO: if we failwith ae here, why does API then get into a NRE?
                             | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
@@ -529,22 +528,21 @@ module Controller =
 
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
+        let mb = 1024 * 2024        
         interface IHealthCheck with
             member _.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
                 task {
-                    // TODO: Use units of measure
-                    let mb = 1024 * 1024
-                    let allocatedInBytes = GC.GetTotalMemory(forceFullCollection = false)
-                    let committedInBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
+                    let allocatedBytes = GC.GetTotalMemory(forceFullCollection = false)
+                    let committedBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
                     let data = Dictionary<string, obj>()
-                    data.Add("allocated_megabytes", Math.Round(float allocatedInBytes / float mb, 2))
-                    data.Add("committed_megabytes", Math.Round(float committedInBytes / float mb, 2))
+                    data.Add("allocated_megabytes", Math.Round(float allocatedBytes / float mb, 2))
+                    data.Add("committed_megabytes", Math.Round(float committedBytes / float mb, 2))
                     data.Add("gen0_collection_count", GC.CollectionCount(0))
                     data.Add("gen1_collection_count", GC.CollectionCount(1))
                     data.Add("gen2_collection_count", GC.CollectionCount(2))
                     return
                         HealthCheckResult(
-                            (if allocatedInBytes < allocatedThresholdInMb * int64 mb then
+                            (if allocatedBytes < allocatedThresholdInMb * int64 mb then
                                  HealthStatus.Healthy
                              else
                                  HealthStatus.Degraded),
@@ -616,8 +614,6 @@ type Startup(configuration: IConfiguration) =
                     ))
         |> ignore
 
-        // TODO: read from appsettings?
-        // TODO: options.Conventions.Add(new RouteTokenTransformerConvention(new CamelCaseTransformer()));
         services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
         |> ignore
@@ -730,7 +726,7 @@ module Program =
             .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
 
     [<EntryPoint>]
-    let main args =        
+    let main args =
         // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
         TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
             e.SetObserved()

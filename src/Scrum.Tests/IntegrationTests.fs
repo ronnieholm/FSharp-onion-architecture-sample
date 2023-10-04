@@ -3,6 +3,7 @@
 open System
 open System.Threading
 open System.Data.SQLite
+open Scrum.Application.StoryAggregateRequest.GetStoryByIdQuery
 open Swensen.Unquote
 open Xunit
 open Scrum.Application.Seedwork
@@ -54,9 +55,9 @@ module Database =
 open Database
 
 module Fake =
-    let userIdentityService =
+    let userIdentityService roles =
         { new IUserIdentity with
-            member _.GetCurrent() = ScrumIdentity.Authenticated("1", [ Member ]) }
+            member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
     let fixedClock =
         { new ISystemClock with
@@ -71,8 +72,11 @@ module Fake =
             member _.LogInformation _ = ()
             member _.LogDebug _ = () }
 
+    let appEnvWithRoles (roles: ScrumRole list) =
+        new AppEnv(connectionString, userIdentityService roles, systemClock = fixedClock, logger = nullLogger)   
+    
     let defaultAppEnv () =
-        new AppEnv(connectionString, userIdentityService, systemClock = fixedClock, logger = nullLogger)
+        appEnvWithRoles [ Member; Admin ]    
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
@@ -126,18 +130,43 @@ type StoryAggregateRequestTests() =
     do reset ()
 
     [<Fact>]
+    let ``must have member role to create story`` () =
+        use env = appEnvWithRoles [ Admin ]
+        let fns = env |> setupStoryAggregateRequests
+        task {
+            let storyCmd = A.createStoryCommand ()
+            let! result = fns.CreateStory storyCmd
+            test <@ result = Error(CreateStoryCommand.AuthorizationError("Missing role 'member'")) @>
+            do! fns.Commit()
+        }                
+    
+    [<Fact>]
     let ``create story with task`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! result = fns.CreateStory cmd
-            test <@ result = Ok(cmd.Id) @>
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! result = fns.AddTaskToStory cmd
-            test <@ result = Ok(cmd.TaskId) @>
-            let! result = fns.GetStoryById { Id = cmd.StoryId }
-            //test <@ result = Ok(_) @>
+            let storyCmd = A.createStoryCommand ()
+            let! result = fns.CreateStory storyCmd
+            test <@ result = Ok(storyCmd.Id) @>
+            let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
+            let! result = fns.AddTaskToStory taskCmd
+            test <@ result = Ok(taskCmd.TaskId) @>
+            let! result = fns.GetStoryById { Id = taskCmd.StoryId }
+
+            let story: StoryDto =
+                { Id = storyCmd.Id
+                  Title = storyCmd.Title
+                  Description = storyCmd.Description |> Option.defaultValue null
+                  CreatedAt = fixedClock.CurrentUtc()
+                  UpdatedAt = None
+                  Tasks =
+                    [ { Id = taskCmd.TaskId
+                        Title = taskCmd.Title
+                        Description = taskCmd.Description |> Option.defaultValue null
+                        CreatedAt = fixedClock.CurrentUtc()
+                        UpdatedAt = None } ] }
+
+            test <@ result = Ok(story) @>
             do! fns.Commit()
         }
 
@@ -321,11 +350,45 @@ type DomainEventRequestTests() =
         let dfns = env |> setupDomainEventRequests
 
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = sfns.CreateStory cmd
-            let cmd' = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = sfns.AddTaskToStory cmd'
-            let! result = dfns.GetByAggregateIdQuery { Id = cmd.Id }
-            //test <@ assert two domain events @>
+            let storyCmd = A.createStoryCommand ()
+            let! _ = sfns.CreateStory storyCmd
+            let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
+            let! _ = sfns.AddTaskToStory taskCmd
+            let! result = dfns.GetByAggregateIdQuery { Id = storyCmd.Id }
+
+            // For this test, we can't use Unquote as we're not in control of Id
+            // assigned to each domain event. We also forego testing the ordering
+            // of events as they're created at the same time. Test could fail if
+            // SQLite decides to change ordering of items with same CreatedAt.                        
+            match result with
+            | Ok r ->            
+                Assert.Equal(2, r.Length)                
+                Assert.Equal(storyCmd.Id, r[0].AggregateId)
+                Assert.Equal("Story", r[0].AggregateType)
+                Assert.Equal("TaskAddedToStory", r[0].EventType)
+                Assert.Equal(fixedClock.CurrentUtc(), r[0].CreatedAt)
+                
+                Assert.Equal(storyCmd.Id, r[1].AggregateId)
+                Assert.Equal("Story", r[1].AggregateType)
+                Assert.Equal("StoryCreated", r[1].EventType)
+                Assert.Equal(fixedClock.CurrentUtc(), r[1].CreatedAt)                               
+            | Error e -> Assert.Fail($"%A{e}")   
+
             do! sfns.Commit()
         }
+
+    [<Fact>]
+    let ``must have admin role to query domain events`` () =
+        use env = appEnvWithRoles [ Member ]
+        let sfns = env |> setupStoryAggregateRequests
+        let dfns = env |> setupDomainEventRequests
+        
+        task {
+            let storyCmd = A.createStoryCommand ()
+            let! _ = sfns.CreateStory storyCmd
+            let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
+            let! _ = sfns.AddTaskToStory taskCmd
+            let! result = dfns.GetByAggregateIdQuery { Id = storyCmd.Id }
+            test <@ result = Error(GetByAggregateIdQuery.AuthorizationError("Missing role 'admin'")) @>
+        }
+        

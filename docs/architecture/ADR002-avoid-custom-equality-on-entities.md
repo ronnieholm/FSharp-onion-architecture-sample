@@ -46,5 +46,8 @@ Adding `Equals` and `GetHashCode` at the module level isn't supported by F#. To
 avoid ceremony, we forego the standard. NET equals pattern. This may have
 unknown adverse effect down the line.
 
-[1] https://www.compositional-it.com/news-blog/custom-equality-and-comparison-in-f
-[2] https://fsharpforfunandprofit.com/posts/conciseness-type-definitions
+## See also
+
+- https://www.compositional-it.com/news-blog/custom-equality-and-comparison-in-f
+- https://fsharpforfunandprofit.com/posts/conciseness-type-definitions
+- https://github.com/fsprojects/FSharp.UMX
