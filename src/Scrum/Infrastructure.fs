@@ -21,7 +21,8 @@ module Seedwork =
     module Json =
         type SnakeCaseLowerNamingPolicy() =
             inherit JsonNamingPolicy()
-            // SnakeCaseLower will be part of .NET 8 which releases on Nov 14, 2023.
+            // SnakeCaseLower will be part of .NET 8 which releases on Nov 14,
+            // 2023. After upgrading to .NET 8, remote this custom policy.
             override _.ConvertName(name: string) : string =
                 (name
                  |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
@@ -109,11 +110,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     (match count :?> int64 with
                      | 0L -> false
                      | 1L -> true
-                     | _ -> failwith $"Inconsistent database state. {count} instances with story Id: '{StoryId.value id}'")
+                     | _ -> failwith $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         member _.GetByIdAsync (ct: CancellationToken) (id: StoryId) : Task<Story option> =
-            // See also: https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
+            // See
+            // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
+            // for details on the flat table to tree deserialization algorithm.
             let parsedTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
             let parseTask (r: DbDataReader) (storyId: StoryId) : unit =
                 let parseTaskInner id =
@@ -155,7 +158,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     parsedStories.Add(storyId, story)
                 parseTask r storyId
 
-            // ADO.NET requires aliasing each field to extract it from the result.
+            // With multiple tables, ADO.NET requires aliasing fields to address
+            // those in the result.
             let sql =
                 """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
@@ -167,16 +171,17 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
             cmd.Parameters.AddWithValue("@id", StoryId.value id |> string) |> ignore
 
             task {
-                // Note that ExecuteReader() returns type SQLiteDataReader, but ExecuteReaderAsync(...)
-                // returns type DbDataReader. Presumably because querying async against SQLite in the
-                // same address space doesn't make a performance different. We stick with ExecuteReaderAsync
-                // to illustrate how to work with a client/server database.
+                // Note that ExecuteReader() returns SQLiteDataReader, but
+                // ExecuteReaderAsync(...) returns DbDataReader. Perhaps because
+                // querying async against SQLite in the same address space makes
+                // little async sense. We stick with ExecuteReaderAsync to
+                // illustrate how to work with a client/server database.
                 let! reader = cmd.ExecuteReaderAsync(ct)
 
-                // F# 8, released late 2023, adds while!
-                // https://devblogs.microsoft.com/dotnet/simplifying-fsharp-computations-with-the-new-while-keyword/
-                //while! reader.ReadAsync(ct) do
-                //    parseStory reader
+                // F# 8, to be released late Nov 14, 2023, will add while!
+                // support. At that point clean up this code:
+                // https://devblogs.microsoft.com/dotnet/simplifying-fsharp-computations-with-the-new-while-keyword
+                // while! reader.ReadAsync(ct) do parseStory reader
                 let mutable keepGoing = true
                 while keepGoing do
                     match! reader.ReadAsync(ct) with
@@ -195,12 +200,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      match count with
                      | 0 -> None
                      | 1 -> stories |> List.exactlyOne |> Some
-                     | _ -> failwith $"Inconsistent database state. {count} instances with story Id: '{StoryId.value id}'")
+                     | _ -> failwith $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
-        // As we're immediately applying events to the store, compared to event sourcing, we don't have to
-        // worry about events evolving over time. For this domain, we don't require full event sourcing;
-        // only enough event data to keep the store up to date.
+        // As we're immediately applying events to the store, compared to event
+        // sourcing, we don't have to worry about events evolving over time. For
+        // this domain, we don't require full event sourcing; only enough event
+        // data to keep the store up to date.
         member _.ApplyEventAsync (ct: CancellationToken) (event: DomainEvent) : Task<unit> =
             task {
                 let aggregateId =
@@ -213,13 +219,15 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      | TaskDeleted e -> e.StoryId)
                     |> StoryId.value
 
-                // TODO: Probably move comment to saveDomainEventAsync function.
-                // We don't serialize the event to JSON as F# discriminated unions aren't supported by
-                // System.Text.Json (https://github.com/dotnet/runtime/issues/55744). The event is intended
-                // for consumption inside application core and we therefore use F# constructs. Instead of
-                // a custom converter, we use the F# type printer as a compact representation. The printer
-                // wouldn't work in a pure event sourced scenario where we'd need to read back the event,
-                // but saving domain event for troubleshooting, the printer suffices.
+                // We don't serialize an event to JSON because F# discriminated
+                // unions aren't supported by System.Text.Json
+                // (https://github.com/dotnet/runtime/issues/55744). Instead of
+                // a custom converter, or taking a dependency on
+                // https://github.com/Tarmil/FSharp.SystemTextJson), we use the
+                // F# type printer. This wouldn't work in a pure event sourced
+                // scenario where we'd read back the event for processing, but
+                // persisting domain event for troubleshooting only, the printer
+                // suffices.
                 do! persistDomainEventAsync transaction ct (nameof Story) aggregateId (event.GetType().Name) $"%A{event}" (clock.CurrentUtc())
 
                 match event with
@@ -336,23 +344,11 @@ type Logger() =
         member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit = printfn $"%s{useCase}: %d{duration}"
         member _.LogException(e: exn) : unit = printfn $"%A{e}"
 
-// Pass into ctor IOptions<config>.
-// Avoid Singletons dependencies as they make testing hard.
-// transient dependencies are implemented like scoped factory method, except without lazy instantiation.
-//member _.SomeTransientDependency = newedUpDependency
-// In principle, currentTime could be a singleton, except it doesn't work well
-// when we want to switch out the time provider in tests. If we kept currentTime
-// a singleton changing the provider in one test would affect the others.
-// Are Open and BeginTransaction on the connection idempotent?
-// AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locator tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
-// This is our composition root: https://blog.ploeh.dk/2011/07/28/CompositionRoot/
 type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
-    // Instantiate the connection and transaction with a let binding, and not a use binding, or
-    // repository operations error will fail with:
-    //
-    // System.ObjectDisposedException: Cannot access a disposed object.
-    //
-    // The connection and transaction are disposed of by the IDisposable implementation.
+    // Bind connection and transaction with a let, not a use, or repository
+    // operations will fail with: "System.ObjectDisposedException: Cannot access
+    // a disposed object.". Connection and transaction are unmanaged resources,
+    // disposed of in the IDisposable implementation.
     let connection = lazy new SQLiteConnection(connectionString)
 
     let transaction =
@@ -362,16 +358,10 @@ type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock:
             connection.BeginTransaction()
 
     let systemClock' = lazy (systemClock |> Option.defaultValue (SystemClock()))
-    let logger' = lazy (logger |> Option.defaultValue (Logger()))
+    let logger' = lazy (logger |> Option.defaultValue (Logger()))   
     
-    // Problem: How to determine the identity of the current user is dependent on the
-    // hosting environment. With ASP.NET, we require the HttpContext, but other hosts
-    // may use different means to satisfy the interface. How to model that with out AppEnv?
-    // Passing into AppEnv the UserIdentityService? Similar in nature to connectionString
-    // which would also be database specific? We could passing in the IoC container, but
-    // this would make AppEnv non-explicit and be a hassle to replace this service in test
-    // for instance.
-    let userIdentityFactory = lazy userIdentity
+    // No point in making it lazy as we're merely a pass-through.
+    let userIdentityFactory = userIdentity
     let storyRepository' =
         lazy SqliteStoryRepository(transaction.Value, systemClock'.Value)
 
@@ -381,11 +371,13 @@ type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock:
         member _.Dispose() =
             if transaction.IsValueCreated then
                 let tx = transaction.Value
-                // From https://learn.microsoft.com/en-us/dotnet/api/system.data.common.dbtransaction.dispose?view=net-7.0#system-data-common-dbtransaction-dispose
-                // "Dispose should rollback the transaction. However, the behavior of Dispose is provider specific, and should not replace calling Rollback".
-                // TODO: How to determine if tx is in pending state? Assert this isn't the case as that indicates code forgetting to call commit/rollback.
-                // TODO: Why does Rollback() sometimes result in exception where transaction has to no connection?
-                //tx.Rollback()
+                // From
+                // https://learn.microsoft.com/en-us/dotnet/api/system.data.common.dbtransaction.dispose?view=net-7.0#system-data-common-dbtransaction-dispose
+                // "Dispose should rollback the transaction. However, the
+                // behavior of Dispose is provider specific, and should not
+                // replace calling Rollback". Yet, calling Rollback() sometimes
+                // result in exception where the transaction has to no
+                // connection. tx.Rollback()
                 tx.Dispose()
             if connection.IsValueCreated then
                 connection.Value.Dispose()
@@ -405,6 +397,6 @@ type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock:
 
         member _.SystemClock = systemClock'.Value
         member _.Logger = logger'.Value
-        member _.UserIdentity = userIdentityFactory.Value
+        member _.UserIdentity = userIdentityFactory
         member _.StoryRepository = storyRepository'.Value
         member _.DomainEventRepository = domainEventRepository.Value

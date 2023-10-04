@@ -167,9 +167,9 @@ module StoryAggregate =
         story, event
 
     let delete (story: Story) : DomainEvent =
-        // Depending on domain, we might want to explicitly delete the story's tasks
-        // and emit task deleted domain events. In this case, we leave cascade delete
-        // to the store.
+        // Depending on domain, we might want to explicitly delete the story's
+        // tasks and emit task deleted domain events. In this case, we leave
+        // cascade delete to the store.
         DomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id })
 
     open TaskEntity

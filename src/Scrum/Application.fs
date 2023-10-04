@@ -18,9 +18,9 @@ module Seedwork =
         let create (field: string) (message: string) = { Field = field; Message = message }
         let mapError (field: string) : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
 
-    // A pseudo-aggregate or an aggregate in the application layer. In principle, we could
-    // define value types similar to those making up aggregates in the domain, but for this
-    // case it's overkill.
+    // A pseudo-aggregate or an aggregate in the application layer. In
+    // principle, we could define value types similar to those making up
+    // aggregates in the domain, but for this case it's overkill.
     type PersistedDomainEvent =
         { Id: Guid
           AggregateId: Guid
@@ -50,12 +50,11 @@ module Seedwork =
     type IUserIdentity =
         abstract GetCurrent: unit -> ScrumIdentity
 
-    // The factory interfaces is there as a means of groping inside
-    // AppEnv. Without factory interfaces, AppEnv would implement
-    // all interfaces at the same same level, e.g., AppEnv.GetCurrent.
-    // With factory interfaces it becomes AppEnv.UserIdentity.GetCurrent.
-    // The latter means we can inject the dependency into another type
-    // by passing in AppEnv.UserIdentity.
+    // The factory interfaces is there as a means of groping inside AppEnv.
+    // Without factory interfaces, AppEnv would implement all interfaces at the
+    // same same level, e.g., AppEnv.GetCurrent. With factory interfaces it
+    // becomes AppEnv.UserIdentity.GetCurrent. The latter means we can inject
+    // the dependency into another type by passing in AppEnv.UserIdentity.
     [<Interface>]
     type IUserIdentityFactory =
         abstract UserIdentity: IUserIdentity
@@ -83,9 +82,10 @@ module Seedwork =
         abstract StoryRepository: IStoryRepository
 
     [<Interface>]
-    // Mirroring the PersistedDomainEvent type, its repository is defined in the application layer.
-    // While domain events are part of the domain, persisted domain events aren't. After an
-    // event is applied, it's no longer needed. We persist domain events for troubleshooting only.
+    // Mirroring the PersistedDomainEvent type, its repository is defined in the
+    // application layer. While domain events are part of the domain, persisted
+    // domain events aren't. After an event is applied, it's no longer needed.
+    // We persist domain events for troubleshooting only.
     type IDomainEventRepository =
         abstract GetByAggregateIdAsync: CancellationToken -> Guid -> System.Threading.Tasks.Task<PersistedDomainEvent list>
 
@@ -116,8 +116,8 @@ module Seedwork =
             time (fun _ ->
                 logger.LogRequestPayload useCase cmd
                 taskResult { return! fn () })
-        // Don't log errors from evaluating fn as These are expected errors which we
-        // don't want to pollute the log with.
+        // Don't log errors from evaluating fn as These are expected errors
+        // which we don't want to pollute the log with.
         logger.LogRequestDuration useCase elapsed
         result
 
@@ -179,8 +179,10 @@ module StoryAggregateRequest =
                     let now = clock.CurrentUtc()
                     let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
                     do! stories.ApplyEventAsync ct event
-                    // Example of publishing the StoryCreated domain event to another aggregate:
-                    // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
+                    // Example of publishing the StoryCreated domain event to
+                    // another aggregate: do!
+                    // SomeOtherAggregate.SomeEventNotificationAsync
+                    // dependencies ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
@@ -193,9 +195,10 @@ module StoryAggregateRequest =
 
         let validate (c: UpdateStoryCommand) : Validation<UpdateStoryValidatedCommand, ValidationError> =
             validation {
-                // Except for return type, validation is identical to that of CreateStoryCommand. With
-                // more fields on the story, likely we may not want to allow updating every field set
-                // during creation. At that point, validations will differ.
+                // Except for return type, validation is identical to that of
+                // CreateStoryCommand. With more fields on the story, likely we
+                // may not want to allow updating every field set during
+                // creation. At that point, validations will differ.
                 let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
@@ -341,8 +344,9 @@ module StoryAggregateRequest =
               Description: TaskDescription option }
 
         let validate (c: UpdateTaskCommand) : Validation<UpdateTaskValidatedCommand, ValidationError> =
-            // Except for return type, identical to AddTaskToStoryCommand's validate command.
-            // With more fields on the task, the two are more likely to differ.
+            // Except for return type, identical to AddTaskToStoryCommand's
+            // validate command. With more fields on the task, the two are more
+            // likely to differ.
             validation {
                 let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
@@ -477,7 +481,8 @@ module StoryAggregateRequest =
                 { Id = story.Aggregate.Id |> StoryId.value
                   Title = story.Title |> StoryTitle.value
                   Description =
-                    // TODO: doesn't None end up being null with JSON serialization anyway?
+                    // TODO: doesn't None end up being null with JSON
+                    // serialization anyway?
                     story.Description
                     |> Option.map StoryDescription.value
                     |> Option.defaultValue null

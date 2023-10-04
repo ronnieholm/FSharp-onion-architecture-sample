@@ -38,9 +38,9 @@ open Scrum.Infrastructure
 open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
-    // By default only a public top-level type ending in Controller is considered one.
-    // It means controllers inside a module isn't found. A module compiles to a class
-    // with nested classes for controllers.
+    // By default only a public top-level type ending in Controller is
+    // considered one. It means controllers inside a module isn't found. A
+    // module compiles to a class with nested classes for controllers.
     type ControllerWithinModule() =
         inherit ControllerFeatureProvider()
 
@@ -49,9 +49,12 @@ module Seedwork =
             || typeInfo.FullName.StartsWith("Scrum.Web.Controller")
 
     module Json =
-        // System.Text.Json cannot serialize an exception without itself throwing an exception:
-        // System.NotSupportedException: Serialization and deserialization of 'System.Reflection.MethodBase' instances are not supported. Path: $.Result.Exception.TargetSite.
-        // The converters works around the issue by limiting serialization to the most relevant parts of the exception.
+        // System.Text.Json cannot serialize an exception without itself
+        // throwing an exception: "System.NotSupportedException: Serialization
+        // and deserialization of 'System.Reflection.MethodBase' instances are
+        // not supported. Path: $.Result.Exception.TargetSite.". The converters
+        // works around the issue by limiting serialization to the most relevant
+        // parts of the exception.
         type ExceptionJsonConverter() =
             inherit JsonConverter<Exception>()
             override _.Read(_, _, _) = raise (UnreachableException())
@@ -77,7 +80,8 @@ module Seedwork =
                 writer.WriteString(nameof Type, value.GetType().FullName)
                 writer.WriteEndObject()
 
-    // RFC7807 problem detail format per https://opensource.zalando.com/restful-api-guidelines/#176.
+    // RFC7807 problem detail format per
+    // https://opensource.zalando.com/restful-api-guidelines/#176.
     type ProblemDetail = { Type: string; Title: string; Status: int; Detail: string }
 
     module ProblemDetail =
@@ -132,12 +136,13 @@ module Service =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
 
-    // Web specific implementation of IUserIdentityService so it belongs in Program.fs rather than
-    // Infrastructure.fs.
+    // Web specific implementation of IUserIdentityService so it belongs in
+    // Program.fs rather than Infrastructure.fs.
     type UserIdentity(context: HttpContext) =
         interface IUserIdentity with
             member x.GetCurrent() : ScrumIdentity =
-                // Access to HttpContext from outside a controller goes through IHttpContextAccess per
+                // Access to HttpContext from outside a controller goes through
+                // IHttpContextAccess per
                 // https://docs.microsoft.com/en-us/aspnet/core/migration/claimsprincipal-current.
                 // Running in a non-HTTP context, HttpContext is therefore null.
                 if isNull context then
@@ -163,23 +168,22 @@ module Service =
                                 |> Seq.map (fun c -> ScrumRole.FromString(c.Value))
                                 |> List.ofSeq
 
-                            // With a proper identity provider, it's likely we'd have
-                            // more kinds of authenticated identities, and that we'd
-                            // use a claim's value to determine which one.
+                            // With a proper identity provider, it's likely we'd
+                            // have more kinds of authenticated identities, and
+                            // that we'd use a claim's value to determine which
+                            // one.
                             match List.length rolesClaim with
                             | 0 -> Anonymous
                             | _ -> Authenticated(userIdClaim, rolesClaim)
 
-    // IUserIdentityService is defined in the Application.fs because application code
-    // needs to consult the current identity as part of running use cases. Its implementation
-    // is host dependent (the web implementation require HttpContext), so its implemented in
-    // Program.fs rather Infrastructure.fs. It's then injected into AppEnv.
-    // IdentityProviderService, on the other hand, is of no concern to application layer,
-    // and how to do it is host dependent. Specifying an IIdentityProviderService interface
-    // is of no use as AppEnv will never have to resolve this service. We couldn't implemented
-    // this logic inside the Authentication controller, but instead the implementation here as a
-    // service, even though it's only used by the controller to simplify testing.
-    type IdentityProviderService(clock: ISystemClock, options: JwtAuthenticationOptions) =
+    // IUserIdentity is defined in Application.fs because application code needs
+    // to consult the current identity as part of running use cases.
+    // IdentityProviderService, on the other hand, is of no concern to the
+    // application layer and is host dependent. AppEnv will never have to
+    // resolve IIdentityProviderServer service. Therefore, we couldn't
+    // implemented the service logic inside the Authentication controller, but
+    // to keep controllers lean, we extract the logic into a separate class
+    type IdentityProvider(clock: ISystemClock, options: JwtAuthenticationOptions) =
         let sign (claims: Claim array) : string =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
@@ -195,8 +199,9 @@ module Service =
             JwtSecurityTokenHandler().WriteToken(token)
 
         member _.IssueToken (userId: string) (roles: ScrumRole list) : string =
-            // With an actual user store, we'd validate user credentials here. But for this app, userId
-            // may be any string and role must be either "regular" or "admin"
+            // With an actual user store, we'd validate user credentials here.
+            // But for this app, userId may be any string and role must be
+            // either "regular" or "admin"
             let roles =
                 roles
                 |> List.map (fun r -> Claim(ScrumClaims.RolesClaim, r.ToString()))
@@ -471,20 +476,20 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }
 
-    // As the token is supposed to be opaque, we can either expose information from claims
-    // inside the token as additional fields or provide clients with an introspect endpoint.
-    // We chose the latter.
+    // As the token is supposed to be opaque, we can either expose information
+    // from claims inside the token as additional fields or provide clients with
+    // an introspect endpoint. We chose the latter.
     type AuthenticationResponse = { Token: string }
 
-    // TODO: check zalando for dash in controller name
-    // Loosely modeled after OAuth2 authentication.
+    // TODO: check zalando for dash in controller name Loosely modeled after
+    // OAuth2 authentication.
     [<Route("[controller]")>]
     type AuthenticationController
         (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>) as x
         =
         inherit ScrumController(configuration, httpContext)
 
-        let idp = IdentityProviderService(x.Env.SystemClock, jwtAuthenticationOptions.Value)
+        let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationOptions.Value)
 
         // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
 
@@ -524,13 +529,14 @@ module Controller =
             let map = Dictionary<string, obj>()
 
             for c in claimsIdentity.Claims do
-                // Special case non-string value or it becomes a string in string in
-                // the HTTP response.
+                // Special case non-string value or it becomes a string in
+                // string in the HTTP response.
                 if c.Type = "exp" then
                     map.Add("exp", Int32.Parse(c.Value) :> obj)
                 elif c.Type = ClaimTypes.Role then
-                    // For reasons unknown, ASP.NET maps our Scrum RoleClaim from the bearer token to
-                    // ClaimTypes.Role. The claim's type deserialized becomes
+                    // For reasons unknown, ASP.NET maps our Scrum RoleClaim
+                    // from the bearer token to ClaimTypes.Role. The claim's
+                    // type deserialized becomes
                     // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
                     let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
                     if ok then
@@ -621,8 +627,9 @@ type Startup(configuration: IConfiguration) =
                         IssuerSigningKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtAuthenticationOptions.SigningKey))
                     )
 
-                // Leave in callbacks for troubleshooting JWT issues. Set a breakpoint on the
-                // relevant lines below to inspect the JWT authentication process.
+                // Leave in callbacks for troubleshooting JWT issues. Set a
+                // breakpoint on the relevant lines below to inspect the JWT
+                // authentication process.
                 options.Events <-
                     JwtBearerEvents(
                         OnAuthenticationFailed = (fun _ -> Task.CompletedTask),
@@ -669,9 +676,10 @@ type Startup(configuration: IConfiguration) =
         services.AddResponseCaching() |> ignore
         services.AddEndpointsApiExplorer() |> ignore
 
-        // Azure hosting under a Linux based app means the API is running a container.
-        // Inside the container, the API is run using the dotnet command, meaning Kestrel is serving
-        // traffic. Kestrel doesn't have build-in compression which is why the API is doing the compression:
+        // Azure hosting under a Linux based app means the API is running a
+        // container. Inside the container, the API is run using the dotnet
+        // command, meaning Kestrel is serving traffic. Kestrel doesn't have
+        // build-in compression which is why the API is doing the compression:
         // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
         services
             .AddResponseCompression(fun options ->
