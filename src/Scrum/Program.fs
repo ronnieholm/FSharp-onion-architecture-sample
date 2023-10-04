@@ -255,8 +255,6 @@ module Controller =
 
         let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationOptions.Value)
 
-        // curl "https://localhost:5000/authentication/issueToken?userId=1&role=member,admin" --insecure --request post | jq
-
         [<HttpPost("issueToken")>]
         member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
             task {
@@ -268,9 +266,6 @@ module Controller =
             }
 
         // TODO: Add Renew and Logging. Add three log levels to ILogger.
-        // TODO: ADR on authentication/authorization.
-
-        // curl https://localhost:5000/authentication/renew --insecure --request post -H "Authorization: Bearer <token>" | jq
 
         [<Authorize; HttpPost("renewToken")>]
         member _.RenewToken() : Task<ActionResult> =
@@ -283,8 +278,6 @@ module Controller =
                      | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
                      | Error e -> ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
             }
-
-        // curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
 
         [<Authorize; HttpPost("introspect")>]
         member _.Introspect() : IDictionary<string, obj> =
@@ -323,8 +316,6 @@ module Controller =
     type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
         inherit ScrumController(configuration, httpContext)
 
-        // curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
-
         [<HttpPost>]
         member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -353,8 +344,6 @@ module Controller =
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
-
-        // curl https://localhost:5000/stories/<storyId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
 
         [<HttpPut("{id}")>]
         member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
@@ -385,8 +374,6 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }   
         
-        // curl https://localhost:5000/stories/<storyId>/tasks --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
-
         [<HttpPost("{storyId}/tasks")>]
         member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -417,8 +404,6 @@ module Controller =
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
-
-        // curl https://localhost:5000/stories/<storyId>/tasks/<taskId --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
 
         [<HttpPut("{storyId}/tasks/{taskId}")>]
         member x.UpdateTaskOnStory
@@ -458,8 +443,6 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }
 
-        // curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request delete -H 'Authorization: Bearer <token>'
-
         [<HttpDelete("{storyId}/tasks/{taskId}")>]
         member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -482,8 +465,6 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }
 
-        // curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>'
-
         [<HttpDelete("{id}")>]
         member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -504,8 +485,6 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }        
         
-        // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure | jq
-
         [<HttpGet("{id}")>]
         member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -529,8 +508,6 @@ module Controller =
     [<Authorize; Route("[controller]")>]
     type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
         inherit ScrumController(configuration, httpContext)
-
-        // curl https://localhost:5000/persistedDomainEvents/20e86071-a4f2-4576-89cd-5e33e64d50d0 --insecure -H "Authorization: Bearer <token>" | jq
 
         [<HttpGet("{id}")>]
         member x.GetPersistedDomainEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
@@ -739,7 +716,6 @@ type Startup(configuration: IConfiguration) =
                         }
             )
 
-        // curl https://localhost:5000/health --insecure | jq
         app.UseHealthChecks("/health", healthCheckOptions) |> ignore
         app.UseResponseCompression() |> ignore
         app.UseRouting() |> ignore

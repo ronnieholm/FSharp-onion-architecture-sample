@@ -228,7 +228,15 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                 // scenario where we'd read back the event for processing, but
                 // persisting domain event for troubleshooting only, the printer
                 // suffices.
-                do! persistDomainEventAsync transaction ct (nameof Story) aggregateId (event.GetType().Name) $"%A{event}" (clock.CurrentUtc())
+                do!
+                    persistDomainEventAsync
+                        transaction
+                        ct
+                        (nameof Story)
+                        aggregateId
+                        (event.GetType().Name)
+                        $"%A{event}"
+                        (clock.CurrentUtc())
 
                 match event with
                 | StoryCreated e ->
@@ -261,7 +269,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     cmd.Parameters.AddWithValue("@id", e.StoryId |> StoryId.value |> string)
                     |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
-                    // TODO: with cascade delete of tasks, does count > 1?
                     assert (count = 1)
                 | TaskAddedToStory e ->
                     let sql =
@@ -349,17 +356,22 @@ type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock:
     // operations will fail with: "System.ObjectDisposedException: Cannot access
     // a disposed object.". Connection and transaction are unmanaged resources,
     // disposed of in the IDisposable implementation.
-    let connection = lazy new SQLiteConnection(connectionString)
+    let connection =
+        lazy
+            let connection = new SQLiteConnection(connectionString)
+            connection.Open()
+            use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
+            cmd.ExecuteNonQuery() |> ignore
+            connection
 
     let transaction =
         lazy
             let connection = connection.Value
-            connection.Open()
             connection.BeginTransaction()
 
     let systemClock' = lazy (systemClock |> Option.defaultValue (SystemClock()))
-    let logger' = lazy (logger |> Option.defaultValue (Logger()))   
-    
+    let logger' = lazy (logger |> Option.defaultValue (Logger()))
+
     // No point in making it lazy as we're merely a pass-through.
     let userIdentityFactory = userIdentity
     let storyRepository' =
