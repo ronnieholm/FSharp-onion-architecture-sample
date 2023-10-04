@@ -90,6 +90,9 @@ module Seedwork =
 
         let createJsonResult (accept: StringValues) status detail : ActionResult = create status detail |> toJsonResult accept
 
+        let createAuthorizationError (accept: StringValues) (message: string) : ActionResult =
+            createJsonResult accept StatusCodes.Status401Unauthorized message
+        
         type ValidationErrorDto = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
@@ -131,9 +134,9 @@ module Service =
 
     // Web specific implementation of IUserIdentityService so it belongs in Program.fs rather than
     // Infrastructure.fs.
-    type UserIdentityService(context: HttpContext) =
-        interface IUserIdentityService with
-            member x.GetCurrentIdentity() : ScrumIdentity =
+    type UserIdentity(context: HttpContext) =
+        interface IUserIdentity with
+            member x.GetCurrent() : ScrumIdentity =
                 // Access to HttpContext from outside a controller goes through IHttpContextAccess per
                 // https://docs.microsoft.com/en-us/aspnet/core/migration/claimsprincipal-current.
                 // Running in a non-HTTP context, HttpContext is therefore null.
@@ -165,7 +168,7 @@ module Service =
                             // use a claim's value to determine which one.
                             match List.length rolesClaim with
                             | 0 -> Anonymous
-                            | _ -> User(userIdClaim, rolesClaim)
+                            | _ -> Authenticated(userIdClaim, rolesClaim)
 
     // IUserIdentityService is defined in the Application.fs because application code
     // needs to consult the current identity as part of running use cases. Its implementation
@@ -206,7 +209,7 @@ module Service =
         member x.RenewToken(identity: ScrumIdentity) : Result<string, string> =
             match identity with
             | Anonymous -> Error "User is anonymous"
-            | User(id, roles) -> Ok(x.IssueToken id roles)
+            | Authenticated(id, roles) -> Ok(x.IssueToken id roles)
 
 open Seedwork
 open Service
@@ -216,7 +219,7 @@ module Controller =
         inherit ControllerBase()
 
         let connectionString = configuration.GetConnectionString("Scrum")
-        let userIdentityService = UserIdentityService(httpContext.HttpContext)
+        let userIdentityService = UserIdentity(httpContext.HttpContext)
         let env = new AppEnv(connectionString, userIdentityService) :> IAppEnv
 
         member _.Env = env
@@ -241,7 +244,7 @@ module Controller =
     type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
         inherit ScrumController(configuration, httpContext)
 
-        // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
+        // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
         // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}' | jq
 
         [<HttpPost>]
@@ -251,6 +254,7 @@ module Controller =
                 try
                     let! result =
                         CreateStoryCommand.runAsync
+                            x.Env.UserIdentity
                             x.Env.StoryRepository
                             x.Env.SystemClock
                             x.Env.Logger
@@ -264,6 +268,8 @@ module Controller =
                         | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                         | Error e ->
                             match e with
+                            // TODO: if we failwith ae here, why does API then get into a NRE?
+                            | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
                 with e ->
@@ -279,6 +285,7 @@ module Controller =
                 try
                     let! result =
                         UpdateStoryCommand.runAsync
+                            x.Env.UserIdentity
                             x.Env.StoryRepository
                             x.Env.SystemClock
                             x.Env.Logger
@@ -292,6 +299,7 @@ module Controller =
                         | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                         | Error e ->
                             match e with
+                            | UpdateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | UpdateStoryCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -306,13 +314,14 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = DeleteStoryCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                    let! result = DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
                     do! x.Env.CommitAsync(ct)
                     return
                         match result with
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
+                            | DeleteStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | DeleteStoryCommand.StoryNotFound _ ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -327,13 +336,14 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = DeleteTaskCommand.runAsync x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
+                    let! result = DeleteTaskCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
                     do! x.Env.CommitAsync(ct)
                     return
                         match result with
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
+                            | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
                             | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | DeleteTaskCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -352,6 +362,7 @@ module Controller =
                 try
                     let! result =
                         AddTaskToStoryCommand.runAsync
+                            x.Env.UserIdentity
                             x.Env.StoryRepository
                             x.Env.SystemClock
                             x.Env.Logger
@@ -366,6 +377,7 @@ module Controller =
                         | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                         | Error e ->
                             match e with
+                            | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
                             | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | AddTaskToStoryCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -389,6 +401,7 @@ module Controller =
                 try
                     let! result =
                         UpdateTaskCommand.runAsync
+                            x.Env.UserIdentity
                             x.Env.StoryRepository
                             x.Env.SystemClock
                             x.Env.Logger
@@ -403,6 +416,7 @@ module Controller =
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
+                            | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
                             | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | UpdateTaskCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -419,12 +433,13 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = GetStoryByIdQuery.runAsync x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                    let! result = GetStoryByIdQuery.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
+                            | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
                             | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | GetStoryByIdQuery.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -444,12 +459,13 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = GetByAggregateIdQuery.runAsync x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                    let! result = GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
+                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
                             | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
@@ -491,7 +507,7 @@ module Controller =
         member _.RenewToken() : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
-                let identity = x.Env.UserIdentityService.GetCurrentIdentity()
+                let identity = x.Env.UserIdentity.GetCurrent()
                 let token = idp.RenewToken identity
                 return
                     (match token with

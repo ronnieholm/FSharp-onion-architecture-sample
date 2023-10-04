@@ -346,7 +346,7 @@ type Logger() =
 // Are Open and BeginTransaction on the connection idempotent?
 // AppEnv is an example of the service locator pattern in use. Ideal when passing AppEnv to Notification which passes it along. Hard to accomplish with partial application. Although in OO the locator tends to be a static class. DI degenerates to service locator when classes not instantiated by framework code.
 // This is our composition root: https://blog.ploeh.dk/2011/07/28/CompositionRoot/
-type AppEnv(connectionString: string, userIdentityService: IUserIdentityService, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
+type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
     // Instantiate the connection and transaction with a let binding, and not a use binding, or
     // repository operations error will fail with:
     //
@@ -371,7 +371,7 @@ type AppEnv(connectionString: string, userIdentityService: IUserIdentityService,
     // which would also be database specific? We could passing in the IoC container, but
     // this would make AppEnv non-explicit and be a hassle to replace this service in test
     // for instance.
-    let userIdentityServiceFactory = lazy userIdentityService
+    let userIdentityFactory = lazy userIdentity
     let storyRepository' =
         lazy SqliteStoryRepository(transaction.Value, systemClock'.Value)
 
@@ -405,6 +405,6 @@ type AppEnv(connectionString: string, userIdentityService: IUserIdentityService,
 
         member _.SystemClock = systemClock'.Value
         member _.Logger = logger'.Value
-        member _.UserIdentityService = userIdentityServiceFactory.Value
+        member _.UserIdentity = userIdentityFactory.Value
         member _.StoryRepository = storyRepository'.Value
         member _.DomainEventRepository = domainEventRepository.Value

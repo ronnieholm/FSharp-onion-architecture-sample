@@ -55,8 +55,8 @@ open Database
 
 module Fake =
     let userIdentityService =
-        { new IUserIdentityService with
-            member _.GetCurrentIdentity() = ScrumIdentity.User("1", [ Member ]) }
+        { new IUserIdentity with
+            member _.GetCurrent() = ScrumIdentity.Authenticated("1", [ Member ]) }
 
     let fixedClock =
         { new ISystemClock with
@@ -73,26 +73,28 @@ module Fake =
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
+        let u = env.UserIdentity
         let r = env.StoryRepository
         let s = env.SystemClock
         let l = env.Logger
         let ct = CancellationToken.None
 
         // While these functions are async, we forgo the Async prefix to reduce noise.
-        {| CreateStory = CreateStoryCommand.runAsync r s l ct
-           AddTaskToStory = AddTaskToStoryCommand.runAsync r s l ct
-           GetStoryById = GetStoryByIdQuery.runAsync r l ct
-           DeleteStory = DeleteStoryCommand.runAsync r l ct
-           DeleteTask = DeleteTaskCommand.runAsync r l ct
-           UpdateStory = UpdateStoryCommand.runAsync r s l ct
-           UpdateTask = UpdateTaskCommand.runAsync r s l ct
+        {| CreateStory = CreateStoryCommand.runAsync u r s l ct
+           AddTaskToStory = AddTaskToStoryCommand.runAsync u r s l ct
+           GetStoryById = GetStoryByIdQuery.runAsync u r l ct
+           DeleteStory = DeleteStoryCommand.runAsync u r l ct
+           DeleteTask = DeleteTaskCommand.runAsync u r l ct
+           UpdateStory = UpdateStoryCommand.runAsync u r s l ct
+           UpdateTask = UpdateTaskCommand.runAsync u r s l ct
            Commit = fun _ -> env.CommitAsync ct |}
 
     let setupDomainEventRequests (env: IAppEnv) =
+        let u = env.UserIdentity
         let r = env.DomainEventRepository
         let l = env.Logger
         let ct = CancellationToken.None
-        {| GetByAggregateIdQuery = GetByAggregateIdQuery.runAsync r l ct |}
+        {| GetByAggregateIdQuery = GetByAggregateIdQuery.runAsync u r l ct |}
 
 open Fake
 open Setup

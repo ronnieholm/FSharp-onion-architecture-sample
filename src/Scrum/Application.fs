@@ -43,15 +43,15 @@ module Seedwork =
 
     type ScrumIdentity =
         | Anonymous
-        | User of UserId: string * Role: ScrumRole list
+        | Authenticated of UserId: string * Role: ScrumRole list
 
     [<Interface>]
-    type IUserIdentityService =
-        abstract GetCurrentIdentity: unit -> ScrumIdentity
+    type IUserIdentity =
+        abstract GetCurrent: unit -> ScrumIdentity
 
     [<Interface>]
-    type IUserIdentityServiceFactory =
-        abstract UserIdentityService: IUserIdentityService
+    type IUserIdentityFactory =
+        abstract UserIdentity: IUserIdentity
 
     [<Interface>]
     type ISystemClock =
@@ -91,7 +91,7 @@ module Seedwork =
     type IAppEnv =
         inherit ISystemClockFactory
         inherit ILoggerFactory
-        inherit IUserIdentityServiceFactory
+        inherit IUserIdentityFactory
         inherit IStoryRepositoryFactory
         inherit IDomainEventRepositoryFactory
         inherit IDisposable
@@ -113,6 +113,17 @@ module Seedwork =
         // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
         logger.LogRequestDuration useCase elapsed
         result
+
+    let isInRole (identity: IUserIdentity) (role: ScrumRole) : Result<unit, string> =
+        match identity.GetCurrent() with
+        | Anonymous -> Error("Anonymous user unsupported")
+        | Authenticated(_, roles) ->
+            if List.contains role roles then
+                Ok()
+            else
+                Error($"Missing role '{role.ToString()}'")
+
+open Seedwork
 
 module SharedModels =
     // Data transfer objects shared across queries across aggregates.
@@ -141,10 +152,12 @@ module StoryAggregateRequest =
             }
 
         type CreateStoryError =
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (clock: ISystemClock)
             (logger: ILogger)
@@ -153,6 +166,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, CreateStoryError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     do!
                         stories.ExistAsync ct cmd.Id
@@ -162,7 +176,6 @@ module StoryAggregateRequest =
                     do! stories.ApplyEventAsync ct event
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                     return StoryId.value story.Aggregate.Id
-                // TODO: Who's going to call commit?
                 }
 
             runWithDecoratorAsync logger (nameof CreateStoryCommand) cmd aux
@@ -189,10 +202,12 @@ module StoryAggregateRequest =
             }
 
         type UpdateStoryError =
+            | AuthorizationError of string            
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (clock: ISystemClock)
             (logger: ILogger)
@@ -201,6 +216,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, UpdateStoryError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.Id
@@ -225,10 +241,12 @@ module StoryAggregateRequest =
             }
 
         type DeleteStoryError =
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (logger: ILogger)
             (ct: CancellationToken)
@@ -236,6 +254,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, DeleteStoryError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError                    
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.Id
@@ -272,6 +291,7 @@ module StoryAggregateRequest =
             }
 
         type AddTaskToStoryError =
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | DuplicateTask of Guid
@@ -281,6 +301,7 @@ module StoryAggregateRequest =
             | StoryAggregate.AddTaskToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (clock: ISystemClock)
             (logger: ILogger)
@@ -289,6 +310,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, AddTaskToStoryError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
@@ -328,6 +350,7 @@ module StoryAggregateRequest =
             }
 
         type UpdateTaskError =
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | TaskNotFound of Guid
@@ -337,6 +360,7 @@ module StoryAggregateRequest =
             | StoryAggregate.UpdateTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (clock: ISystemClock)
             (logger: ILogger)
@@ -345,6 +369,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, UpdateTaskError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
@@ -372,6 +397,7 @@ module StoryAggregateRequest =
             }
 
         type DeleteTaskError =
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | TaskNotFound of Guid
@@ -381,6 +407,7 @@ module StoryAggregateRequest =
             | StoryAggregate.DeleteTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (logger: ILogger)
             (ct: CancellationToken)
@@ -388,6 +415,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, DeleteTaskError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
@@ -450,10 +478,12 @@ module StoryAggregateRequest =
                   Tasks = story.Tasks |> List.map TaskDto.from }
 
         type GetStoryByIdError =
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync
+            (identity: IUserIdentity)
             (stories: IStoryRepository)
             (logger: ILogger)
             (ct: CancellationToken)
@@ -461,6 +491,7 @@ module StoryAggregateRequest =
             : TaskResult<StoryDto, GetStoryByIdError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! qry = validate qry |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct qry.Id
@@ -499,9 +530,12 @@ module DomainEventRequest =
                   EventPayload = event.EventPayload
                   CreatedAt = event.CreatedAt }
 
-        type GetStoryEventsByIdError = ValidationErrors of ValidationError list
+        type GetStoryEventsByIdError =
+            | AuthorizationError of string
+            | ValidationErrors of ValidationError list
 
         let runAsync
+            (identity: IUserIdentity)
             (events: IDomainEventRepository)
             (logger: ILogger)
             (ct: CancellationToken)
@@ -509,6 +543,7 @@ module DomainEventRequest =
             : TaskResult<SavedDomainEventDto list, GetStoryEventsByIdError> =
             let aux () =
                 taskResult {
+                    do! isInRole identity Admin |> Result.mapError AuthorizationError
                     let! qry = validate qry |> Result.mapError ValidationErrors
                     let! events = events.GetByAggregateIdAsync ct qry.Id
                     return events |> List.map SavedDomainEventDto.from
