@@ -22,6 +22,7 @@ module Seedwork =
     module Json =
         type SnakeCaseLowerNamingPolicy() =
             inherit JsonNamingPolicy()
+
             // SnakeCaseLower will be part of .NET 8 which releases on Nov 14,
             // 2023. After upgrading to .NET 8, remote this custom policy.
             override _.ConvertName(name: string) : string =

@@ -57,6 +57,7 @@ module Seedwork =
         // parts of the exception.
         type ExceptionJsonConverter() =
             inherit JsonConverter<Exception>()
+            
             override _.Read(_, _, _) = raise (UnreachableException())
 
             override x.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
