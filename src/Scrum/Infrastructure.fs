@@ -384,21 +384,17 @@ type AppEnv
             cmd.ExecuteNonQuery() |> ignore
             connection
 
-    let transaction =
-        lazy
-            let connection = connection.Value
-            connection.BeginTransaction()
-
-    let systemClock' = lazy (systemClock |> Option.defaultValue (SystemClock()))
-    let logger' = lazy (logger |> Option.defaultValue (Logger()))
+    let transaction = lazy connection.Value.BeginTransaction()
+    let systemClock = lazy (systemClock |> Option.defaultValue (SystemClock()))
+    let logger = lazy (logger |> Option.defaultValue (Logger()))
 
     // No point in making it lazy as we're merely a pass-through.
     let userIdentityFactory = userIdentity
 
-    let storyRepository' =
+    let storyRepository =
         lazy
             (storyRepository
-             |> Option.defaultValue (SqliteStoryRepository(transaction.Value, systemClock'.Value)))
+             |> Option.defaultValue (SqliteStoryRepository(transaction.Value, systemClock.Value)))
 
     let domainEventRepository =
         lazy
@@ -433,8 +429,8 @@ type AppEnv
                     do! transaction.Value.RollbackAsync(ct)
             }
 
-        member _.SystemClock = systemClock'.Value
-        member _.Logger = logger'.Value
+        member _.SystemClock = systemClock.Value
+        member _.Logger = logger.Value
         member _.UserIdentity = userIdentityFactory
-        member _.StoryRepository = storyRepository'.Value
+        member _.StoryRepository = storyRepository.Value
         member _.DomainEventRepository = domainEventRepository.Value
