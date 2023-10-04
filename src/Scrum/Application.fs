@@ -18,15 +18,16 @@ module Seedwork =
         let create (field: string) (message: string) = { Field = field; Message = message }
         let mapError (field: string) : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
 
-    // A pseudo-aggregate or an aggregate which resides in the application layer.
-    type SavedDomainEvent =
+    // A pseudo-aggregate or an aggregate in the application layer. In principle, we could
+    // define value types similar to those making up aggregates in the domain, but for this
+    // case it's overkill.
+    type PersistedDomainEvent =
         { Id: Guid
           AggregateId: Guid
           EventType: string
           EventPayload: string
           CreatedAt: DateTime }
 
-    // TODO: move to identity module?
     type ScrumRole =
         | Member
         | Admin
@@ -49,6 +50,12 @@ module Seedwork =
     type IUserIdentity =
         abstract GetCurrent: unit -> ScrumIdentity
 
+    // The factory interfaces is there as a means of groping inside
+    // AppEnv. Without factory interfaces, AppEnv would implement
+    // all interfaces at the same same level, e.g., AppEnv.GetCurrent.
+    // With factory interfaces it becomes AppEnv.UserIdentity.GetCurrent.
+    // The latter means we can inject the dependency into another type
+    // by passing in AppEnv.UserIdentity.
     [<Interface>]
     type IUserIdentityFactory =
         abstract UserIdentity: IUserIdentity
@@ -76,12 +83,11 @@ module Seedwork =
         abstract StoryRepository: IStoryRepository
 
     [<Interface>]
-    // A repository not defined in the domain layer. While domain events are part of
-    // the domain, persisted domain events aren't. After events have been applied they're
-    // no longer needed, except as a troubleshooting tool. Therefore, this the get
-    // operation isn't part of IStoryRepository.
+    // Mirroring the PersistedDomainEvent type, its repository is defined in the application layer.
+    // While domain events are part of the domain, persisted domain events aren't. After an
+    // event is applied, it's no longer needed. We persist domain events for troubleshooting only.
     type IDomainEventRepository =
-        abstract GetByAggregateIdAsync: CancellationToken -> Guid -> System.Threading.Tasks.Task<SavedDomainEvent list>
+        abstract GetByAggregateIdAsync: CancellationToken -> Guid -> System.Threading.Tasks.Task<PersistedDomainEvent list>
 
     [<Interface>]
     type IDomainEventRepositoryFactory =
@@ -110,7 +116,8 @@ module Seedwork =
             time (fun _ ->
                 logger.LogRequestPayload useCase cmd
                 taskResult { return! fn () })
-        // Don't log errors from evaluating fn. These are expected errors which we don't want to pollute our lots with.
+        // Don't log errors from evaluating fn as These are expected errors which we
+        // don't want to pollute the log with.
         logger.LogRequestDuration useCase elapsed
         result
 
@@ -122,8 +129,6 @@ module Seedwork =
                 Ok()
             else
                 Error($"Missing role '{role.ToString()}'")
-
-open Seedwork
 
 module SharedModels =
     // Data transfer objects shared across queries across aggregates.
@@ -174,6 +179,7 @@ module StoryAggregateRequest =
                     let now = clock.CurrentUtc()
                     let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
                     do! stories.ApplyEventAsync ct event
+                    // Example of publishing the StoryCreated domain event to another aggregate:
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                     return StoryId.value story.Aggregate.Id
                 }
@@ -187,8 +193,9 @@ module StoryAggregateRequest =
 
         let validate (c: UpdateStoryCommand) : Validation<UpdateStoryValidatedCommand, ValidationError> =
             validation {
-                // Except for return type, identical to CreateStoryCommand's validate. In the real-world, we may
-                // not want to allow updating every field set during creation, so they wouldn't be identical.
+                // Except for return type, validation is identical to that of CreateStoryCommand. With
+                // more fields on the story, likely we may not want to allow updating every field set
+                // during creation. At that point, validations will differ.
                 let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
@@ -202,7 +209,7 @@ module StoryAggregateRequest =
             }
 
         type UpdateStoryError =
-            | AuthorizationError of string            
+            | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
@@ -254,7 +261,7 @@ module StoryAggregateRequest =
             : TaskResult<Guid, DeleteStoryError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError                    
+                    do! isInRole identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         stories.GetByIdAsync ct cmd.Id
@@ -335,6 +342,7 @@ module StoryAggregateRequest =
 
         let validate (c: UpdateTaskCommand) : Validation<UpdateTaskValidatedCommand, ValidationError> =
             // Except for return type, identical to AddTaskToStoryCommand's validate command.
+            // With more fields on the task, the two are more likely to differ.
             validation {
                 let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
@@ -509,21 +517,20 @@ module DomainEventRequest =
 
         let validate (q: GetByAggregateIdQuery) : Validation<GetByAggregateIdValidatedQuery, ValidationError> =
             validation {
-                // TODO: We could define an AggregateId type in application layer.
                 let validatedId = if q.Id = Guid.Empty then Error "Should be non-empty" else Ok q.Id
                 let! id = validatedId |> ValidationError.mapError (nameof q.Id)
                 return { Id = id }
             }
 
-        type SavedDomainEventDto =
+        type PersistedDomainEventDto =
             { Id: Guid
               AggregateId: Guid
               EventType: string
               EventPayload: string
               CreatedAt: DateTime }
 
-        module SavedDomainEventDto =
-            let from (event: SavedDomainEvent) : SavedDomainEventDto =
+        module PersistedDomainEventDto =
+            let from (event: PersistedDomainEvent) : PersistedDomainEventDto =
                 { Id = event.Id
                   AggregateId = event.AggregateId
                   EventType = event.EventType
@@ -540,13 +547,13 @@ module DomainEventRequest =
             (logger: ILogger)
             (ct: CancellationToken)
             (qry: GetByAggregateIdQuery)
-            : TaskResult<SavedDomainEventDto list, GetStoryEventsByIdError> =
+            : TaskResult<PersistedDomainEventDto list, GetStoryEventsByIdError> =
             let aux () =
                 taskResult {
                     do! isInRole identity Admin |> Result.mapError AuthorizationError
                     let! qry = validate qry |> Result.mapError ValidationErrors
                     let! events = events.GetByAggregateIdAsync ct qry.Id
-                    return events |> List.map SavedDomainEventDto.from
+                    return events |> List.map PersistedDomainEventDto.from
                 }
 
             runWithDecoratorAsync logger (nameof GetByAggregateIdQuery) qry aux

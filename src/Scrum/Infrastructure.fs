@@ -64,7 +64,7 @@ module Seedwork =
             |> Option.ofDBNull
             |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
 
-        let saveDomainEventAsync
+        let persistDomainEventAsync
             (transaction: SQLiteTransaction)
             (ct: CancellationToken)
             (aggregateType: string)
@@ -94,36 +94,6 @@ open Seedwork.Repository
 type SystemClock() =
     interface ISystemClock with
         member _.CurrentUtc() = DateTime.UtcNow
-
-type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
-    let connection = transaction.Connection
-
-    interface IDomainEventRepository with
-        member _.GetByAggregateIdAsync (ct: CancellationToken) (aggregateId: Guid) : Task<SavedDomainEvent list> =
-            let sql =
-                "select id, aggregate_id, event_type, event_payload, created_at from domain_events where aggregate_id = @aggregateId order by created_at desc"
-            use cmd = new SQLiteCommand(sql, connection, transaction)
-            cmd.Parameters.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
-
-            task {
-                let! r = cmd.ExecuteReaderAsync(ct)
-                let mutable keepGoing = true
-                let events = ResizeArray<SavedDomainEvent>()
-
-                while keepGoing do
-                    match! r.ReadAsync(ct) with
-                    | true ->
-                        let e =
-                            { Id = r["id"] |> string |> Guid
-                              AggregateId = r["aggregate_id"] |> string |> Guid
-                              EventType = r["event_type"] |> string
-                              EventPayload = r["event_payload"] |> string
-                              CreatedAt = parseCreatedAt r["created_at"] }
-                        events.Add(e)
-                    | false -> keepGoing <- false
-
-                return events |> Seq.toList
-            }
 
 type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) =
     let connection = transaction.Connection
@@ -250,7 +220,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                 // a custom converter, we use the F# type printer as a compact representation. The printer
                 // wouldn't work in a pure event sourced scenario where we'd need to read back the event,
                 // but saving domain event for troubleshooting, the printer suffices.
-                do! saveDomainEventAsync transaction ct (nameof Story) aggregateId (event.GetType().Name) $"%A{event}" (clock.CurrentUtc())
+                do! persistDomainEventAsync transaction ct (nameof Story) aggregateId (event.GetType().Name) $"%A{event}" (clock.CurrentUtc())
 
                 match event with
                 | StoryCreated e ->
@@ -319,6 +289,36 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     p.AddWithValue("@storyId", e.StoryId |> StoryId.value |> string) |> ignore
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
+            }
+
+type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
+    let connection = transaction.Connection
+
+    interface IDomainEventRepository with
+        member _.GetByAggregateIdAsync (ct: CancellationToken) (aggregateId: Guid) : Task<PersistedDomainEvent list> =
+            let sql =
+                "select id, aggregate_id, event_type, event_payload, created_at from domain_events where aggregate_id = @aggregateId order by created_at desc"
+            use cmd = new SQLiteCommand(sql, connection, transaction)
+            cmd.Parameters.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
+
+            task {
+                let! r = cmd.ExecuteReaderAsync(ct)
+                let mutable keepGoing = true
+                let events = ResizeArray<PersistedDomainEvent>()
+
+                while keepGoing do
+                    match! r.ReadAsync(ct) with
+                    | true ->
+                        let e =
+                            { Id = r["id"] |> string |> Guid
+                              AggregateId = r["aggregate_id"] |> string |> Guid
+                              EventType = r["event_type"] |> string
+                              EventPayload = r["event_payload"] |> string
+                              CreatedAt = parseCreatedAt r["created_at"] }
+                        events.Add(e)
+                    | false -> keepGoing <- false
+
+                return events |> Seq.toList
             }
 
 type Logger() =

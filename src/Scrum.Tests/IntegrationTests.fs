@@ -99,6 +99,11 @@ module Setup =
 open Fake
 open Setup
 
+// Per https://xunit.net/docs/running-tests-in-parallel, tests in a single class, called a test
+// collection, are by default run in sequence. Tests across multiple classes are run in parallel,
+// with the test inside individual classes running in sequence. To make a collection span
+// multiple classes, they must share the same collection same. In addition, we can set other
+// properties on the collection
 [<CollectionDefinition(nameof DisableParallelization, DisableParallelization = true)>]
 type DisableParallelization() =
     class
@@ -298,8 +303,6 @@ type StoryAggregateRequestTests() =
             let! result = fns.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
-
-// TODO: is xunit running tests across classes in parallel? Then we need to mark assembly with attribute.
 
 [<Collection(nameof DisableParallelization)>]
 type DomainEventRequestTests() =
