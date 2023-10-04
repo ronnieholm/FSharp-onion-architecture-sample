@@ -61,6 +61,7 @@ module Seedwork =
 
     module Repository =
         let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
+
         let parseUpdatedAt (v: obj) : DateTime option =
             v
             |> Option.ofDBNull
@@ -352,7 +353,7 @@ type Logger() =
         o
 
     interface ILogger with
-        member _.LogRequestPayload (useCase: string) (request: obj) : unit =            
+        member _.LogRequestPayload (useCase: string) (request: obj) : unit =
             let json = JsonSerializer.Serialize(request, jsonSerializationOptions)
             logger.LogInformation($"%s{useCase}: %s{json}")
 
@@ -362,7 +363,9 @@ type Logger() =
         member _.LogInformation(message: string) = logger.LogInformation(message)
         member _.LogDebug(message: string) = logger.LogDebug(message)
 
-type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
+type AppEnv
+    (connectionString: string, userIdentity: IUserIdentity, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository: IStoryRepository)
+    =
     // Bind connection and transaction with a let, not a use, or repository
     // operations will fail with: "System.ObjectDisposedException: Cannot access
     // a disposed object.". Connection and transaction are unmanaged resources,
@@ -386,7 +389,9 @@ type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock:
     // No point in making it lazy as we're merely a pass-through.
     let userIdentityFactory = userIdentity
     let storyRepository' =
-        lazy SqliteStoryRepository(transaction.Value, systemClock'.Value)
+        lazy
+            (storyRepository
+             |> Option.defaultValue (SqliteStoryRepository(transaction.Value, systemClock'.Value)))
 
     let domainEventRepository = lazy SqliteDomainEventRepository(transaction.Value)
 
