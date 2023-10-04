@@ -67,4 +67,7 @@ DI container when used with classes not instantiated by framework code.
 Not making use of the .NET DI container is more work, but the benefit is less
 complexity overall.
 
-[1] https://www.bartoszsypytkowski.com/dealing-with-complex-dependency-injection-in-f
+## See also
+
+- [Dealing with complex dependency injection in F#](https://www.bartoszsypytkowski.com/dealing-with-complex-dependency-injection-in-f)
+- [Six approaches to dependency injection](https://fsharpforfunandprofit.com/posts/dependencies)

@@ -57,4 +57,8 @@ aggregate for modifications, generating SQL from it. When instead we treat the
 store as an immediately updated read-model, we simplified change tracking. We
 can do most of what EF is does without its complexities.
 
-[1] https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/domain-events-design-implementation
+## See also
+
+- [Domain events: Design and
+  implementation](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/domain-events-design-implementation)
+- [Versioning in an Event Sourced System by Gregory Young](https://leanpub.com/esversioning)

@@ -240,242 +240,6 @@ module Controller =
         interface IDisposable with
             member this.Dispose() = this.Env.Dispose()
 
-    type StoryCreateDto = { title: string; description: string }
-    type StoryUpdateDto = { title: string; description: string }
-    type AddTaskToStoryDto = { title: string; description: string }
-    type StoryTaskUpdateDto = { title: string; description: string }
-
-    [<Authorize; Route("[controller]")>]
-    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
-
-        // Success: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
-        // Failure: curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": ""}' | jq
-
-        [<HttpPost>]
-        member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        CreateStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { Id = Guid.NewGuid()
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
-                        | Error e ->
-                            match e with
-                            // TODO: if we failwith ae here, why does API then get into a NRE?
-                            | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
-
-        [<HttpPut("{id}")>]
-        member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        UpdateStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { Id = id
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | UpdateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | UpdateStoryCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        // curl https://localhost:5000/stories/fec32101-72b0-4d96-814f-de1c5b2dd140 --insecure --request delete
-
-        [<HttpDelete("{id}")>]
-        member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok _ -> OkResult() :> ActionResult
-                        | Error e ->
-                            match e with
-                            | DeleteStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | DeleteStoryCommand.StoryNotFound _ ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/57db7489-722f-4d66-97d5-d5c2501eb89e --insecure --request delete
-
-        [<HttpDelete("{storyId}/tasks/{taskId}")>]
-        member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = DeleteTaskCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok _ -> OkResult() :> ActionResult
-                        | Error e ->
-                            match e with
-                            | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
-                            | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | DeleteTaskCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                            | DeleteTaskCommand.TaskNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        // Success: curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks --insecure --request post -H 'Content-Type: application/json' -d '{"title": "title","description": "description"}'
-
-        [<HttpPost("{storyId}/tasks")>]
-        member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        AddTaskToStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { TaskId = Guid.NewGuid()
-                              StoryId = storyId
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
-                            | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | AddTaskToStoryCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                            | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e/tasks/916397d3-0c10-495c-a6e3-a081d41f644c --insecure --request put -H 'Content-Type: application/json' -d '{"title": "title1","description": "description1"}'
-
-        [<HttpPut("{storyId}/tasks/{taskId}")>]
-        member x.UpdateTaskOnStory
-            (
-                [<FromBody>] request: StoryTaskUpdateDto,
-                storyId: Guid,
-                taskId: Guid,
-                ct: CancellationToken
-            ) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        UpdateTaskCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { StoryId = storyId
-                              TaskId = taskId
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok _ -> OkResult() :> ActionResult
-                        | Error e ->
-                            match e with
-                            | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
-                            | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | UpdateTaskCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                            | UpdateTaskCommand.TaskNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure | jq
-
-        [<HttpGet("{id}")>]
-        member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = GetStoryByIdQuery.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
-                            | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | GetStoryByIdQuery.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-    // TODO: check zalando for dash in controller name
-    [<Authorize; Route("[controller]")>]
-    type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
-
-        // curl https://localhost:5000/persistedDomainEvents/20e86071-a4f2-4576-89cd-5e33e64d50d0 --insecure -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJqdGkiOiJkMTM4NjNhOC1kNDExLTRlOWItYTliYi01ZWRmZDJiOGYwNjEiLCJ1c2VySWQiOiIwMDAwMDAwMC0wMDAwLTAwMDAtMDAwMC0wMDAwMDAwMDAwMDEiLCJyb2xlIjoicmVndWxhciIsImV4cCI6MTY5NjQyOTAzOSwiaXNzIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIiwiYXVkIjoiaHR0cHM6Ly9zY3J1bS1kZXYvIn0.x5DE_A5rvQUkb7UED4Ook8pBm5hpRmRauPNzpuvTQM0" | jq
-
-        [<HttpGet("{id}")>]
-        member x.GetPersistedDomainEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
-                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
     // As the token is supposed to be opaque, we can either expose information
     // from claims inside the token as additional fields or provide clients with
     // an introspect endpoint. We chose the latter.
@@ -491,7 +255,7 @@ module Controller =
 
         let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationOptions.Value)
 
-        // curl "https://localhost:5000/authentication/issueToken?userId=1&role=regular" --insecure --request post | jq
+        // curl "https://localhost:5000/authentication/issueToken?userId=1&role=member,admin" --insecure --request post | jq
 
         [<HttpPost("issueToken")>]
         member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
@@ -547,7 +311,243 @@ module Controller =
                 else
                     map.Add(c.Type, c.Value)            
 
-            map
+            map    
+    
+    
+    type StoryCreateDto = { title: string; description: string }
+    type StoryUpdateDto = { title: string; description: string }
+    type AddTaskToStoryDto = { title: string; description: string }
+    type StoryTaskUpdateDto = { title: string; description: string }
+
+    [<Authorize; Route("[controller]")>]
+    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+        inherit ScrumController(configuration, httpContext)
+
+        // curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
+
+        [<HttpPost>]
+        member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result =
+                        CreateStoryCommand.runAsync
+                            x.Env.UserIdentity
+                            x.Env.StoryRepository
+                            x.Env.SystemClock
+                            x.Env.Logger
+                            ct
+                            { Id = Guid.NewGuid()
+                              Title = request.title
+                              Description = request.description |> Option.ofObj }
+                    do! x.Env.CommitAsync(ct)
+                    return
+                        match result with
+                        | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                        | Error e ->
+                            match e with
+                            // TODO: if we failwith ae here, why does API then get into a NRE?
+                            | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                            | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+        // curl https://localhost:5000/stories/<storyId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
+
+        [<HttpPut("{id}")>]
+        member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result =
+                        UpdateStoryCommand.runAsync
+                            x.Env.UserIdentity
+                            x.Env.StoryRepository
+                            x.Env.SystemClock
+                            x.Env.Logger
+                            ct
+                            { Id = id
+                              Title = request.title
+                              Description = request.description |> Option.ofObj }
+                    do! x.Env.CommitAsync(ct)
+                    return
+                        match result with
+                        | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | UpdateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                            | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | UpdateStoryCommand.StoryNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }   
+        
+        // curl https://localhost:5000/stories/<storyId>/tasks --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
+
+        [<HttpPost("{storyId}/tasks")>]
+        member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result =
+                        AddTaskToStoryCommand.runAsync
+                            x.Env.UserIdentity
+                            x.Env.StoryRepository
+                            x.Env.SystemClock
+                            x.Env.Logger
+                            ct
+                            { TaskId = Guid.NewGuid()
+                              StoryId = storyId
+                              Title = request.title
+                              Description = request.description |> Option.ofObj }
+                    do! x.Env.CommitAsync(ct)
+                    return
+                        match result with
+                        | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | AddTaskToStoryCommand.StoryNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+        // curl https://localhost:5000/stories/<storyId>/tasks/<taskId --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
+
+        [<HttpPut("{storyId}/tasks/{taskId}")>]
+        member x.UpdateTaskOnStory
+            (
+                [<FromBody>] request: StoryTaskUpdateDto,
+                storyId: Guid,
+                taskId: Guid,
+                ct: CancellationToken
+            ) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result =
+                        UpdateTaskCommand.runAsync
+                            x.Env.UserIdentity
+                            x.Env.StoryRepository
+                            x.Env.SystemClock
+                            x.Env.Logger
+                            ct
+                            { StoryId = storyId
+                              TaskId = taskId
+                              Title = request.title
+                              Description = request.description |> Option.ofObj }
+                    do! x.Env.CommitAsync(ct)
+                    return
+                        match result with
+                        | Ok _ -> OkResult() :> ActionResult
+                        | Error e ->
+                            match e with
+                            | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | UpdateTaskCommand.StoryNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            | UpdateTaskCommand.TaskNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+        // curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request delete -H 'Authorization: Bearer <token>'
+
+        [<HttpDelete("{storyId}/tasks/{taskId}")>]
+        member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = DeleteTaskCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
+                    do! x.Env.CommitAsync(ct)
+                    return
+                        match result with
+                        | Ok _ -> OkResult() :> ActionResult
+                        | Error e ->
+                            match e with
+                            | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | DeleteTaskCommand.StoryNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            | DeleteTaskCommand.TaskNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+        // curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>'
+
+        [<HttpDelete("{id}")>]
+        member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                    do! x.Env.CommitAsync(ct)
+                    return
+                        match result with
+                        | Ok _ -> OkResult() :> ActionResult
+                        | Error e ->
+                            match e with
+                            | DeleteStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                            | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | DeleteStoryCommand.StoryNotFound _ ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }        
+        
+        // curl https://localhost:5000/stories/bad0f0bd-6a6a-4251-af62-477513fad87e --insecure | jq
+
+        [<HttpGet("{id}")>]
+        member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = GetStoryByIdQuery.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                    return
+                        match result with
+                        | Ok s -> OkObjectResult(s) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | GetStoryByIdQuery.StoryNotFound id ->
+                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+    // TODO: check zalando for dash in controller name
+    [<Authorize; Route("[controller]")>]
+    type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+        inherit ScrumController(configuration, httpContext)
+
+        // curl https://localhost:5000/persistedDomainEvents/20e86071-a4f2-4576-89cd-5e33e64d50d0 --insecure -H "Authorization: Bearer <token>" | jq
+
+        [<HttpGet("{id}")>]
+        member x.GetPersistedDomainEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                    return
+                        match result with
+                        | Ok s -> OkObjectResult(s) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
 
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
