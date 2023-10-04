@@ -43,7 +43,7 @@ The API supports the following endpoints:
 ```bash
 
 # Authentication (supported roles: member and/or admin)
-curl "https://localhost:5000/authentication/issueToken?userId=1&role=member,admin" --insecure --request post | jq
+curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request post | jq
 curl https://localhost:5000/authentication/renew --insecure --request post -H "Authorization: Bearer <token>" | jq
 curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
 
@@ -57,7 +57,7 @@ curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --reques
 curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>'
 
 # PersistedDomainEvents
-curl https://localhost:5000/persistedDomainEvents/<aggregateId> --insecure -H "Authorization: Bearer <token>" | jq
+curl https://localhost:5000/persisted-domain-events/<aggregateId> --insecure -H "Authorization: Bearer <token>" | jq
 
 # Health
 curl https://localhost:5000/health --insecure | jq

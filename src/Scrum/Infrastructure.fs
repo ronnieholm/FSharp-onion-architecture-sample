@@ -11,6 +11,7 @@ open System.Collections.Generic
 open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Microsoft.AspNetCore.Http
+open Microsoft.Extensions.Logging
 open Scrum.Application.Seedwork
 open Scrum.Domain
 open Scrum.Domain.Seedwork
@@ -337,6 +338,11 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
             }
 
 type Logger() =
+    let logger =
+        use factory = new LoggerFactory()
+        let logger = factory.CreateLogger<Logger>()
+        logger
+
     static let jsonSerializationOptions =
         let o =
             JsonSerializerOptions(PropertyNamingPolicy = Json.SnakeCaseLowerNamingPolicy(), WriteIndented = true)
@@ -345,11 +351,15 @@ type Logger() =
         o
 
     interface ILogger with
-        member _.LogRequestPayload (useCase: string) (request: obj) : unit =
+        member _.LogRequestPayload (useCase: string) (request: obj) : unit =            
             let json = JsonSerializer.Serialize(request, jsonSerializationOptions)
-            printfn $"%s{useCase}: %s{json}"
-        member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit = printfn $"%s{useCase}: %d{duration}"
-        member _.LogException(e: exn) : unit = printfn $"%A{e}"
+            logger.LogInformation($"%s{useCase}: %s{json}")
+
+        member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit = logger.LogInformation($"%s{useCase}: %d{duration}")
+        member _.LogException(e: exn) : unit = logger.LogDebug($"%A{e}")
+        member _.LogError(message: string) = logger.LogError(message)
+        member _.LogInformation(message: string) = logger.LogInformation(message)
+        member _.LogDebug(message: string) = logger.LogDebug(message)
 
 type AppEnv(connectionString: string, userIdentity: IUserIdentity, ?systemClock: ISystemClock, ?logger: ILogger, ?storyRepository) =
     // Bind connection and transaction with a let, not a use, or repository

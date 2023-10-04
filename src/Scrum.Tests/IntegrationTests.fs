@@ -66,7 +66,10 @@ module Fake =
         { new ILogger with
             member _.LogRequestPayload _ _ = ()
             member _.LogRequestDuration _ _ = ()
-            member _.LogException _ = () }
+            member _.LogException _ = ()
+            member _.LogError _ = ()
+            member _.LogInformation _ = ()
+            member _.LogDebug _ = () }
 
     let defaultAppEnv () =
         new AppEnv(connectionString, userIdentityService, systemClock = fixedClock, logger = nullLogger)

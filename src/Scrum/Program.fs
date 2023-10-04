@@ -96,7 +96,7 @@ module Seedwork =
 
         let createAuthorizationError (accept: StringValues) (message: string) : ActionResult =
             createJsonResult accept StatusCodes.Status401Unauthorized message
-        
+
         type ValidationErrorDto = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
@@ -245,8 +245,7 @@ module Controller =
     // an introspect endpoint. We chose the latter.
     type AuthenticationResponse = { Token: string }
 
-    // TODO: check zalando for dash in controller name Loosely modeled after
-    // OAuth2 authentication.
+    // Loosely modeled after the corresponding OAuth2 endpoint.
     [<Route("[controller]")>]
     type AuthenticationController
         (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>) as x
@@ -255,7 +254,7 @@ module Controller =
 
         let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationOptions.Value)
 
-        [<HttpPost("issueToken")>]
+        [<HttpPost("issue-token")>]
         member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
             task {
                 // Get user from hypothetical user store and pass to issueRegularToken
@@ -264,8 +263,6 @@ module Controller =
                 let token = idp.IssueToken userId roles
                 return CreatedResult("/authentication/introspect", { Token = token })
             }
-
-        // TODO: Add Renew and Logging. Add three log levels to ILogger.
 
         [<Authorize; HttpPost("renewToken")>]
         member _.RenewToken() : Task<ActionResult> =
@@ -302,11 +299,10 @@ module Controller =
                     else
                         map.Add(ScrumClaims.RolesClaim, [ c.Value ] |> ResizeArray)
                 else
-                    map.Add(c.Type, c.Value)            
+                    map.Add(c.Type, c.Value)
 
-            map    
-    
-    
+            map
+
     type StoryCreateDto = { title: string; description: string }
     type StoryUpdateDto = { title: string; description: string }
     type AddTaskToStoryDto = { title: string; description: string }
@@ -372,8 +368,8 @@ module Controller =
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
-            }   
-        
+            }
+
         [<HttpPost("{storyId}/tasks")>]
         member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -396,7 +392,7 @@ module Controller =
                         | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                         | Error e ->
                             match e with
-                            | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | AddTaskToStoryCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -433,7 +429,7 @@ module Controller =
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
-                            | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | UpdateTaskCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -448,14 +444,20 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = DeleteTaskCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { StoryId = storyId; TaskId = taskId }
+                    let! result =
+                        DeleteTaskCommand.runAsync
+                            x.Env.UserIdentity
+                            x.Env.StoryRepository
+                            x.Env.Logger
+                            ct
+                            { StoryId = storyId; TaskId = taskId }
                     do! x.Env.CommitAsync(ct)
                     return
                         match result with
                         | Ok _ -> OkResult() :> ActionResult
                         | Error e ->
                             match e with
-                            | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | DeleteTaskCommand.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -483,8 +485,8 @@ module Controller =
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
-            }        
-        
+            }
+
         [<HttpGet("{id}")>]
         member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -496,7 +498,7 @@ module Controller =
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
-                            | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | GetStoryByIdQuery.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
@@ -504,8 +506,7 @@ module Controller =
                     return! x.HandleExceptionAsync e accept ct
             }
 
-    // TODO: check zalando for dash in controller name
-    [<Authorize; Route("[controller]")>]
+    [<Authorize; Route("persisted-domain-events")>]
     type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
         inherit ScrumController(configuration, httpContext)
 
@@ -520,7 +521,7 @@ module Controller =
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
-                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae                            
+                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
@@ -730,17 +731,13 @@ module Program =
             .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
 
     [<EntryPoint>]
-    let main args =
-        // Short-hand initialization. .NET 7 moved away from Configure and ConfigureServices, but still support those.
-        // - https://learn.microsoft.com/en-us/aspnet/core/migration/50-to-60-samples?view=aspnetcore-7.0
-        // - https://mobiletonster.com/blog/code/aspnet-core-6-how-to-deal-with-the-missing-startupcs-file
-        //
-        // let builder = WebApplication.CreateBuilder(args)
-        // builder.Services.AddControllers() |> ignore
-        // let app = builder.Build()
-        // app.UseHttpsRedirection() |> ignore
-        // app.MapControllers() |> ignore
-        // app.Run()
+    let main args =        
+        // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
+        TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
+            e.SetObserved()
+            e.Exception.Handle(fun e ->
+                printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
+                true))
 
         let host = createHostBuilder(args).Build()
         host.Run()

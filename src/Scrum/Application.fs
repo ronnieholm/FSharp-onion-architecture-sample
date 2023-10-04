@@ -69,9 +69,14 @@ module Seedwork =
 
     [<Interface>]
     type ILogger =
+        // Application specific logging.
         abstract LogRequestPayload: string -> obj -> unit
         abstract LogRequestDuration: string -> uint<ms> -> unit
         abstract LogException: exn -> unit
+        // Delegates to .NET's ILogger.
+        abstract LogError: string -> unit
+        abstract LogInformation: string -> unit
+        abstract LogDebug: string -> unit
 
     [<Interface>]
     type ILoggerFactory =
