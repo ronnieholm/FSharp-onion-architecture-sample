@@ -359,6 +359,7 @@ type DomainEventRequestTests() =
     [<Fact>]
     let ``query domain events`` () =
         task {
+            // This could be one user making a request.
             let fixedClock1 = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
             use env = customAppEnv [ Member; Admin ] fixedClock1
             let sfns = env |> setupStoryAggregateRequests
@@ -367,6 +368,7 @@ type DomainEventRequestTests() =
             let! _ = sfns.CreateStory storyCmd
             do! sfns.Commit()
 
+            // This could be another user making a request.
             let fixedClock2 = fixedClock (DateTime(2023, 1, 1, 7, 0, 0))
             use env = customAppEnv [ Member; Admin ] fixedClock2
             let sfns = env |> setupStoryAggregateRequests
