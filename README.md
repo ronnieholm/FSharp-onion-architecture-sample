@@ -1,45 +1,44 @@
 # Scrum clean architecture sample
 
-Proof of concept F# clean architecture sample.
-
 Focus is on applying functional constructs over cluing together libraries and
-frameworks. Instead of .NET dependency injection container, FluentValidation,
-MediatR, Entity Framework, Moq, Respawn, we use mostly functions.
+frameworks. Instead of the .NET dependency injection container,
+FluentValidation, MediatR, Entity Framework, Moq, and Respawn, and a migration
+tool, the sample implements simple alternatives.
 
 The sample is an imperative shell, functional core with the following features:
 
 - REST API adhering to the [Zalando API
 guidelines](https://opensource.zalando.com/restful-api-guidelines/) with JWTs
-impmenting role-based security.
+supporting role-based security.
 - A simple identity provider to issue, renew, and inspect JWTs accepted by
-  itself.
-- Command Query Responsibility Segregation (CQRS) entries to application layer.
-- Integration tests with the ability to stub out any dependency.
+  the service.
+- Command Query Responsibility Segregation (CQRS) access to the application
+  layer.
+- Integration tests with the ability to fake any dependency.
 - ASP.NET health checks for memory and database.
-- Database migration and data seeding support. 
+- Support for database migration and data seeding.
 - [Architecture Decision
   Records](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
-  under `docs/architecuture` covering many trade-off.
+  under `docs/architecuture`.
 
-The Scrum domain was chosen because it offers sufficient complexity and because
-everyone is familiar with it. Most aspects of the application is illustrated
-using the concept of stories and tasks only.
+The Scrum domain is chosen because it offers sufficient complexity and because
+everyone is familiar with it. Though most aspects of the application is
+illustrated using the concept of stories and tasks only.
 
-`Domain.fs`, `Application.fs`, and `IntegrationTest.fs` is where F# shines.
-`Integration.fs` and and `Program.fs` are similar in nature to many C#
+Where F# shines is in `Domain.fs`, `Application.fs`, and `IntegrationTest.fs`.
+As for `Integration.fs` and `Program.fs`, these are similar in nature to many C#
 applications.
 
 ## Building and testing
 
-If not already present, running the tests or the web app automatically creates
-the SQLite databases. They're to be found in the Git root as `scrum_web.sqlite`
-and `scrum_test.sqlite`.
+Running the tests or the web app automatically creates the SQLite databases.
+They're found in the Git root as `scrum_web.sqlite` and `scrum_test.sqlite`.
 
     $ dotnet build
     $ dotnet test
     $ dotnet run --project src/Scrum
 
-The API supports the following endpoints:
+The API supports the following operations:
 
 ```bash
 
@@ -73,20 +72,22 @@ Code is organized using horizontal slice architecture:
 - Infrastructure.fs
 - Program.fs
 
-File ordering matters to the F# compiler. So `Domain.fs` depends on
-nothing, `Application.fs` depends on `Domain.fs`, and so on. Similarly, within each file
-definitions must come before use.
+As file ordering matters to the F# compiler, `Domain.fs` depends on nothing,
+`Application.fs` depends on `Domain.fs`, and so on. Similarly, within each
+source file definitions must precede use.
 
-For a larger application, an alternate organization might be along vertical
-slices: `Story.fs` would contain domain, application, infrastructure, web, and
-possibly test code as well (and similar organization for other aggregates):
+For a larger application, the vertical slice architecture may be preferred. Here
+`Story.fs` could contain domain, application, infrastructure, web, and possibly
+test code (and similar organization for other aggregates):
 
 - Shared.fs
 - Story.fs (domain + application + infrastructure + ASP.NET handlers + test)
 - Program.fs
 
+Or Story could be a folder with multiple files or its own assembly.
+
 Vertical slice architecture has the potential to improve compile times. The F#
 compiler is mostly sequential across an assembly, but multiple assemblies may be
 compiled in parallel. For this reasons, separate assemblies for domain,
-application, integration, web, unit test integration test is a good idea.
-Compilation would become sequential compilation across the solution.
+application, integration, web, unit test and integration test is ill advised.
+Compilation would become sequential across the solution.
