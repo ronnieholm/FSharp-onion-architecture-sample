@@ -54,11 +54,11 @@ module Seedwork =
     type IUserIdentity =
         abstract GetCurrent: unit -> ScrumIdentity
 
-    // The factory interfaces is there as a means of groping inside AppEnv.
-    // Without factory interfaces, AppEnv would implement all interfaces at the
-    // same same level, e.g., AppEnv.GetCurrent. With factory interfaces it
-    // becomes AppEnv.UserIdentity.GetCurrent. The latter means we can inject
-    // the dependency into another type by passing in AppEnv.UserIdentity.
+    // The factory interfaces are for groping inside AppEnv. Without factory
+    // interfaces, AppEnv would implement interfaces at the same same level,
+    // e.g., AppEnv.GetCurrent. A factory interfaces turns this into
+    // AppEnv.UserIdentity.GetCurrent, and means we can inject the dependency as
+    // a whole into another type by passing into that type AppEnv.UserIdentity.
     [<Interface>]
     type IUserIdentityFactory =
         abstract UserIdentity: IUserIdentity
@@ -91,10 +91,10 @@ module Seedwork =
         abstract StoryRepository: IStoryRepository
 
     [<Interface>]
-    // Mirroring the PersistedDomainEvent type, its repository is defined in the
-    // application layer. While domain events are part of the domain, persisted
-    // domain events aren't. After an event is applied, it's no longer needed.
-    // We persist domain events for troubleshooting only.
+    // Mirroring the PersistedDomainEvent type, this repository is defined in
+    // the application, not domain, layer. While domain events are part of the
+    // domain, persisted domain events aren't. After an event is processed, it's
+    // no longer needed. We persist domain events for troubleshooting only.
     type IDomainEventRepository =
         abstract GetByAggregateIdAsync: CancellationToken -> Guid -> System.Threading.Tasks.Task<PersistedDomainEvent list>
 
@@ -125,8 +125,8 @@ module Seedwork =
             time (fun _ ->
                 logger.LogRequestPayload useCase cmd
                 taskResult { return! fn () })
-        // Don't log errors from evaluating fn as These are expected errors
-        // which we don't want to pollute the log with.
+        // Don't log errors from evaluating fn as these are expected errors. We
+        // don't want those to pollute the log with.
         logger.LogRequestDuration useCase elapsed
         result
 
@@ -189,9 +189,8 @@ module StoryAggregateRequest =
                     let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
                     do! stories.ApplyEventAsync ct event
                     // Example of publishing the StoryCreated domain event to
-                    // another aggregate: do!
-                    // SomeOtherAggregate.SomeEventNotificationAsync
-                    // dependencies ct event
+                    // another aggregate:
+                    // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
@@ -204,9 +203,9 @@ module StoryAggregateRequest =
 
         let validate (c: UpdateStoryCommand) : Validation<UpdateStoryValidatedCommand, ValidationError> =
             validation {
-                // Except for return type, validation is identical to that of
-                // CreateStoryCommand. With more fields on the story, likely we
-                // may not want to allow updating every field set during
+                // Except for return type, this validation is identical to that
+                // of CreateStoryCommand. With more fields on the story, likely
+                // we don't want to allow updating every field set during
                 // creation. At that point, validations will differ.
                 let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
@@ -354,7 +353,7 @@ module StoryAggregateRequest =
 
         let validate (c: UpdateTaskCommand) : Validation<UpdateTaskValidatedCommand, ValidationError> =
             // Except for return type, identical to AddTaskToStoryCommand's
-            // validate command. With more fields on the task, the two are more
+            // validate command. With more fields on the task, the two are
             // likely to differ.
             validation {
                 let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
@@ -573,5 +572,5 @@ module DomainEventRequest =
             runWithDecoratorAsync logger (nameof GetByAggregateIdQuery) qry aux
 
 module ApplicationService =
-    // Logic shared across requests.
+    // Services shared across requests.
     ()

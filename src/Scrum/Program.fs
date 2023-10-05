@@ -41,8 +41,9 @@ open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
     // By default only a public top-level type ending in Controller is
-    // considered one. It means controllers inside a module isn't found. A
-    // module compiles to a class with nested classes for controllers.
+    // considered one. It means controllers inside a module aren't found. As a
+    // module compiles to a class with nested classes for controllers, we can
+    // find controllers that way.
     type ControllerWithinModule() =
         inherit ControllerFeatureProvider()
 
@@ -54,7 +55,7 @@ module Seedwork =
         // System.Text.Json cannot serialize an exception without itself
         // throwing an exception: "System.NotSupportedException: Serialization
         // and deserialization of 'System.Reflection.MethodBase' instances are
-        // not supported. Path: $.Result.Exception.TargetSite.". The converters
+        // not supported. Path: $.Result.Exception.TargetSite.". This converter
         // works around the issue by limiting serialization to the most relevant
         // parts of the exception.
         type ExceptionJsonConverter() =
@@ -139,7 +140,7 @@ module Service =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
 
-    // Web specific implementation of IUserIdentityService so it belongs in
+    // Web specific implementation of IUserIdentity. It therefore belongs in
     // Program.fs rather than Infrastructure.fs.
     type UserIdentity(context: HttpContext) =
         interface IUserIdentity with
@@ -171,21 +172,20 @@ module Service =
                                 |> Seq.map (fun c -> ScrumRole.FromString(c.Value))
                                 |> List.ofSeq
 
-                            // With a proper identity provider, it's likely we'd
-                            // have more kinds of authenticated identities, and
-                            // that we'd use a claim's value to determine which
-                            // one.
+                            // With a proper identity provider, we'd likely have
+                            // kinds of authenticated identities, and we might
+                            // use a claim's value to determine which one.
                             match List.length rolesClaim with
                             | 0 -> Anonymous
                             | _ -> Authenticated(userIdClaim, rolesClaim)
 
     // IUserIdentity is defined in Application.fs because application code needs
     // to consult the current identity as part of running use cases.
-    // IdentityProviderService, on the other hand, is of no concern to the
-    // application layer and is host dependent. AppEnv will never have to
-    // resolve IIdentityProviderServer service. Therefore, we couldn't
-    // implemented the service logic inside the Authentication controller, but
-    // to keep controllers lean, we extract the logic into a separate class
+    // IdentityProvider, on the other hand, is of no concern to the application
+    // layer and is host dependent. AppEnv doesn't support resolving
+    // IIdentityProvider. Therefore, we could've implemented it inside the
+    // Authentication controller, but decided to keep the controller lean and
+    // extract the logic into a separate service.
     type IdentityProvider(clock: ISystemClock, options: JwtAuthenticationOptions) =
         let sign (claims: Claim array) : string =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey))
@@ -203,8 +203,8 @@ module Service =
 
         member _.IssueToken (userId: string) (roles: ScrumRole list) : string =
             // With an actual user store, we'd validate user credentials here.
-            // But for this app, userId may be any string and role must be
-            // either "regular" or "admin"
+            // But for this application, userId may be any string and role must
+            // be either "member" or "admin"
             let roles =
                 roles
                 |> List.map (fun r -> Claim(ScrumClaims.RolesClaim, r.ToString()))
@@ -243,9 +243,9 @@ module Controller =
         interface IDisposable with
             member x.Dispose() = x.Env.Dispose()
 
-    // As the token is supposed to be opaque, we can either expose information
-    // from claims inside the token as additional fields or provide clients with
-    // an introspect endpoint. We chose the latter.
+    // As the token is supposed to be opaque, we can either promote information
+    // from inside the token to fields on the token or provide clients with an
+    // introspect endpoint. We chose the latter.
     type AuthenticationResponse = { Token: string }
 
     // Loosely modeled after the corresponding OAuth2 endpoint.
@@ -260,8 +260,9 @@ module Controller =
         [<HttpPost("issue-token")>]
         member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
             task {
-                // Get user from hypothetical user store and pass to issueRegularToken
-                // to include information about the user as claims in the token.
+                // Get user from imaginary user store and pass to
+                // issueRegularToken to include information about the user as
+                // claims in the token.
                 let roles = roles.Split(',') |> Array.map ScrumRole.FromString |> Array.toList
                 let token = idp.IssueToken userId roles
                 return CreatedResult("/authentication/introspect", { Token = token })
@@ -287,13 +288,13 @@ module Controller =
 
             for c in claimsIdentity.Claims do
                 // Special case non-string value or it becomes a string in
-                // string in the HTTP response.
+                // string in the JSON rendering of the claim.
                 if c.Type = "exp" then
                     map.Add("exp", Int32.Parse(c.Value) :> obj)
                 elif c.Type = ClaimTypes.Role then
                     // For reasons unknown, ASP.NET maps our Scrum RoleClaim
                     // from the bearer token to ClaimTypes.Role. The claim's
-                    // type deserialized becomes
+                    // type JSON rendered would become
                     // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
                     let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
                     if ok then
@@ -605,7 +606,8 @@ module Migration =
                 let sql =
                     use stream = assembly.GetManifestResourceStream(path)
                     if isNull stream then
-                        // On SQL file, did you set Build action to EmbeddedResource?
+                        // On the SQL file, did you set Build action to
+                        // EmbeddedResource?
                         failwith $"Embedded resource not found: '{path}'"
                     use reader = new StreamReader(stream)
                     reader.ReadToEnd()
@@ -641,7 +643,8 @@ module Migration =
                 let sql = "select name, hash, sql, created_at from migrations order by created_at"
                 use cmd = new SQLiteCommand(sql, connection)
 
-                // No transaction as we assume only one migration will happen at once.
+                // Without transaction as we assume only one migration will run
+                // at once.
                 use r = cmd.ExecuteReader()
 
                 let migrations = ResizeArray<AppliedMigration>()
@@ -665,7 +668,7 @@ module Migration =
 
         // Start applying new migrations.
         for i = appliedMigrations.Length to availableMigrations.Length - 1 do
-            // Use a transaction as we're updating migrations table and some scripts might update other data.
+            // With a transaction as we're updating the migrations table.
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(availableMigrations[i].Sql, connection, tx)
             let count = cmd.ExecuteNonQuery()
@@ -680,7 +683,8 @@ module Migration =
                 let count = cmd.ExecuteNonQuery()
                 assert (count = 1)
 
-                // Schema upgrade custom code. We don't support downgrading.
+                // Schema upgrade per migration code. Downgrading isn't
+                // supported.
                 match availableScripts[i].Name with
                 | "202310051903-initial" -> ()
                 | _ -> ()
@@ -690,7 +694,8 @@ module Migration =
                 tx.Rollback()
                 reraise ()
 
-        // Apply data seeding. It's a pseudo-migration, so we don't record it in the migrations table.
+        // Apply seeding. It's a pseudo-migration, so we don't record it in the
+        // migrations table.
         availableScripts
         |> Array.filter (fun s -> s.Name = "seed.sql")
         |> Array.iter (fun s ->
@@ -734,8 +739,8 @@ type Startup(configuration: IConfiguration) =
                     )
 
                 // Leave in callbacks for troubleshooting JWT issues. Set a
-                // breakpoint on the relevant lines below to inspect the JWT
-                // authentication process.
+                // breakpoint on lines below to track the JWT authentication
+                // process.
                 options.Events <-
                     JwtBearerEvents(
                         OnAuthenticationFailed = (fun _ -> Task.CompletedTask),
@@ -782,10 +787,11 @@ type Startup(configuration: IConfiguration) =
         services.AddResponseCaching() |> ignore
         services.AddEndpointsApiExplorer() |> ignore
 
-        // Azure hosting under a Linux based app means the API is running a
-        // container. Inside the container, the API is run using the dotnet
-        // command, meaning Kestrel is serving traffic. Kestrel doesn't have
-        // build-in compression which is why the API is doing the compression:
+        // Azure hosting under a Linux means the application is running a
+        // container. Inside the container, the application is run using the
+        // dotnet command, meaning Kestrel is serving traffic. Kestrel doesn't
+        // have build-in compression support, so we add in application level
+        // compression:
         // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
         services
             .AddResponseCompression(fun options ->

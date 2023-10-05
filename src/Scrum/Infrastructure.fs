@@ -9,9 +9,9 @@ open System.Threading
 open System.Threading.Tasks
 open System.Collections.Generic
 open System.Data.SQLite
-open FsToolkit.ErrorHandling
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Logging
+open FsToolkit.ErrorHandling
 open Scrum.Application.Seedwork
 open Scrum.Domain
 open Scrum.Domain.Seedwork
@@ -24,7 +24,7 @@ module Seedwork =
             inherit JsonNamingPolicy()
 
             // SnakeCaseLower will be part of .NET 8 which releases on Nov 14,
-            // 2023. After upgrading to .NET 8, remote this custom policy.
+            // 2023. After upgrading to .NET 8, remove this custom policy.
             override _.ConvertName(name: string) : string =
                 (name
                  |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
@@ -163,8 +163,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     parsedStories.Add(storyId, story)
                 parseTask r storyId
 
-            // With multiple tables, ADO.NET requires aliasing fields to address
-            // those in the result.
+            // For queries involving multiple tables, ADO.NET requires aliasing
+            // fields for those to be extractable through the reader.
             let sql =
                 """
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
@@ -178,13 +178,14 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
             task {
                 // Note that ExecuteReader() returns SQLiteDataReader, but
                 // ExecuteReaderAsync(...) returns DbDataReader. Perhaps because
-                // querying async against SQLite in the same address space makes
-                // little async sense. We stick with ExecuteReaderAsync to
-                // illustrate how to work with a client/server database.
+                // querying async against SQLite, running in the same address
+                // space, makes little async sense. We stick with
+                // ExecuteReaderAsync to illustrate how to work with a
+                // client/server database.
                 let! reader = cmd.ExecuteReaderAsync(ct)
 
                 // F# 8, to be released late Nov 14, 2023, will add while!
-                // support. At that point clean up this code:
+                // support. Following the release, clean up this code:
                 // https://devblogs.microsoft.com/dotnet/simplifying-fsharp-computations-with-the-new-while-keyword
                 // while! reader.ReadAsync(ct) do parseStory reader
                 let mutable keepGoing = true
@@ -208,10 +209,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      | _ -> failwith $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
-        // As we're immediately applying events to the store, compared to event
-        // sourcing, we don't have to worry about events evolving over time. For
-        // this domain, we don't require full event sourcing; only enough event
-        // data to keep the store up to date.
+        // Compared to event sourcing, we immediately apply events to the store.
+        // We don't have to worry about the shape of events evolving over time;
+        // only to keep the store up to date.
         member _.ApplyEventAsync (ct: CancellationToken) (event: DomainEvent) : Task<unit> =
             task {
                 let aggregateId =
@@ -230,9 +230,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                 // a custom converter, or taking a dependency on
                 // https://github.com/Tarmil/FSharp.SystemTextJson), we use the
                 // F# type printer. This wouldn't work in a pure event sourced
-                // scenario where we'd read back the event for processing, but
-                // persisting domain event for troubleshooting only, the printer
-                // suffices.
+                // system where we'd read back the event for processing, but the
+                // printer suffices for persisting domain event for
+                // troubleshooting.
                 do!
                     persistDomainEventAsync
                         transaction
@@ -391,7 +391,7 @@ type AppEnv
     let systemClock = lazy (systemClock |> Option.defaultValue (SystemClock()))
     let logger = lazy (logger |> Option.defaultValue (Logger()))
 
-    // No point in making it lazy as we're merely a pass-through.
+    // No point in making it lazy as we're a pass-through.
     let userIdentityFactory = userIdentity
 
     let storyRepository =
@@ -413,8 +413,9 @@ type AppEnv
                 // "Dispose should rollback the transaction. However, the
                 // behavior of Dispose is provider specific, and should not
                 // replace calling Rollback". Yet, calling Rollback() sometimes
-                // result in exception where the transaction has to no
-                // connection. tx.Rollback()
+                // result in an exception where the transaction has no
+                // connection.
+                //tx.Rollback()
                 tx.Dispose()
             if connection.IsValueCreated then
                 connection.Value.Dispose()

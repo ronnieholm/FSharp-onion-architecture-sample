@@ -9,7 +9,7 @@ module Seedwork =
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
 
 module SharedValueObjects =
-    // Value object shared across aggregates.
+    // Value objects shared across aggregates.
     ()
 
 module StoryAggregate =
@@ -172,9 +172,9 @@ module StoryAggregate =
         story, event
 
     let delete (story: Story) : DomainEvent =
-        // Depending on domain, we might want to explicitly delete the story's
-        // tasks and emit task deleted domain events. In this case, we leave
-        // cascade delete to the store.
+        // Depending on the specifics of a domain, we might want to explicitly
+        // delete the story's tasks and emit task deleted events. In this case,
+        // we leave cascade delete to the store.
         DomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id })
 
     open TaskEntity
@@ -247,5 +247,5 @@ module StoryAggregate =
         abstract ApplyEventAsync: CancellationToken -> DomainEvent -> Task<unit>
 
 module DomainService =
-    // Logic shared across aggregates.
+    // Services shared across aggregates.
     ()
