@@ -578,9 +578,6 @@ module HealthCheck =
                 }
 
 module Migration =
-    // Provide up/down methods for each SQL
-    // Add logging
-
     let createMigrationsSql =
         """
         create table migrations(
@@ -593,7 +590,7 @@ module Migration =
     type AvailableScript = { Name: string; Hash: string; Sql: string }
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
-    let apply (connectionString: string) : unit =
+    let apply (logger: ILogger) (connectionString: string) : unit =
         use connection = new SQLiteConnection(connectionString)
         connection.Open()
 
@@ -621,18 +618,21 @@ module Migration =
                 let name = path.Replace(prefix, "").Replace(".sql", "")
                 { Name = name; Hash = hash; Sql = sql })
             |> Array.sortBy (fun m -> m.Name)
-
+        
         let availableMigrations =
             availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
+        logger.LogInformation $"Found {availableScripts.Length} available migrations"        
+        
         let appliedMigrations =
             let sql =
-                "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
+                "select count(*) from sqlite_master where type = 'table' and name = 'migration(s)'"
             use cmd = new SQLiteCommand(sql, connection)
             let exist = cmd.ExecuteScalar() :?> int64
 
             if exist = 0 then
                 // SQLite doesn't support transactional schema changes.
+                logger.LogInformation "Creating migrations table"
                 use cmd = new SQLiteCommand(createMigrationsSql, connection)
                 let count = cmd.ExecuteNonQuery()
                 assert (count = 0)
@@ -653,6 +653,8 @@ module Migration =
                           CreatedAt = Repository.parseCreatedAt r["created_at"] }
                     migrations.Add(m)
                 migrations |> Seq.toArray
+                
+        logger.LogInformation $"Found {appliedMigrations.Length} applied migration(s)"
 
         // For applied migrations, applied and available order should match.
         for i = 0 to appliedMigrations.Length - 1 do
@@ -674,8 +676,15 @@ module Migration =
             let cmd = new SQLiteCommand(sql, connection, tx)
 
             try
+                logger.LogInformation $"Applying migration: '{availableScripts[i].Name}'"
                 let count = cmd.ExecuteNonQuery()
                 assert (count = 1)
+
+                // Schema upgrade custom code. We don't support downgrading.
+                match availableScripts[i].Name with
+                | "20230315-initial" -> ()
+                | _ -> ()
+
                 tx.Commit()
             with e ->
                 tx.Rollback()
@@ -688,6 +697,7 @@ module Migration =
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(s.Sql, connection, tx)
             try
+                logger.LogInformation $"Applying seed"                
                 let count = cmd.ExecuteNonQuery()
                 assert (count >= 0)
                 tx.Commit()
@@ -755,7 +765,7 @@ type Startup(configuration: IConfiguration) =
                 o.WriteIndented <- true)
         |> ignore
 
-        configuration.GetConnectionString("Scrum") |> Migration.apply
+        configuration.GetConnectionString("Scrum") |> Migration.apply (Logger())
 
         services
             .AddHealthChecks()

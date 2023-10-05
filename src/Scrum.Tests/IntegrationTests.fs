@@ -110,7 +110,7 @@ open Setup
 type ApplyDatabaseMigrationsFixture() =
     do
         // Runs before all tests.
-        Migration.apply connectionString
+        Migration.apply nullLogger connectionString
 
     interface IDisposable with
         member _.Dispose() =
