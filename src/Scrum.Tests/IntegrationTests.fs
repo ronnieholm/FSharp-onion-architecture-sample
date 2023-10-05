@@ -60,9 +60,9 @@ module Fake =
         { new IUserIdentity with
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
-    let fixedClock =
+    let fixedClock (dt: DateTime) =
         { new ISystemClock with
-            member _.CurrentUtc() = DateTime(2023, 1, 1, 6, 0, 0) }
+            member _.CurrentUtc() = dt }
 
     let nullLogger =
         { new ILogger with
@@ -73,10 +73,12 @@ module Fake =
             member _.LogInformation _ = ()
             member _.LogDebug _ = () }
 
-    let appEnvWithRoles (roles: ScrumRole list) =
-        new AppEnv(connectionString, userIdentityService roles, systemClock = fixedClock, logger = nullLogger)
+    let customAppEnv (roles: ScrumRole list) (clock: ISystemClock) =
+        new AppEnv(connectionString, userIdentityService roles, systemClock = clock, logger = nullLogger)
 
-    let defaultAppEnv () = appEnvWithRoles [ Member; Admin ]
+    let defaultFixedClock = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
+
+    let defaultAppEnv () = customAppEnv [ Member; Admin ] defaultFixedClock
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
@@ -142,7 +144,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``must have member role to create story`` () =
-        use env = appEnvWithRoles [ Admin ]
+        use env = customAppEnv [ Admin ] defaultFixedClock
         let fns = env |> setupStoryAggregateRequests
         task {
             let storyCmd = A.createStoryCommand ()
@@ -168,13 +170,13 @@ type StoryAggregateRequestTests() =
                 { Id = storyCmd.Id
                   Title = storyCmd.Title
                   Description = storyCmd.Description |> Option.defaultValue null
-                  CreatedAt = fixedClock.CurrentUtc()
+                  CreatedAt = defaultFixedClock.CurrentUtc()
                   UpdatedAt = None
                   Tasks =
                     [ { Id = taskCmd.TaskId
                         Title = taskCmd.Title
                         Description = taskCmd.Description |> Option.defaultValue null
-                        CreatedAt = fixedClock.CurrentUtc()
+                        CreatedAt = defaultFixedClock.CurrentUtc()
                         UpdatedAt = None } ] }
 
             test <@ result = Ok(story) @>
@@ -356,33 +358,36 @@ type DomainEventRequestTests() =
 
     [<Fact>]
     let ``query domain events`` () =
-        use env = defaultAppEnv ()
-        let sfns = env |> setupStoryAggregateRequests
-        let dfns = env |> setupDomainEventRequests
-
         task {
+            let fixedClock1 = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
+            use env = customAppEnv [ Member; Admin ] fixedClock1
+            let sfns = env |> setupStoryAggregateRequests
+
             let storyCmd = A.createStoryCommand ()
             let! _ = sfns.CreateStory storyCmd
+            do! sfns.Commit()
+
+            let fixedClock2 = fixedClock (DateTime(2023, 1, 1, 7, 0, 0))
+            use env = customAppEnv [ Member; Admin ] fixedClock2
+            let sfns = env |> setupStoryAggregateRequests
+            let dfns = env |> setupDomainEventRequests
+
             let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
             let! _ = sfns.AddTaskToStory taskCmd
             let! result = dfns.GetByAggregateIdQuery { Id = storyCmd.Id }
 
-            // For this test, we can't use Unquote as we're not in control of Id
-            // assigned to each domain event. We also forego testing the ordering
-            // of events as they're created at the same time. Test could fail if
-            // SQLite decides to change ordering of items with same CreatedAt.
             match result with
             | Ok r ->
                 Assert.Equal(2, r.Length)
                 Assert.Equal(storyCmd.Id, r[0].AggregateId)
                 Assert.Equal("Story", r[0].AggregateType)
-                Assert.Equal("TaskAddedToStory", r[0].EventType)
-                Assert.Equal(fixedClock.CurrentUtc(), r[0].CreatedAt)
+                Assert.Equal("StoryCreated", r[0].EventType)
+                Assert.Equal(fixedClock1.CurrentUtc(), r[0].CreatedAt)
 
                 Assert.Equal(storyCmd.Id, r[1].AggregateId)
                 Assert.Equal("Story", r[1].AggregateType)
-                Assert.Equal("StoryCreated", r[1].EventType)
-                Assert.Equal(fixedClock.CurrentUtc(), r[1].CreatedAt)
+                Assert.Equal("TaskAddedToStory", r[1].EventType)
+                Assert.Equal(fixedClock2.CurrentUtc(), r[1].CreatedAt)
             | Error e -> Assert.Fail($"%A{e}")
 
             do! sfns.Commit()
@@ -390,7 +395,7 @@ type DomainEventRequestTests() =
 
     [<Fact>]
     let ``must have admin role to query domain events`` () =
-        use env = appEnvWithRoles [ Member ]
+        use env = customAppEnv [ Member ] defaultFixedClock
         let sfns = env |> setupStoryAggregateRequests
         let dfns = env |> setupDomainEventRequests
 
