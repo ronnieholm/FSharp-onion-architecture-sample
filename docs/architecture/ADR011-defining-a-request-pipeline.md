@@ -5,15 +5,15 @@ Status: Accepted and active.
 ## Context
 
 MediatR in C# enables threading the incoming request through a list of methods,
-each implementing a cross-cutting concern: JSON serialize the request, time the
-request, perform coarse grained authentication, log exceptions, and so on.
-Moving cross-cutting concerns to pipeline functions, each application layer
-handler doesn't have to be repeat similar code.
+each implementing a cross-cutting concern: JSON serialize the request to a log,
+time the request for start to finish, perform coarse grained authentication, log
+exceptions, and so on. Moving cross-cutting concerns to pipeline functions means
+that application layer handler doesn't have to be repeat similar code.
 
-In the F# solution this approach isn't as straightforward to implement. The last
-pipeline processor must call the appropriate request module's `runAsync`
-function. But that's non-trivial as the pipeline processor doesn't have access
-to dependencies which must be passed into `runAsync`.
+In the F# solution the MediatR approach isn't as straightforward to implement.
+The last pipeline processor must call the appropriate request module's
+`runAsync` function. But that's non-trivial as the pipeline processor doesn't
+have access to dependencies which must be passed into `runAsync`.
 
 We'd either have to go back to passing to each request the environment or inside
 the pipeline partially apply each `runAsync` function. Then we'd need to define
@@ -38,15 +38,15 @@ module RequestPipeline =
 ```
 
 where `run` would call into a chain of `run` functions (not shown in the code).
-In tests, we can still bypass the request pipeline and call `runAsync` functions
+In tests, we could bypass the request pipeline and call `runAsync` functions
 directly, allowing us to easily switch out dependencies.
 
 Client code would call `RequestPipeline.run`, passing in the appropriate
 request.
 
 MediatR elegantly achieves this behavior by tapping into the .NET dependency
-injection (DI) container, which in .NET has effectively become an application
-wide service locator.
+injection (DI) container, which in .NET is effectively an application wide
+service locator.
 
 We'd also have to define a return type of `run` to support every request. No
 good return type come to mind, short of copying MediatR interfaces, which isn't
@@ -56,7 +56,8 @@ idiomatic F#.
 
 In F#, going for a more explicit approach seems more idiomatic, i.e., instead of
 a pipeline, duplicate these functions across `runAsync` functions. The
-duplication makes it more obvious to readers what's going on.
+duplication (a few lines of code only) would make it more explicit to readers
+what's going on.
 
 As an example, `CreateStoryCommand` becomes:
 
@@ -107,4 +108,5 @@ within each `runAsync` function.
 
 ## Consequences
 
-Don't attempt to transplant to F# MediatR/object-oriented concepts.
+Avoid transplanting to F# MediatR/object-oriented concepts when oftentimes a few
+functions can achieve the same effect.

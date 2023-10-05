@@ -4,18 +4,21 @@ Status: Accepted and active.
 
 ## Context
 
-A library like MediatR performs assembly scanning for commands, queries, and
-notification handlers. It enables dispatching events, one aggregate indirectly
-communicating with another aggregate, around the observer pattern: (1) clients,
-command handlers, publish a domain event, (2) MediatR looks up subscribers, (3)
-MediatR constructor injects any dependencies into the handler class, (4) MediatR
-executing its handler method.
+A library such as MediatR performs assembly scanning for commands, queries, and
+notification handlers. This enables dispatching events, one aggregate indirectly
+communicating with another, around the observer pattern: (1) command handlers,
+publish a domain event, (2) MediatR looks up subscribers, (3) MediatR
+constructor injects dependencies into a new handler instance, (4) MediatR
+executes its handler method.
+
+Think of each aggregate as a "micro-service" and message passing as in-process
+communication between two "services".
 
 ## Decision
 
-With F#, we shy away from assembly scanning and dependency injection frameworks.
-Instead, published events may be statically dispatched based on type. A first go
-at such implement, with MediatR in mind, might be as follows:
+With F#, we want to avoid assembly scanning and dependency injection frameworks.
+Instead, published an event may be done by statically dispatching based on type.
+A first go at such implementation, with MediatR in mind, might be as follows:
 
 ```fsharp
 module Notification =
@@ -38,13 +41,13 @@ module Notification =
             | DomainEvent.TaskAddedToStoryEvent p -> addedTaskToStoryAsync env p ct
 ```
 
-The main issue with the above code is that based on the type of event, we
-require a separate dependency from the AppEnv: `createdStoryAsync` requires
-access to the story repository, and similarly for events on other aggregates.
+The issue with the above code is that based on the type of event, we require one
+or more dependencies from the `AppEnv`: `createdStoryAsync` might requireq
+access to the story repository, and similarly for other events.
 
-On the surface this doesn't look bad because we're passing in every dependency
-of the application through AppEnv. AppEnv dependency is passed from the
-controller action, to the command handler, and through the `publish`:
+On the surface this doesn't look too bad if we're passing in every dependency of
+the application through AppEnv. AppEnv dependency is passed from the controller
+action to the command handler to the `publish` function:
 
 ```fsharp
 module CreateStoryCommand =
@@ -62,26 +65,24 @@ module CreateStoryCommand =
         }
 ```
 
-Passing AppEnv, function signatures become opaque with respect to dependencies.
-From the signature of `runAsync` and `publish`, we cannot infer their
-dependencies. Testing has also become more cumbersome as we need to construct an
-AppEnv and be aware of which parts to mock based on calls into AppEnv.
+While passing `AppEnv` around makes function signatures shorter, it also makes
+them opaque with respect to dependencies. From the signature of `runAsync` and
+`publish`, we cannot infer their dependencies: it could be none, it could all of
+`AppEnv`. Testing also becomes more cumbersome as we need to construct an
+`AppEnv` and be manually aware of which parts to fake. The compiler doesn't
+guide us.
 
-Focusing on actual needs, we don't need the flexibility of the Notification
-module. We like notification handlers to run immediately (and not later on a
-queue), so that database changes they make become part of a single transaction.
-Thus, directly dispatching from `runAsync` to
-`SomeOtherAggregate.SomeEventNotificationAsync` suffices.
-
-Think of each aggregate as a "micro-service" an message passing as in-process
-communication between two "services".
+Focusing on actual needs, we don't need the flexibility of the `Notification`
+module above. We want notification handlers to run immediately, so that if they
+make database changes, they become part of a single transaction. Thus, directly
+dispatching from `runAsync` to `SomeOtherAggregate.SomeEventNotificationAsync`
+suffices.
 
 ## Consequences
 
-The benefit of direct dispatch is that at compile time we know which
+The benefits of direct dispatch is that at compile time we know which
 notification handlers to dispatch to and therefore which dependencies to pass
-into `runAsync`. From prior experience, it usually comes down to a repository
-only. We wouldn't update the database or dispatch an email through a
-notification handler, for instance. Notifications are only for notifying another
-aggregate instead of directly reach into it's state, possibly violating its
-invariants.
+into `runAsync`. From prior experience, it usually comes down to a repository.
+We shouldn't dispatch an email through a notification handler, for instance.
+Notifications are for notifying another aggregate instead of directly reaching
+into it, possibly violating its invariants.

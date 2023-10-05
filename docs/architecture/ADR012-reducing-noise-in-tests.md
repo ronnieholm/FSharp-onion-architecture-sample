@@ -4,9 +4,9 @@ Status: Accepted and active.
 
 ## Context
 
-Testing the commands and queries of the Story aggregate translates to calls to
-each command and query across the tests. If with every call we have to
-explicitly add every dependency, tests become noisy and hard to follow:
+Testing the Story aggregate translates to calling commands and queries across
+tests. If with every call we have to explicitly add every dependency, tests
+become noisy and hard to follow:
 
 ```fsharp
 [<Fact>]
@@ -25,10 +25,9 @@ let ``create story with task`` () =
     }
 ```
 
-By partially applying the commands and queries, we remove most of the noise. We
-don't want to partially apply in every test and the partial application code is
-identical. So with a setup function for partial application and the test
-re-written:
+Partially applying commands and queries, we can remove most of the noise. We
+don't want to partially apply in every test as the partial application code is
+identical. So with a setup function for partial application, the test becomes:
 
 ```fsharp
 let setup (env: IAppEnv) =
@@ -63,12 +62,12 @@ let ``create story with task`` () =
 ```
 
 Returning a tuple of partially applied functions makes it obvious which
-functions are exercised by the test. Every time we add a new function, though,
-we have to update every test case with an additional underscore. The many
-underscores add noise and makes it easy to get the order wrong.
+functions are exercised in the test. Every time we add a new function, though,
+we have to update every test with an additional underscore. Also, the many
+underscores add noise and it's easy to get the order wrong.
 
-Instead of returning a tuple of functions, returning a record removes the noise
-(and the explicitly of which functions the test exercise):
+Instead of returning a tuple of functions, returning an anonymous record removes
+the noise but makes it implicit which functions the test exercise:
 
 ```fsharp
 let setup (env: IAppEnv) =
@@ -102,19 +101,19 @@ let ``create story with task`` () =
 
 ```
 
-Observe how tests which are assumed to succeed should/must call `Commit` to
-update the database or we might miss issues with the database. Tests which are
-assumed to fail could similarly call `Rollback`. But by disposing `env` at the
-end of each test, before the database reset occurs, `Rollback` is implicitly
-called.
+With this approach, observe how tests which are assumed to succeed should/must
+call `Commit` to update the database or we might miss issues with the database.
+Tests which are assumed to fail could similarly call `Rollback`. But by
+disposing `env` at the end of each test, `Rollback` is called implicitly.
 
 ## Decision
 
 Returning a record of functions adds an extra layer of indirection to the code,
-but reduces noise across tests. Switching out one or more of the dependencies
-becomes possible by adding those as arguments to `setup`. Alternatively, we
-could instantiate a null `AppEnv` and add in all every dependency.
+but reduces noise across tests. Switching out one or more dependencies becomes
+simple (see `IntegrationTests.fs`). Alternatively, we could instantiate a null
+`AppEnv` and require adding in all every dependency for a test.
 
 ## Consequences
 
-Less noisy and easy authoring of tests, simulating almost any condition.
+Less noisy and easy authoring of tests, simulating almost any condition with
+business logic and external dependencies.
