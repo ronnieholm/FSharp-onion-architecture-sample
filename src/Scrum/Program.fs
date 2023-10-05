@@ -622,11 +622,11 @@ module Migration =
         let availableMigrations =
             availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
-        logger.LogInformation $"Found {availableScripts.Length} available migrations"        
+        logger.LogInformation $"Found {availableScripts.Length} available migration(s)"        
         
         let appliedMigrations =
             let sql =
-                "select count(*) from sqlite_master where type = 'table' and name = 'migration(s)'"
+                "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
             use cmd = new SQLiteCommand(sql, connection)
             let exist = cmd.ExecuteScalar() :?> int64
 
@@ -697,7 +697,7 @@ module Migration =
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(s.Sql, connection, tx)
             try
-                logger.LogInformation $"Applying seed"                
+                logger.LogInformation "Applying seed"                
                 let count = cmd.ExecuteNonQuery()
                 assert (count >= 0)
                 tx.Commit()
