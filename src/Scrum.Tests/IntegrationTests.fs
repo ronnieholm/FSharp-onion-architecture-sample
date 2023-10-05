@@ -30,7 +30,7 @@ module A =
           Description = cmd.Description }
 
 module Database =
-    // SQLite driver created the database at the path if the file doesn't
+    // SQLite driver creates the database at the path if the file doesn't
     // already exist. The default directory is
     // src/Scrum.Tests/bin/Debug/net7.0/scrum_test.sqlite whereas we want the
     // database at the root of the Git repository.
@@ -38,8 +38,8 @@ module Database =
 
     let missingId () = Guid.NewGuid()
 
-    // Call before a test run (from constructor), not after (Dispose). This way
-    // data is left in the database for troubleshooting.
+    // Call before a test run (from constructor), not after (from Dispose). This
+    // way data is left in the database for troubleshooting.
     let reset () : unit =
         // Organize in reverse dependency order.
         let sql =
@@ -121,23 +121,26 @@ type ApplyDatabaseMigrationsFixture() =
 
 // Per https://xunit.net/docs/running-tests-in-parallel, tests in a single
 // class, called a test collection, are by default run in sequence. Tests across
-// multiple classes are run in parallel, with the test inside individual classes
-// running in sequence. To make a collection span multiple classes, they must
-// share the same collection same. In addition, we can set other properties on
-// the collection
+// multiple classes are run in parallel, with tests inside individual classes
+// still running in sequence. To make a test collection span multiple classes,
+// the classes must share the same collection name. In addition, we can set
+// other properties on the collection, such as disabling parallelization and
+// defining test collection wide setup and teardown.
 //
 // Marker type.
 [<CollectionDefinition(nameof DisableParallelization, DisableParallelization = true)>]
 type DisableParallelization() =
     interface ICollectionFixture<ApplyDatabaseMigrationsFixture>
 
-// Serializing integration tests makes for slower but more reliable test runs.
-// With SQLite, only one transaction can be in progress at once anyway. Another
-// transaction will block on commit until the ongoing transaction finish commit
-// or rollback. Thus commenting out the attribute below likely results in tests
-// succeeding. But if any test assume a reset database, tests may start failing.
-// In order for tests not to interfere with each other and the reset, take must
-// be taken to serialize test runs.
+// Serializing integration tests makes for slower but more reliable tests. With
+// SQLite, only one transaction can be in progress at once anyway. Another
+// transaction will block on commit until the ongoing transaction finishes by
+// committing or rolling back.
+//
+// Commenting out the collection attribute below may results in tests
+// succeeding. But if any test assumes a reset database, tests may start failing
+// because we've introduced the possibilty of a race condition. For tests not to
+// interfere with each other, and the reset, serialize test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
     do reset ()
