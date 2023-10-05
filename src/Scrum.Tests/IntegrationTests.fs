@@ -55,7 +55,7 @@ module Database =
 open Database
 
 module Fake =
-    let userIdentityService roles =
+    let userIdentityService (roles: ScrumRole list) =
         { new IUserIdentity with
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
