@@ -4,10 +4,12 @@ open System
 open System.Collections.Generic
 open System.Data.SQLite
 open System.Diagnostics
+open System.IO
 open System.IO.Compression
 open System.IdentityModel.Tokens.Jwt
 open System.Reflection
 open System.Security.Claims
+open System.Security.Cryptography
 open System.Text
 open System.Text.Json
 open System.Text.Json.Serialization
@@ -57,7 +59,7 @@ module Seedwork =
         // parts of the exception.
         type ExceptionJsonConverter() =
             inherit JsonConverter<Exception>()
-            
+
             override _.Read(_, _, _) = raise (UnreachableException())
 
             override x.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
@@ -575,6 +577,125 @@ module HealthCheck =
                         return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
                 }
 
+module Migration =
+    // Provide up/down methods for each SQL
+
+    let createMigrationsSql =
+        """
+        create table migrations(
+            name text primary key,
+            hash text not null,
+            sql text not null,
+            created_at integer not null
+        ) strict;"""
+
+    type AvailableScript = { Name: string; Hash: string; Sql: string }
+    type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
+
+    let apply (connectionString: string) : unit =
+        use connection = new SQLiteConnection(connectionString)
+        connection.Open()
+
+        let availableScripts =
+            let hasher = SHA1.Create()
+            let assembly = Assembly.GetExecutingAssembly()
+            let prefix = "Scrum.Sql."
+
+            assembly.GetManifestResourceNames()
+            |> Array.filter (fun path -> path.StartsWith(prefix))
+            |> Array.map (fun path ->
+                let sql =
+                    use stream = assembly.GetManifestResourceStream(path)
+                    if isNull stream then
+                        // On SQL file, did you set Build action to EmbeddedResource?
+                        failwith $"Embedded resource not found: '{path}'"
+                    use reader = new StreamReader(stream)
+                    reader.ReadToEnd()
+
+                let hash =
+                    hasher.ComputeHash(Encoding.UTF8.GetBytes(sql))
+                    |> Array.map (fun b -> b.ToString("x2"))
+                    |> String.Concat
+
+                let name = path.Replace(prefix, "").Replace(".sql", "")
+                { Name = name; Hash = hash; Sql = sql })
+            |> Array.sortBy (fun m -> m.Name)
+
+        let availableMigrations =
+            availableScripts |> Array.filter (fun m -> m.Name <> "seed")
+
+        let applied =
+            let sql =
+                "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
+            use cmd = new SQLiteCommand(sql, connection)
+            let exist = cmd.ExecuteScalar() :?> int64
+
+            if exist = 0 then
+                // SQLite doesn't support transactional schema changes.
+                use cmd = new SQLiteCommand(createMigrationsSql, connection)
+                let count = cmd.ExecuteNonQuery()
+                assert (count = 0)
+                Array.empty
+            else
+                let sql = "select name, hash, sql, created_at from migrations order by created_at"
+                use cmd = new SQLiteCommand(sql, connection)
+
+                // No transaction as we assume only one migration will happen at once.
+                use r = cmd.ExecuteReader()
+
+                let migrations = ResizeArray<AppliedMigration>()
+                while r.Read() do
+                    let m =
+                        { Name = r["name"] |> string
+                          Hash = r["hash"] |> string
+                          Sql = r["sql"] |> string
+                          CreatedAt = Repository.parseCreatedAt r["created_at"] }
+                    migrations.Add(m)
+                migrations |> Seq.toArray
+
+        // For applied migrations, applied and available should match.
+        for i = 0 to applied.Length - 1 do
+            if applied[i].Name <> availableMigrations[i].Name then
+                failwith $"Mismatch is applied name '{applied[i].Name}' and available name '{availableMigrations[i].Name}'"
+            if applied[i].Hash <> availableMigrations[i].Hash then
+                failwith $"Mismatch is applied hash '{applied[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
+            if applied[i].Sql <> availableMigrations[i].Sql then
+                failwith "Mismatch is applied SQL and available SQL"
+
+        // Start applying new migrations.
+        for i = applied.Length to availableMigrations.Length - 1 do
+            // Use a transaction as we're updating migrations table and some scripts might update other data.
+            use tx = connection.BeginTransaction()
+            use cmd = new SQLiteCommand(availableMigrations[i].Sql, connection, tx)
+            let count = cmd.ExecuteNonQuery()
+            assert (count >= 0)
+
+            let sql =
+                $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{availableScripts[i].Name}', '{availableScripts[i].Hash}', '{availableScripts[i].Sql}', {DateTime.UtcNow.Ticks})"
+            let cmd = new SQLiteCommand(sql, connection, tx)
+
+            try
+                let count = cmd.ExecuteNonQuery()
+                assert (count = 1)
+                tx.Commit()
+            with e ->
+                tx.Rollback()
+                reraise ()
+
+        // Apply data seeding. As seed isn't considered a migration, we don't record seeding.
+        availableScripts
+        |> Array.filter (fun s -> s.Name = "seed.sql")
+        |> Array.iter (fun s ->
+            use tx = connection.BeginTransaction()
+            use cmd = new SQLiteCommand(s.Sql, connection, tx)
+            try
+                let count = cmd.ExecuteNonQuery()
+                assert (count >= 0)
+                tx.Commit()
+            with e ->
+                tx.Rollback()
+                reraise ())
+
 open HealthCheck
 
 type Startup(configuration: IConfiguration) =
@@ -634,6 +755,8 @@ type Startup(configuration: IConfiguration) =
                 o.Converters.Add(EnumJsonConverter())
                 o.WriteIndented <- true)
         |> ignore
+
+        configuration.GetConnectionString("Scrum") |> Migration.apply
 
         services
             .AddHealthChecks()

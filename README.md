@@ -4,17 +4,17 @@ Proof of concept F# clean architecture sample.
 
 Focus is on applying functional constructs over cluing together libraries and
 frameworks. Instead of .NET dependency injection container, FluentValidation,
-MediatR, Entity Framework, Moq, we usee mostly functions.
+MediatR, Entity Framework, Moq, we use mostly functions.
 
 The sample is an imperative shell, functional core with the following features:
 
-- Command Query Responsibility Segregation (CRQS) entries to application layer.
 - REST API adhering to the [Zalando API
 guidelines](https://opensource.zalando.com/restful-api-guidelines/) with JWTs
 impmenting role-based security.
 - A simple identity provider to issue, renew, and inspect JWTs accepted by
   itself.
-- Integration tests the abilty to stub out any dependency.
+- Command Query Responsibility Segregation (CQRS) entries to application layer.
+- Integration tests with the ability to stub out any dependency.
 - ASP.NET health checks for memory and database.
 - [Architecture Decision
   Records](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
@@ -72,8 +72,8 @@ Code is organized using horizontal slice architecture:
 - Infrastructure.fs
 - Program.fs
 
-As with F# file ordering matterns, it's clear that `Domain.fs` depends on
-nothing, `Application.fs` depends on `Domain.fs`, and so on. Within each file
+File ordering matters to the F# compiler. So `Domain.fs` depends on
+nothing, `Application.fs` depends on `Domain.fs`, and so on. Similarly, within each file
 definitions must come before use.
 
 For a larger application, an alternate organization might be along vertical
@@ -88,4 +88,4 @@ Vertical slice architecture has the potential to improve compile times. The F#
 compiler is mostly sequential across an assembly, but multiple assemblies may be
 compiled in parallel. For this reasons, separate assemblies for domain,
 application, integration, web, unit test integration test is a good idea.
-Compilation would become sequantial compilation across the solution.
+Compilation would become sequential compilation across the solution.

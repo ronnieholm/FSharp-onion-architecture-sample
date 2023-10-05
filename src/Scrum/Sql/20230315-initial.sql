@@ -8,6 +8,8 @@
 -- pragma foreign_keys = ON
 -- Or foreign key cascade delete has no effect.
 
+-- Every script, except for the initial one, must be idempotent.
+
 create table stories(
     id text primary key,
     title text not null,

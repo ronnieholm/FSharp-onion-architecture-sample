@@ -1,0 +1,1 @@
+-- SQL must be idempotent.

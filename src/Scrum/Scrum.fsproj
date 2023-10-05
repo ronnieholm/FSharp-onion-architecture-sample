@@ -9,7 +9,8 @@
     <Compile Include="Application.fs" />
     <Compile Include="Infrastructure.fs" />
     <Compile Include="Program.fs" />
-    <Content Include="Sql\20230315-initial.sql" />
+    <EmbeddedResource Include="Sql\20230315-initial.sql" />
+    <EmbeddedResource Include="Sql\seed.sql" />
   </ItemGroup>
 
   <ItemGroup>
