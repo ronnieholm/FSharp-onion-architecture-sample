@@ -16,6 +16,7 @@ impmenting role-based security.
 - Command Query Responsibility Segregation (CQRS) entries to application layer.
 - Integration tests with the ability to stub out any dependency.
 - ASP.NET health checks for memory and database.
+- Database migration and data seeding support. 
 - [Architecture Decision
   Records](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
   under `docs/architecuture` covering many trade-off.

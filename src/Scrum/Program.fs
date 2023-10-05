@@ -579,6 +579,7 @@ module HealthCheck =
 
 module Migration =
     // Provide up/down methods for each SQL
+    // Add logging
 
     let createMigrationsSql =
         """
@@ -624,7 +625,7 @@ module Migration =
         let availableMigrations =
             availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
-        let applied =
+        let appliedMigrations =
             let sql =
                 "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
             use cmd = new SQLiteCommand(sql, connection)
@@ -653,15 +654,15 @@ module Migration =
                     migrations.Add(m)
                 migrations |> Seq.toArray
 
-        // For applied migrations, applied and available should match.
-        for i = 0 to applied.Length - 1 do
-            if applied[i].Name <> availableMigrations[i].Name then
-                failwith $"Mismatch in applied name '{applied[i].Name}' and available name '{availableMigrations[i].Name}'"
-            if applied[i].Hash <> availableMigrations[i].Hash then
-                failwith $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
+        // For applied migrations, applied and available order should match.
+        for i = 0 to appliedMigrations.Length - 1 do
+            if appliedMigrations[i].Name <> availableMigrations[i].Name then
+                failwith $"Mismatch in applied name '{appliedMigrations[i].Name}' and available name '{availableMigrations[i].Name}'"
+            if appliedMigrations[i].Hash <> availableMigrations[i].Hash then
+                failwith $"Mismatch in applied hash '{appliedMigrations[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
 
         // Start applying new migrations.
-        for i = applied.Length to availableMigrations.Length - 1 do
+        for i = appliedMigrations.Length to availableMigrations.Length - 1 do
             // Use a transaction as we're updating migrations table and some scripts might update other data.
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(availableMigrations[i].Sql, connection, tx)
