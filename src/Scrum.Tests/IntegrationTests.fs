@@ -365,21 +365,21 @@ type DomainEventRequestTests() =
             // This could be one user making a request.
             let fixedClock1 = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
             use env = customAppEnv [ Member; Admin ] fixedClock1
-            let sfns = env |> setupStoryAggregateRequests
+            let storyFns = env |> setupStoryAggregateRequests
 
             let storyCmd = A.createStoryCommand ()
-            let! _ = sfns.CreateStory storyCmd
-            do! sfns.Commit()
+            let! _ = storyFns.CreateStory storyCmd
+            do! storyFns.Commit()
 
             // This could be another user making a request.
             let fixedClock2 = fixedClock (DateTime(2023, 1, 1, 7, 0, 0))
             use env = customAppEnv [ Member; Admin ] fixedClock2
-            let sfns = env |> setupStoryAggregateRequests
-            let dfns = env |> setupDomainEventRequests
+            let storyFns = env |> setupStoryAggregateRequests
+            let domainFns = env |> setupDomainEventRequests
 
             let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
-            let! _ = sfns.AddTaskToStory taskCmd
-            let! result = dfns.GetByAggregateIdQuery { Id = storyCmd.Id }
+            let! _ = storyFns.AddTaskToStory taskCmd
+            let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
 
             match result with
             | Ok r ->
@@ -395,20 +395,20 @@ type DomainEventRequestTests() =
                 Assert.Equal(fixedClock2.CurrentUtc(), r[1].CreatedAt)
             | Error e -> Assert.Fail($"%A{e}")
 
-            do! sfns.Commit()
+            do! storyFns.Commit()
         }
 
     [<Fact>]
     let ``must have admin role to query domain events`` () =
         use env = customAppEnv [ Member ] defaultFixedClock
-        let sfns = env |> setupStoryAggregateRequests
-        let dfns = env |> setupDomainEventRequests
+        let storyFns = env |> setupStoryAggregateRequests
+        let domainFns = env |> setupDomainEventRequests
 
         task {
             let storyCmd = A.createStoryCommand ()
-            let! _ = sfns.CreateStory storyCmd
+            let! _ = storyFns.CreateStory storyCmd
             let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
-            let! _ = sfns.AddTaskToStory taskCmd
-            let! result = dfns.GetByAggregateIdQuery { Id = storyCmd.Id }
+            let! _ = storyFns.AddTaskToStory taskCmd
+            let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
             test <@ result = Error(GetByAggregateIdQuery.AuthorizationError("Missing role 'admin'")) @>
         }
