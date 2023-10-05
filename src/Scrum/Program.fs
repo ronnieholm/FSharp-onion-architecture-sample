@@ -656,11 +656,9 @@ module Migration =
         // For applied migrations, applied and available should match.
         for i = 0 to applied.Length - 1 do
             if applied[i].Name <> availableMigrations[i].Name then
-                failwith $"Mismatch is applied name '{applied[i].Name}' and available name '{availableMigrations[i].Name}'"
+                failwith $"Mismatch in applied name '{applied[i].Name}' and available name '{availableMigrations[i].Name}'"
             if applied[i].Hash <> availableMigrations[i].Hash then
-                failwith $"Mismatch is applied hash '{applied[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
-            if applied[i].Sql <> availableMigrations[i].Sql then
-                failwith "Mismatch is applied SQL and available SQL"
+                failwith $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
 
         // Start applying new migrations.
         for i = applied.Length to availableMigrations.Length - 1 do
