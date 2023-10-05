@@ -680,7 +680,7 @@ module Migration =
                 tx.Rollback()
                 reraise ()
 
-        // Apply data seeding. As seed isn't considered a migration, we don't record seeding.
+        // Apply data seeding. It's a pseudo-migration, so we don't record it in the migrations table.
         availableScripts
         |> Array.filter (fun s -> s.Name = "seed.sql")
         |> Array.iter (fun s ->

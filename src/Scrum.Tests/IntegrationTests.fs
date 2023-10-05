@@ -4,6 +4,7 @@ open System
 open System.Threading
 open System.Data.SQLite
 open Scrum.Application.StoryAggregateRequest.GetStoryByIdQuery
+open Scrum.Web
 open Swensen.Unquote
 open Xunit
 open Scrum.Application.Seedwork
@@ -73,10 +74,9 @@ module Fake =
             member _.LogDebug _ = () }
 
     let appEnvWithRoles (roles: ScrumRole list) =
-        new AppEnv(connectionString, userIdentityService roles, systemClock = fixedClock, logger = nullLogger)   
-    
-    let defaultAppEnv () =
-        appEnvWithRoles [ Member; Admin ]    
+        new AppEnv(connectionString, userIdentityService roles, systemClock = fixedClock, logger = nullLogger)
+
+    let defaultAppEnv () = appEnvWithRoles [ Member; Admin ]
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
@@ -107,16 +107,27 @@ module Setup =
 open Fake
 open Setup
 
+type ApplyDatabaseMigrationsFixture() =
+    do
+        // Runs before all tests.
+        Migration.apply connectionString
+
+    interface IDisposable with
+        member _.Dispose() =
+            // Runs after all tests.
+            ()
+
 // Per https://xunit.net/docs/running-tests-in-parallel, tests in a single
 // class, called a test collection, are by default run in sequence. Tests across
 // multiple classes are run in parallel, with the test inside individual classes
 // running in sequence. To make a collection span multiple classes, they must
 // share the same collection same. In addition, we can set other properties on
 // the collection
+//
+// Marker type.
 [<CollectionDefinition(nameof DisableParallelization, DisableParallelization = true)>]
 type DisableParallelization() =
-    class
-    end
+    interface ICollectionFixture<ApplyDatabaseMigrationsFixture>
 
 // Serializing integration tests makes for slower but more reliable test runs.
 // With SQLite, only one transaction can be in progress at once anyway. Another
@@ -138,8 +149,8 @@ type StoryAggregateRequestTests() =
             let! result = fns.CreateStory storyCmd
             test <@ result = Error(CreateStoryCommand.AuthorizationError("Missing role 'member'")) @>
             do! fns.Commit()
-        }                
-    
+        }
+
     [<Fact>]
     let ``create story with task`` () =
         use env = defaultAppEnv ()
@@ -359,20 +370,20 @@ type DomainEventRequestTests() =
             // For this test, we can't use Unquote as we're not in control of Id
             // assigned to each domain event. We also forego testing the ordering
             // of events as they're created at the same time. Test could fail if
-            // SQLite decides to change ordering of items with same CreatedAt.                        
+            // SQLite decides to change ordering of items with same CreatedAt.
             match result with
-            | Ok r ->            
-                Assert.Equal(2, r.Length)                
+            | Ok r ->
+                Assert.Equal(2, r.Length)
                 Assert.Equal(storyCmd.Id, r[0].AggregateId)
                 Assert.Equal("Story", r[0].AggregateType)
                 Assert.Equal("TaskAddedToStory", r[0].EventType)
                 Assert.Equal(fixedClock.CurrentUtc(), r[0].CreatedAt)
-                
+
                 Assert.Equal(storyCmd.Id, r[1].AggregateId)
                 Assert.Equal("Story", r[1].AggregateType)
                 Assert.Equal("StoryCreated", r[1].EventType)
-                Assert.Equal(fixedClock.CurrentUtc(), r[1].CreatedAt)                               
-            | Error e -> Assert.Fail($"%A{e}")   
+                Assert.Equal(fixedClock.CurrentUtc(), r[1].CreatedAt)
+            | Error e -> Assert.Fail($"%A{e}")
 
             do! sfns.Commit()
         }
@@ -382,7 +393,7 @@ type DomainEventRequestTests() =
         use env = appEnvWithRoles [ Member ]
         let sfns = env |> setupStoryAggregateRequests
         let dfns = env |> setupDomainEventRequests
-        
+
         task {
             let storyCmd = A.createStoryCommand ()
             let! _ = sfns.CreateStory storyCmd
@@ -391,4 +402,3 @@ type DomainEventRequestTests() =
             let! result = dfns.GetByAggregateIdQuery { Id = storyCmd.Id }
             test <@ result = Error(GetByAggregateIdQuery.AuthorizationError("Missing role 'admin'")) @>
         }
-        
