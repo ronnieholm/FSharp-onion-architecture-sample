@@ -1,16 +1,18 @@
 # ADR008: Use ASP.NET directly
 
+Status: Accepted and active.
+
 ## Context
 
-Going with "F# libraries everywhere" can be a net negative.
+Going with "F# libraries everywhere" is usally a net negative.
 
 ## Decision
 
 We avoid wrapping ASP.NET with Giraffe or Saturn, as the value proposition isn't
-there. As ASP.NET is part of onfrastructure and thus sits at the edge with thin
-controller and actions, the benefits of a niche framework aren't there.
+there. With ASP.NET part of the infrastructure layer, and thus at the edge of
+the onion, the benefits of a niche framework aren't there.
 
 ## Consequences
 
-Only use mature F# libraries which have a net positive effect on architecture
-and complexity.
+Only use mature F# libraries which have a long term net positive effect on
+architecture and complexity.

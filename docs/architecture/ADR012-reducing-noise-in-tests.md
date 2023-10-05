@@ -1,10 +1,12 @@
 # ADR012: Reducing noise in tests
 
+Status: Accepted and active.
+
 ## Context
 
 Testing the commands and queries of the Story aggregate translates to calls to
 each command and query across the tests. If with every call we have to
-explicitly add every dependendency, tests become noisy and hard to follow:
+explicitly add every dependency, tests become noisy and hard to follow:
 
 ```fsharp
 [<Fact>]
@@ -115,4 +117,4 @@ could instantiate a null `AppEnv` and add in all every dependency.
 
 ## Consequences
 
-Less noisy and easy authoring of tests, similating almost any condition.
+Less noisy and easy authoring of tests, simulating almost any condition.

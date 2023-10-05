@@ -682,7 +682,7 @@ module Migration =
 
                 // Schema upgrade custom code. We don't support downgrading.
                 match availableScripts[i].Name with
-                | "20230315-initial" -> ()
+                | "202310051903-initial" -> ()
                 | _ -> ()
 
                 tx.Commit()

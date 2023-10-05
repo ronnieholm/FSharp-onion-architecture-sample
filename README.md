@@ -4,7 +4,7 @@ Proof of concept F# clean architecture sample.
 
 Focus is on applying functional constructs over cluing together libraries and
 frameworks. Instead of .NET dependency injection container, FluentValidation,
-MediatR, Entity Framework, Moq, we use mostly functions.
+MediatR, Entity Framework, Moq, Respawn, we use mostly functions.
 
 The sample is an imperative shell, functional core with the following features:
 
@@ -25,9 +25,9 @@ The Scrum domain was chosen because it offers sufficient complexity and because
 everyone is familiar with it. Most aspects of the application is illustrated
 using the concept of stories and tasks only.
 
-The sample also highlights the downside of clean architecture: around the
-domain, significant support code is required. Developed once, it can be mostly
-reused for the next application.
+`Domain.fs`, `Application.fs`, and `IntegrationTest.fs` is where F# shines.
+`Integration.fs` and and `Program.fs` are similar in nature to many C#
+applications.
 
 ## Building and testing
 

@@ -1,10 +1,12 @@
 # ADR005: Functions vs members in type definitions
 
+Status: Accepted and active.
+
 ## Context
 
 FSToolkit.ErrorHandling has examples of creating a value object and extracting
-its value using members. Our preferred alternative, though, is adding functions
-to a module like below:
+its value using members. Our preferred approach, though, is functions in a
+module like below:
 
 ```fsharp
 module StoryTitle =
@@ -19,7 +21,7 @@ module StoryTitle =
 
 ## Decision
 
-The upside to the member approach is that calls to `Value` become shorter: the
+An upside to the member approach is that calls to `Value` become shorter as the
 member implicitly references the instance:
 
 ```fsharp
@@ -32,10 +34,9 @@ as opposed to
 task.Title |> TaskTitle.value
 ```
 
-The downside to the member approach is that reading domain types, they group
-data and functions. It closer resembles object oriented programming with data
-and functions grouped together.
+A downside to the member approach is that domain types now group data and
+functions. It more closely resembles object oriented programming.
 
 ## Consequences
 
-We stick with the functional approach.
+We stick with the functional approach as it seems more idiomatic to F#.

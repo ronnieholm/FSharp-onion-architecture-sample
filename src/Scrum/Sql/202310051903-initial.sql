@@ -1,8 +1,8 @@
 -- SQLite Scrum schema
 
 -- To manually create database with schema:
--- $ sqlite3 scrum_web.sqlite < src/Scrum/Sql/20230315-initial.sql
--- $ sqlite3 scrum_test.sqlite < src/Scrum/Sql/20230315-initial.sql
+-- $ sqlite3 scrum_web.sqlite < src/Scrum/Sql/202310051903-initial.sql
+-- $ sqlite3 scrum_test.sqlite < src/Scrum/Sql/202310051903-initial.sql
 
 -- When an application connects to SQLite, it must issue
 -- pragma foreign_keys = ON

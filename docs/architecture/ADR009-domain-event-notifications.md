@@ -1,5 +1,7 @@
 # ADR009: Domain event notifications
 
+Status: Accepted and active.
+
 ## Context
 
 A library like MediatR performs assembly scanning for commands, queries, and
@@ -65,8 +67,8 @@ From the signature of `runAsync` and `publish`, we cannot infer their
 dependencies. Testing has also become more cumbersome as we need to construct an
 AppEnv and be aware of which parts to mock based on calls into AppEnv.
 
-Focusing on actual needs, we don't need the flexiblity of the Notification
-module. We like notification handlers to run immediately (anot not later on a
+Focusing on actual needs, we don't need the flexibility of the Notification
+module. We like notification handlers to run immediately (and not later on a
 queue), so that database changes they make become part of a single transaction.
 Thus, directly dispatching from `runAsync` to
 `SomeOtherAggregate.SomeEventNotificationAsync` suffices.

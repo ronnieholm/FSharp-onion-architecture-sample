@@ -10,13 +10,16 @@ invariant.
 
 ## Decision
 
-Because records are immutable, code changing fields without going through a
-mutator function is of little concern. Except for deserialization code, doing so
-is generally wrong, so we don't go above and beyond to technically prevent it.
-Even with classes and private state, changing internals is possible using
-reflection. If a client want to, we can't prevent it.
+Because records are immutable, if code were to update a record directly, it
+wouldn't be the end of the world. No other code holding referring to the record
+would observe the update.
+
+Only deserialization code should generally bypass record update functions, but
+we don't go above and beyond to technically prevent it. Even with classes and
+private state, changing internals is possible with reflection. If code wants to,
+we can't prevent it.
 
 ## Consequences
 
-We stick to records over classes as they're more idiomatic F# and require less
-ceremony.
+We stick to records over classes with public properties as they're more
+idiomatic F#.

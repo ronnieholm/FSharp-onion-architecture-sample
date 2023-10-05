@@ -1,5 +1,7 @@
 # ADR010: Error value propagation
 
+Status: Accepted and active.
+
 ## Context
 
 With the application layer being the point of entry for clients, it's where
@@ -56,7 +58,7 @@ let runAsync
 
 Notice how the `create` function returns `BusinessError`. That's actually
 incorrect as in this case it cannot fail. It could fail if `create` checked for
-depedencies between its arguments.
+dependencies between its arguments.
 
 Because of the stringly based nature of domain error propagation, we initially
 made `create` future proof, but instead of returning `Result<Task, string>` it

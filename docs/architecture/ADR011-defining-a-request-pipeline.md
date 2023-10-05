@@ -1,5 +1,7 @@
 # ADR011: Defining a request pipeline
 
+Status: Accepted and active.
+
 ## Context
 
 MediatR in C# enables threading the incoming request through a list of methods,

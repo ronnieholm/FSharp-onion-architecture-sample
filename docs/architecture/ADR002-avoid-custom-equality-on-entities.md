@@ -4,12 +4,13 @@ Status: Accepted and active.
 
 ## Context
 
-An entity's identity is the value of its `Id` field. Therefore we prevent
-compiler generated `Equals` and `GetHashCode` methods.
+An entity's identity is the value of its `Id` field. Therefore we disable
+compiler generated `Equals` and `GetHashCode` methods on entities and
+aggregates.
 
 ## Decision
 
-A less idiomatic approach would be implementing equally per entity like so:
+A less idiomatic approach would be to implement equally per entity like so:
 
 ```fsharp
 [<NoComparison; NoEquality>]
@@ -29,22 +30,20 @@ type Task =
     override this.GetHashCode () = this.Id.GetHashCode()
 ```
 
-Adding custom equality through [generic](1) [overrides](2) adds ceremony.
-Instead we add an `equals` function to the entity's module when required:
+Adding custom equality through generic overrides ad ds ceremony. Instead we add
+an `equals` function to the entity's module when required:
 
 ```fsharp
 let equals a b = a.Entity.Id = b.Entity.Id
 ```
 
-Object orientation would reduce boilerplate through inheritance: `Task` would
-inherit from `Entity` which holds the `Id` field, and `Equals` and `GetHashCode`
-would by implemented by the `Entity` base.
+In comparision, with C# object orientation would reduce boilerplate through
+inheritance: `Task` would inherit from `Entity` which holds the `Id` field, and
+`Equals` and `GetHashCode` could by implemented by the `Entity` base.
 
 ## Consequences
 
-Adding `Equals` and `GetHashCode` at the module level isn't supported by F#. To
-avoid ceremony, we forego the standard. NET equals pattern. This may have
-unknown adverse effect down the line.
+To avoid ceremony, we forego the standard. NET equals pattern.
 
 ## See also
 
