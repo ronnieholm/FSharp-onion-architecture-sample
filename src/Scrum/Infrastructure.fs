@@ -317,7 +317,7 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
     interface IDomainEventRepository with
         member _.GetByAggregateIdAsync (ct: CancellationToken) (aggregateId: Guid) : Task<PersistedDomainEvent list> =
             let sql =
-                "select id, aggregate_id, aggregate_type, event_type, event_payload, created_at from domain_events where aggregate_id = @aggregateId order by created_at desc"
+                "select id, aggregate_id, aggregate_type, event_type, event_payload, created_at from domain_events where aggregate_id = @aggregateId order by created_at"
             use cmd = new SQLiteCommand(sql, connection, transaction)
             cmd.Parameters.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
 
