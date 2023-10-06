@@ -2,6 +2,7 @@
 
 open System
 open System.Collections.Generic
+open System.ComponentModel.DataAnnotations
 open System.Data.SQLite
 open System.Diagnostics
 open System.IO
@@ -115,22 +116,16 @@ module Seedwork =
             createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
 
 module Configuration =
-    type JwtAuthenticationOptions() =
-        static member JwtAuthentication: string = nameof JwtAuthenticationOptions.JwtAuthentication
+    type JwtAuthenticationSettings() =
+        static member JwtAuthentication: string = nameof JwtAuthenticationSettings.JwtAuthentication
+        [<Required>]
         member val Issuer: Uri = null with get, set
+        [<Required>]
         member val Audience: Uri = null with get, set
+        [<Required>]
         member val SigningKey: string = null with get, set
+        [<Range(60, 86400)>]
         member val ExpirationInSeconds: uint = 0ul with get, set
-
-        member x.Validate() : unit =
-            if isNull x.Issuer then
-                nullArg (nameof x.Issuer)
-            if isNull x.Audience then
-                nullArg (nameof x.Audience)
-            if String.IsNullOrWhiteSpace(x.SigningKey) then
-                raise (ArgumentException(nameof x.SigningKey))
-            if x.ExpirationInSeconds < 60ul then
-                raise (ArgumentException(nameof x.ExpirationInSeconds))
 
 open Configuration
 
@@ -186,15 +181,15 @@ module Service =
     // IIdentityProvider. Therefore, we could've implemented it inside the
     // Authentication controller, but decided to keep the controller lean and
     // extract the logic into a separate service.
-    type IdentityProvider(clock: ISystemClock, options: JwtAuthenticationOptions) =
+    type IdentityProvider(clock: ISystemClock, settings: JwtAuthenticationSettings) =
         let sign (claims: Claim array) : string =
-            let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(options.SigningKey))
+            let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
-            let validUntilUtc = clock.CurrentUtc().AddSeconds(int options.ExpirationInSeconds)
+            let validUntilUtc = clock.CurrentUtc().AddSeconds(int settings.ExpirationInSeconds)
             let token =
                 JwtSecurityToken(
-                    options.Issuer.ToString(),
-                    options.Audience.ToString(),
+                    settings.Issuer.ToString(),
+                    settings.Audience.ToString(),
                     claims,
                     expires = validUntilUtc,
                     signingCredentials = credentials
@@ -251,11 +246,11 @@ module Controller =
     // Loosely modeled after the corresponding OAuth2 endpoint.
     [<Route("[controller]")>]
     type AuthenticationController
-        (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationOptions: IOptions<JwtAuthenticationOptions>) as x
+        (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>) as x
         =
         inherit ScrumController(configuration, httpContext)
 
-        let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationOptions.Value)
+        let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationSettings.Value)
 
         [<HttpPost("issue-token")>]
         member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
@@ -620,12 +615,12 @@ module Migration =
                 let name = path.Replace(prefix, "").Replace(".sql", "")
                 { Name = name; Hash = hash; Sql = sql })
             |> Array.sortBy (fun m -> m.Name)
-        
+
         let availableMigrations =
             availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
-        logger.LogInformation $"Found {availableScripts.Length} available migration(s)"        
-        
+        logger.LogInformation $"Found {availableScripts.Length} available migration(s)"
+
         let appliedMigrations =
             let sql =
                 "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
@@ -656,7 +651,7 @@ module Migration =
                           CreatedAt = Repository.parseCreatedAt r["created_at"] }
                     migrations.Add(m)
                 migrations |> Seq.toArray
-                
+
         logger.LogInformation $"Found {appliedMigrations.Length} applied migration(s)"
 
         // For applied migrations, applied and available order should match.
@@ -702,7 +697,7 @@ module Migration =
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(s.Sql, connection, tx)
             try
-                logger.LogInformation "Applying seed"                
+                logger.LogInformation "Applying seed"
                 let count = cmd.ExecuteNonQuery()
                 assert (count >= 0)
                 tx.Commit()
@@ -717,12 +712,16 @@ type Startup(configuration: IConfiguration) =
     // to the container. For more information on how to configure your
     // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
     member _.ConfigureServices(services: IServiceCollection) : unit =
-        services.Configure<JwtAuthenticationOptions>(configuration.GetSection(JwtAuthenticationOptions.JwtAuthentication))
+        services
+            .AddOptions<JwtAuthenticationSettings>()
+            .BindConfiguration(JwtAuthenticationSettings.JwtAuthentication)
+            .ValidateDataAnnotations()
+            .ValidateOnStart()
         |> ignore
+
         let serviceProvider = services.BuildServiceProvider()
-        let jwtAuthenticationOptions =
-            serviceProvider.GetService<IOptions<JwtAuthenticationOptions>>().Value
-        jwtAuthenticationOptions.Validate()
+        let jwtAuthenticationSettings =
+            serviceProvider.GetService<IOptions<JwtAuthenticationSettings>>().Value
 
         services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -732,10 +731,10 @@ type Startup(configuration: IConfiguration) =
                         ValidateIssuer = true,
                         ValidateAudience = true,
                         ValidateIssuerSigningKey = true,
-                        ValidIssuer = jwtAuthenticationOptions.Issuer.ToString(),
-                        ValidAudience = jwtAuthenticationOptions.Audience.ToString(),
+                        ValidIssuer = jwtAuthenticationSettings.Issuer.ToString(),
+                        ValidAudience = jwtAuthenticationSettings.Audience.ToString(),
                         ClockSkew = TimeSpan.Zero,
-                        IssuerSigningKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtAuthenticationOptions.SigningKey))
+                        IssuerSigningKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtAuthenticationSettings.SigningKey))
                     )
 
                 // Leave in callbacks for troubleshooting JWT issues. Set a
