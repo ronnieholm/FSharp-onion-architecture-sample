@@ -11,8 +11,8 @@ module Seedwork =
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
 
-module SharedValueObjects =
-    // Value objects shared across aggregates.
+module Shared =
+    // Value objects and entities shared across aggregates.
     ()
 
 module StoryAggregate =
