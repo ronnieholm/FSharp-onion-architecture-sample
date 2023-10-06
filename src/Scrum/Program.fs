@@ -41,6 +41,10 @@ open Scrum.Infrastructure
 open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
+    exception WebException of string
+    
+    let fail (s: string) : 't = raise (WebException(s))        
+    
     // By default only a public top-level type ending in Controller is
     // considered one. It means controllers inside a module aren't found. As a
     // module compiles to a class with nested classes for controllers, we can
@@ -603,7 +607,7 @@ module Migration =
                     if isNull stream then
                         // On the SQL file, did you set Build action to
                         // EmbeddedResource?
-                        failwith $"Embedded resource not found: '{path}'"
+                        fail $"Embedded resource not found: '{path}'"
                     use reader = new StreamReader(stream)
                     reader.ReadToEnd()
 
@@ -657,9 +661,9 @@ module Migration =
         // For applied migrations, applied and available order should match.
         for i = 0 to appliedMigrations.Length - 1 do
             if appliedMigrations[i].Name <> availableMigrations[i].Name then
-                failwith $"Mismatch in applied name '{appliedMigrations[i].Name}' and available name '{availableMigrations[i].Name}'"
+                fail $"Mismatch in applied name '{appliedMigrations[i].Name}' and available name '{availableMigrations[i].Name}'"
             if appliedMigrations[i].Hash <> availableMigrations[i].Hash then
-                failwith $"Mismatch in applied hash '{appliedMigrations[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
+                fail $"Mismatch in applied hash '{appliedMigrations[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
 
         // Start applying new migrations.
         for i = appliedMigrations.Length to availableMigrations.Length - 1 do

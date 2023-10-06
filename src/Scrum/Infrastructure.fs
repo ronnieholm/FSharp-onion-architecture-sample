@@ -19,6 +19,10 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 open Scrum.Application.Seedwork
 
 module Seedwork =
+    exception IntegrationException of string
+    
+    let fail (s: string) : 't = raise (IntegrationException(s))    
+    
     module Json =
         type SnakeCaseLowerNamingPolicy() =
             inherit JsonNamingPolicy()
@@ -101,7 +105,7 @@ type SystemClock() =
     interface ISystemClock with
         member _.CurrentUtc() = DateTime.UtcNow
 
-type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) =
+type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) =    
     let connection = transaction.Connection
 
     interface IStoryRepository with
@@ -115,7 +119,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     (match count :?> int64 with
                      | 0L -> false
                      | 1L -> true
-                     | _ -> failwith $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
+                     | _ -> fail $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         member _.GetByIdAsync (ct: CancellationToken) (id: StoryId) : Task<Story option> =
@@ -206,7 +210,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      match count with
                      | 0 -> None
                      | 1 -> stories |> List.exactlyOne |> Some
-                     | _ -> failwith $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
+                     | _ -> fail $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         // Compared to event sourcing, we immediately apply events to the store.

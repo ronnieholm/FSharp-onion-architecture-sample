@@ -2,8 +2,8 @@
 
 Focus is on applying functional constructs over cluing together libraries and
 frameworks. Instead of the .NET dependency injection container,
-FluentValidation, MediatR, Entity Framework, Moq, and Respawn, and a migration
-tool, the sample implements simple alternatives.
+FluentValidation, MediatR, Entity Framework, Moq, Respawn, and a migration
+tool, this sample implements functional alternatives.
 
 The sample is an imperative shell, functional core with the following features:
 

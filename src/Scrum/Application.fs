@@ -11,6 +11,11 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 module Seedwork =
     [<Measure>]
     type ms
+    
+    // ApplicationException is taken by the .NET framework.
+    exception ApplicationLogicException of string
+    
+    let fail (s: string) : 't = raise (ApplicationLogicException(s))
 
     type ValidationError = { Field: string; Message: string }
 
@@ -39,7 +44,7 @@ module Seedwork =
             function
             | "member" -> Member
             | "admin" -> Admin
-            | unsupported -> failwith $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+            | unsupported -> fail $"Unsupported {nameof ScrumRole}: '{unsupported}'"
 
         override x.ToString() =
             match x with
@@ -103,9 +108,9 @@ module Seedwork =
         abstract DomainEventRepository: IDomainEventRepository
 
     [<Interface>]
-    // App in application environment doesn't refer to the application as a
-    // whole, but to the application layer. Layers outside application can
-    // still use the .NET dependency injection container.
+    // App in application environment refers to the application layer, not the
+    // application as a whole. Layers outside application still use the .NET
+    // dependency injection container.
     type IAppEnv =
         inherit ISystemClockFactory
         inherit ILoggerFactory
