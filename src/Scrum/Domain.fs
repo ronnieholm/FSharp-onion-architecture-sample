@@ -5,8 +5,8 @@ open System.Threading
 open System.Threading.Tasks
 
 module Seedwork =
-    // Contrary to the Seedwork of other layers, Domain doesn't define a
-    // boundary exception. The domain communicates errors as values. 
+    // Contrary to other layer's Seedwork, Domain doesn't define a boundary
+    // exception. Domain communicates errors as values. 
     
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
