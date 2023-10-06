@@ -103,6 +103,9 @@ module Seedwork =
         abstract DomainEventRepository: IDomainEventRepository
 
     [<Interface>]
+    // App in application environment doesn't refer to the application as a
+    // whole, but to the application layer. Layers outside application can
+    // still use the .NET dependency injection container.
     type IAppEnv =
         inherit ISystemClockFactory
         inherit ILoggerFactory
