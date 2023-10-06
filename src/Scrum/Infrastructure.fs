@@ -12,11 +12,11 @@ open System.Data.SQLite
 open Microsoft.AspNetCore.Http
 open Microsoft.Extensions.Logging
 open FsToolkit.ErrorHandling
-open Scrum.Application.Seedwork
 open Scrum.Domain
 open Scrum.Domain.Seedwork
 open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
+open Scrum.Application.Seedwork
 
 module Seedwork =
     module Json =
