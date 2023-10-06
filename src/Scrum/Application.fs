@@ -148,7 +148,7 @@ module Seedwork =
                 Error($"Missing role '{role.ToString()}'")
 
 module SharedModels =
-    // Data transfer objects shared across queries across aggregates.
+    // Data transfer objects shared across aggregates.
     ()
 
 open Seedwork
