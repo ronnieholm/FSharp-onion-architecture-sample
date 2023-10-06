@@ -42,9 +42,9 @@ open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
     exception WebException of string
-    
-    let fail (s: string) : 't = raise (WebException(s))        
-    
+
+    let fail (s: string) : 't = raise (WebException(s))
+
     // By default only a public top-level type ending in Controller is
     // considered one. It means controllers inside a module aren't found. As a
     // module compiles to a class with nested classes for controllers, we can
@@ -132,6 +132,7 @@ module Configuration =
         member val ExpirationInSeconds: uint = 0ul with get, set
 
 open Configuration
+open Seedwork
 
 module Service =
     // Names of claims shared between services.
@@ -218,383 +219,20 @@ module Service =
             | Anonymous -> Error "User is anonymous"
             | Authenticated(id, roles) -> Ok(x.IssueToken id roles)
 
-open Seedwork
-open Service
-
-module Controller =
-    type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ControllerBase()
-
-        let connectionString = configuration.GetConnectionString("Scrum")
-        let userIdentityService = UserIdentity(httpContext.HttpContext)
-        let env = new AppEnv(connectionString, userIdentityService) :> IAppEnv
-
-        member _.Env = env
-
-        [<NonAction>]
-        member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
-            task {
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return ProblemDetail.fromUncaughtException acceptHeaders
-            }
-
-        interface IDisposable with
-            member x.Dispose() = x.Env.Dispose()
-
-    // As the token is supposed to be opaque, we can either promote information
-    // from inside the token to fields on the token or provide clients with an
-    // introspect endpoint. We chose the latter.
-    type AuthenticationResponse = { Token: string }
-
-    // Loosely modeled after the corresponding OAuth2 endpoint.
-    [<Route("[controller]")>]
-    type AuthenticationController
-        (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>) as x
-        =
-        inherit ScrumController(configuration, httpContext)
-
-        let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationSettings.Value)
-
-        [<HttpPost("issue-token")>]
-        member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
-            task {
-                // Get user from imaginary user store and pass to
-                // issueRegularToken to include information about the user as
-                // claims in the token.
-                let roles = roles.Split(',') |> Array.map ScrumRole.FromString |> Array.toList
-                let token = idp.IssueToken userId roles
-                return CreatedResult("/authentication/introspect", { Token = token })
-            }
-
-        [<Authorize; HttpPost("renewToken")>]
-        member _.RenewToken() : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                let identity = x.Env.UserIdentity.GetCurrent()
-                let token = idp.RenewToken identity
-                return
-                    (match token with
-                     | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
-                     | Error e -> ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
-            }
-
-        [<Authorize; HttpPost("introspect")>]
-        member _.Introspect() : IDictionary<string, obj> =
-            let claimsPrincipal = x.HttpContext.User
-            let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
-            let map = Dictionary<string, obj>()
-
-            for c in claimsIdentity.Claims do
-                // Special case non-string value or it becomes a string in
-                // string in the JSON rendering of the claim.
-                if c.Type = "exp" then
-                    map.Add("exp", Int32.Parse(c.Value) :> obj)
-                elif c.Type = ClaimTypes.Role then
-                    // For reasons unknown, ASP.NET maps our Scrum RoleClaim
-                    // from the bearer token to ClaimTypes.Role. The claim's
-                    // type JSON rendered would become
-                    // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
-                    let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
-                    if ok then
-                        let values = values :?> ResizeArray<string>
-                        values.Add(c.Value)
-                    else
-                        map.Add(ScrumClaims.RolesClaim, [ c.Value ] |> ResizeArray)
-                else
-                    map.Add(c.Type, c.Value)
-
-            map
-
-    type StoryCreateDto = { title: string; description: string }
-    type StoryUpdateDto = { title: string; description: string }
-    type AddTaskToStoryDto = { title: string; description: string }
-    type StoryTaskUpdateDto = { title: string; description: string }
-
-    [<Authorize; Route("[controller]")>]
-    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
-
-        [<HttpPost>]
-        member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        CreateStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { Id = Guid.NewGuid()
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        [<HttpPut("{id}")>]
-        member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        UpdateStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { Id = id
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | UpdateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | UpdateStoryCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        [<HttpPost("{storyId}/tasks")>]
-        member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        AddTaskToStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { TaskId = Guid.NewGuid()
-                              StoryId = storyId
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | AddTaskToStoryCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                            | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        [<HttpPut("{storyId}/tasks/{taskId}")>]
-        member x.UpdateTaskOnStory
-            (
-                [<FromBody>] request: StoryTaskUpdateDto,
-                storyId: Guid,
-                taskId: Guid,
-                ct: CancellationToken
-            ) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        UpdateTaskCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
-                            ct
-                            { StoryId = storyId
-                              TaskId = taskId
-                              Title = request.title
-                              Description = request.description |> Option.ofObj }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok _ -> OkResult() :> ActionResult
-                        | Error e ->
-                            match e with
-                            | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | UpdateTaskCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                            | UpdateTaskCommand.TaskNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        [<HttpDelete("{storyId}/tasks/{taskId}")>]
-        member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result =
-                        DeleteTaskCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.Logger
-                            ct
-                            { StoryId = storyId; TaskId = taskId }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok _ -> OkResult() :> ActionResult
-                        | Error e ->
-                            match e with
-                            | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | DeleteTaskCommand.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                            | DeleteTaskCommand.TaskNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        [<HttpDelete("{id}")>]
-        member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
-                    do! x.Env.CommitAsync(ct)
-                    return
-                        match result with
-                        | Ok _ -> OkResult() :> ActionResult
-                        | Error e ->
-                            match e with
-                            | DeleteStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | DeleteStoryCommand.StoryNotFound _ ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-        [<HttpGet("{id}")>]
-        member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = GetStoryByIdQuery.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | GetStoryByIdQuery.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-    [<Authorize; Route("persisted-domain-events")>]
-    type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
-
-        [<HttpGet("{id}")>]
-        member x.GetPersistedDomainEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                try
-                    let! result = GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
-                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                with e ->
-                    return! x.HandleExceptionAsync e accept ct
-            }
-
-module HealthCheck =
-    type MemoryHealthCheck(allocatedThresholdInMb: int64) =
-        let mb = 1024 * 2024
-        interface IHealthCheck with
-            member _.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
-                task {
-                    let allocatedBytes = GC.GetTotalMemory(forceFullCollection = false)
-                    let committedBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
-                    let data = Dictionary<string, obj>()
-                    data.Add("allocated_megabytes", Math.Round(float allocatedBytes / float mb, 2))
-                    data.Add("committed_megabytes", Math.Round(float committedBytes / float mb, 2))
-                    data.Add("gen0_collection_count", GC.CollectionCount(0))
-                    data.Add("gen1_collection_count", GC.CollectionCount(1))
-                    data.Add("gen2_collection_count", GC.CollectionCount(2))
-                    return
-                        HealthCheckResult(
-                            (if allocatedBytes < allocatedThresholdInMb * int64 mb then
-                                 HealthStatus.Healthy
-                             else
-                                 HealthStatus.Degraded),
-                            $"Reports degraded status if process has allocated >= {allocatedThresholdInMb} MB",
-                            null,
-                            data
-                        )
-                }
-
-    type SQLiteHealthCheck(connectionString: string) =
-        let description = "Reports unhealthy status if SQLite is unavailable"
-        interface IHealthCheck with
-            member _.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
-                task {
-                    try
-                        let _, elapsed =
-                            time (fun _ ->
-                                task {
-                                    use connection = new SQLiteConnection(connectionString)
-                                    do! connection.OpenAsync(ct)
-                                    use cmd = new SQLiteCommand("select 1", connection)
-                                    let! _ = cmd.ExecuteScalarAsync(ct)
-                                    return ()
-                                })
-                        let data = Dictionary<string, obj>()
-                        data.Add("response_time_milliseconds", elapsed)
-                        return HealthCheckResult(HealthStatus.Healthy, description, null, data)
-                    with e ->
-                        return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
-                }
-
-module Migration =
-    let createMigrationsSql =
-        """
-        create table migrations(
-            name text primary key,
-            hash text not null,
-            sql text not null,
-            created_at integer not null
-        ) strict;"""
-
     type AvailableScript = { Name: string; Hash: string; Sql: string }
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
-    let apply (logger: ILogger) (connectionString: string) : unit =
-        use connection = new SQLiteConnection(connectionString)
-        connection.Open()
+    type DatabaseMigrator(logger: ILogger, connectionString: string) =
+        let createMigrationsSql =
+            """
+            create table migrations(
+                name text primary key,
+                hash text not null,
+                sql text not null,
+                created_at integer not null
+            ) strict;"""
 
-        let availableScripts =
+        let getAvailableScripts () : AvailableScript array =
             let hasher = SHA1.Create()
             let assembly = Assembly.GetExecutingAssembly()
             let prefix = "Scrum.Sql."
@@ -620,12 +258,7 @@ module Migration =
                 { Name = name; Hash = hash; Sql = sql })
             |> Array.sortBy (fun m -> m.Name)
 
-        let availableMigrations =
-            availableScripts |> Array.filter (fun m -> m.Name <> "seed")
-
-        logger.LogInformation $"Found {availableScripts.Length} available migration(s)"
-
-        let appliedMigrations =
+        let getAppliedMigrations (connection: SQLiteConnection) : AppliedMigration array =
             let sql =
                 "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
             use cmd = new SQLiteCommand(sql, connection)
@@ -656,226 +289,601 @@ module Migration =
                     migrations.Add(m)
                 migrations |> Seq.toArray
 
-        logger.LogInformation $"Found {appliedMigrations.Length} applied migration(s)"
+        let verifyAppliedMigrations (available: AvailableScript array) (applied: AppliedMigration array) : unit =
+            for i = 0 to applied.Length - 1 do
+                if applied[i].Name <> available[i].Name then
+                    fail $"Mismatch in applied name '{applied[i].Name}' and available name '{available[i].Name}'"
+                if applied[i].Hash <> available[i].Hash then
+                    fail $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{available[i].Hash}'"
 
-        // For applied migrations, applied and available order should match.
-        for i = 0 to appliedMigrations.Length - 1 do
-            if appliedMigrations[i].Name <> availableMigrations[i].Name then
-                fail $"Mismatch in applied name '{appliedMigrations[i].Name}' and available name '{availableMigrations[i].Name}'"
-            if appliedMigrations[i].Hash <> availableMigrations[i].Hash then
-                fail $"Mismatch in applied hash '{appliedMigrations[i].Hash}' and available hash '{availableMigrations[i].Hash}'"
-
-        // Start applying new migrations.
-        for i = appliedMigrations.Length to availableMigrations.Length - 1 do
-            // With a transaction as we're updating the migrations table.
-            use tx = connection.BeginTransaction()
-            use cmd = new SQLiteCommand(availableMigrations[i].Sql, connection, tx)
-            let count = cmd.ExecuteNonQuery()
-            assert (count >= 0)
-
-            let sql =
-                $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{availableScripts[i].Name}', '{availableScripts[i].Hash}', '{availableScripts[i].Sql}', {DateTime.UtcNow.Ticks})"
-            let cmd = new SQLiteCommand(sql, connection, tx)
-
-            try
-                logger.LogInformation $"Applying migration: '{availableScripts[i].Name}'"
+        let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) : unit =
+            for i = applied.Length to available.Length - 1 do
+                // With a transaction as we're updating the migrations table.
+                use tx = connection.BeginTransaction()
+                use cmd = new SQLiteCommand(available[i].Sql, connection, tx)
                 let count = cmd.ExecuteNonQuery()
-                assert (count = 1)
+                assert (count >= 0)
 
-                // Schema upgrade per migration code. Downgrading isn't
-                // supported.
-                match availableScripts[i].Name with
-                | "202310051903-initial" -> ()
-                | _ -> ()
+                let sql =
+                    $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{available[i].Name}', '{available[i].Hash}', '{available[i].Sql}', {DateTime.UtcNow.Ticks})"
+                let cmd = new SQLiteCommand(sql, connection, tx)
 
+                try
+                    logger.LogInformation $"Applying migration: '{available[i].Name}'"
+                    let count = cmd.ExecuteNonQuery()
+                    assert (count = 1)
+
+                    // Schema upgrade per migration code. Downgrading isn't
+                    // supported.
+                    match available[i].Name with
+                    | "202310051903-initial" -> ()
+                    | _ -> ()
+
+                    tx.Commit()
+                with e ->
+                    tx.Rollback()
+                    reraise ()
+
+        let applySeed (connection: SQLiteConnection) (seed: AvailableScript) =
+            // A pseudo-migration, so we don't record it in the migrations
+            // table.
+            use tx = connection.BeginTransaction()
+            use cmd = new SQLiteCommand(seed.Sql, connection, tx)
+            try
+                logger.LogInformation "Applying seed"
+                let count = cmd.ExecuteNonQuery()
+                assert (count >= -1)
                 tx.Commit()
             with e ->
                 tx.Rollback()
                 reraise ()
 
-        // Apply seeding. It's a pseudo-migration, so we don't record it in the
-        // migrations table.
-        availableScripts
-        |> Array.filter (fun s -> s.Name = "seed.sql")
-        |> Array.iter (fun s ->
-            use tx = connection.BeginTransaction()
-            use cmd = new SQLiteCommand(s.Sql, connection, tx)
-            try
-                logger.LogInformation "Applying seed"
-                let count = cmd.ExecuteNonQuery()
-                assert (count >= 0)
-                tx.Commit()
-            with e ->
-                tx.Rollback()
-                reraise ())
+        member _.Apply() : unit =
+            use connection = new SQLiteConnection(connectionString)
+            connection.Open()
 
-open HealthCheck
+            let availableScripts = getAvailableScripts ()
+            let availableMigrations =
+                availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
-type Startup(configuration: IConfiguration) =
-    // This method gets called by the runtime. Use this method to add services
-    // to the container. For more information on how to configure your
-    // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
-    member _.ConfigureServices(services: IServiceCollection) : unit =
-        services
-            .AddOptions<JwtAuthenticationSettings>()
-            .BindConfiguration(JwtAuthenticationSettings.JwtAuthentication)
-            .ValidateDataAnnotations()
-            .ValidateOnStart()
-        |> ignore
+            logger.LogInformation $"Found {availableScripts.Length} available migration(s)"
+            let appliedMigrations = getAppliedMigrations connection
+            logger.LogInformation $"Found {appliedMigrations.Length} applied migration(s)"
 
-        let serviceProvider = services.BuildServiceProvider()
-        let jwtAuthenticationSettings =
-            serviceProvider.GetService<IOptions<JwtAuthenticationSettings>>().Value
+            verifyAppliedMigrations availableMigrations appliedMigrations
+            applyNewMigrations connection availableMigrations appliedMigrations
 
-        services
-            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-            .AddJwtBearer(fun options ->
-                options.TokenValidationParameters <-
-                    TokenValidationParameters(
-                        ValidateIssuer = true,
-                        ValidateAudience = true,
-                        ValidateIssuerSigningKey = true,
-                        ValidIssuer = jwtAuthenticationSettings.Issuer.ToString(),
-                        ValidAudience = jwtAuthenticationSettings.Audience.ToString(),
-                        ClockSkew = TimeSpan.Zero,
-                        IssuerSigningKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtAuthenticationSettings.SigningKey))
-                    )
+            let seeds = availableScripts |> Array.filter (fun s -> s.Name = "seed")
+            logger.LogInformation $"Found {seeds.Length} seed"
+            seeds |> Array.exactlyOne |> applySeed connection
 
-                // Leave in callbacks for troubleshooting JWT issues. Set a
-                // breakpoint on lines below to track the JWT authentication
-                // process.
-                options.Events <-
-                    JwtBearerEvents(
-                        OnAuthenticationFailed = (fun _ -> Task.CompletedTask),
-                        OnTokenValidated = (fun _ -> Task.CompletedTask),
-                        OnForbidden = (fun _ -> Task.CompletedTask),
-                        OnChallenge = (fun _ -> Task.CompletedTask)
-                    ))
-        |> ignore
+    module Controller =
+        type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+            inherit ControllerBase()
 
-        services.AddCors(fun options ->
-            options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
-        |> ignore
+            let connectionString = configuration.GetConnectionString("Scrum")
+            let userIdentityService = UserIdentity(httpContext.HttpContext)
+            let env = new AppEnv(connectionString, userIdentityService) :> IAppEnv
 
-        services.AddHttpContextAccessor() |> ignore
+            member _.Env = env
 
-        services
-            .AddMvc(fun options -> options.EnableEndpointRouting <- false)
-            .ConfigureApplicationPartManager(fun pm -> pm.FeatureProviders.Add(ControllerWithinModule()))
-            .AddJsonOptions(fun options ->
-                let o = options.JsonSerializerOptions
-                // Per https://opensource.zalando.com/restful-api-guidelines/#118.
-                o.PropertyNamingPolicy <- SnakeCaseLowerNamingPolicy()
-                // Per https://opensource.zalando.com/restful-api-guidelines/#169.
-                o.Converters.Add(DateTimeJsonConverter())
-                // Per https://opensource.zalando.com/restful-api-guidelines/#240.
-                o.Converters.Add(EnumJsonConverter())
-                o.WriteIndented <- true)
-        |> ignore
+            [<NonAction>]
+            member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    x.Env.Logger.LogException(e)
+                    do! x.Env.RollbackAsync(ct)
+                    return ProblemDetail.fromUncaughtException acceptHeaders
+                }
 
-        configuration.GetConnectionString("Scrum") |> Migration.apply (Logger())
+            interface IDisposable with
+                member x.Dispose() = x.Env.Dispose()
 
-        services
-            .AddHealthChecks()
-            .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
-            .AddTypeActivatedCheck<SQLiteHealthCheck>(
-                "Database",
-                HealthStatus.Degraded,
-                Seq.empty,
-                args = [| configuration.GetConnectionString("Scrum") |]
-            )
-        |> ignore
+        // As the token is supposed to be opaque, we can either promote information
+        // from inside the token to fields on the token or provide clients with an
+        // introspect endpoint. We chose the latter.
+        type AuthenticationResponse = { Token: string }
 
-        services.AddControllers() |> ignore
-        services.AddResponseCaching() |> ignore
-        services.AddEndpointsApiExplorer() |> ignore
+        // Loosely modeled after the corresponding OAuth2 endpoint.
+        [<Route("[controller]")>]
+        type AuthenticationController
+            (
+                configuration: IConfiguration,
+                httpContext: IHttpContextAccessor,
+                jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>
+            ) as x =
+            inherit ScrumController(configuration, httpContext)
 
-        // Azure hosting under a Linux means the application is running a
-        // container. Inside the container, the application is run using the
-        // dotnet command, meaning Kestrel is serving traffic. Kestrel doesn't
-        // have build-in compression support, so we add in application level
-        // compression:
-        // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
-        services
-            .AddResponseCompression(fun options ->
-                options.EnableForHttps <- true
-                options.Providers.Add<GzipCompressionProvider>())
-            .Configure<GzipCompressionProviderOptions>(fun (options: GzipCompressionProviderOptions) ->
-                options.Level <- CompressionLevel.SmallestSize)
-            .Configure<BrotliCompressionProviderOptions>(fun (options: BrotliCompressionProviderOptions) ->
-                options.Level <- CompressionLevel.SmallestSize)
-        |> ignore
+            let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationSettings.Value)
 
-    // This method gets called by the runtime. Use this method to configure the
-    // HTTP request pipeline.
-    member _.Configure (app: IApplicationBuilder) (env: IWebHostEnvironment) : unit =
-        if env.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
+            [<HttpPost("issue-token")>]
+            member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
+                task {
+                    // Get user from imaginary user store and pass to
+                    // issueRegularToken to include information about the user as
+                    // claims in the token.
+                    let roles = roles.Split(',') |> Array.map ScrumRole.FromString |> Array.toList
+                    let token = idp.IssueToken userId roles
+                    return CreatedResult("/authentication/introspect", { Token = token })
+                }
 
-        app.UseHttpsRedirection() |> ignore
-        app.UseCors() |> ignore
+            [<Authorize; HttpPost("renewToken")>]
+            member _.RenewToken() : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    let identity = x.Env.UserIdentity.GetCurrent()
+                    let token = idp.RenewToken identity
+                    return
+                        (match token with
+                         | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
+                         | Error e -> ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
+                }
 
-        // Per https://opensource.zalando.com/restful-api-guidelines/#227 and
-        // https://learn.microsoft.com/en-us/aspnet/core/performance/caching/middleware
-        app.UseResponseCaching() |> ignore
-        app.Use(fun context (next: RequestDelegate) ->
-            task {
-                let r = context.Response
-                r.GetTypedHeaders().CacheControl <-
-                    CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(0), NoCache = true, NoStore = true)
-                r.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
-                return! next.Invoke(context)
-            }
-            :> Task)
-        |> ignore
+            [<Authorize; HttpPost("introspect")>]
+            member _.Introspect() : IDictionary<string, obj> =
+                let claimsPrincipal = x.HttpContext.User
+                let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
+                let map = Dictionary<string, obj>()
 
-        let healthCheckOptions =
-            let jsonOptions =
-                JsonSerializerOptions(PropertyNamingPolicy = SnakeCaseLowerNamingPolicy(), WriteIndented = true)
-            jsonOptions.Converters.Add(Json.ExceptionJsonConverter())
-            HealthCheckOptions(
-                ResponseWriter =
-                    fun context report ->
-                        task {
-                            context.Response.ContentType <- "application/json; charset=utf-8"
-                            let result =
-                                JsonSerializer.Serialize(
-                                    {| Status = report.Status.ToString()
-                                       Result =
-                                        report.Entries
-                                        |> Seq.map (fun e ->
-                                            {| Key = e.Key
-                                               Value = e.Value.Status.ToString()
-                                               Description = e.Value.Description
-                                               Data = e.Value.Data
-                                               Exception = e.Value.Exception |}) |},
-                                    jsonOptions
-                                )
-                            return! context.Response.WriteAsync(result)
-                        }
-            )
+                for c in claimsIdentity.Claims do
+                    // Special case non-string value or it becomes a string in
+                    // string in the JSON rendering of the claim.
+                    if c.Type = "exp" then
+                        map.Add("exp", Int32.Parse(c.Value) :> obj)
+                    elif c.Type = ClaimTypes.Role then
+                        // For reasons unknown, ASP.NET maps our Scrum RoleClaim
+                        // from the bearer token to ClaimTypes.Role. The claim's
+                        // type JSON rendered would become
+                        // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
+                        let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
+                        if ok then
+                            let values = values :?> ResizeArray<string>
+                            values.Add(c.Value)
+                        else
+                            map.Add(ScrumClaims.RolesClaim, [ c.Value ] |> ResizeArray)
+                    else
+                        map.Add(c.Type, c.Value)
 
-        app.UseHealthChecks("/health", healthCheckOptions) |> ignore
-        app.UseResponseCompression() |> ignore
-        app.UseRouting() |> ignore
-        app.UseAuthentication() |> ignore
-        app.UseAuthorization() |> ignore
-        app.UseMvcWithDefaultRoute() |> ignore
+                map
 
-module Program =
-    let createHostBuilder args : IHostBuilder =
-        Host
-            .CreateDefaultBuilder(args)
-            .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
+        type StoryCreateDto = { title: string; description: string }
+        type StoryUpdateDto = { title: string; description: string }
+        type AddTaskToStoryDto = { title: string; description: string }
+        type StoryTaskUpdateDto = { title: string; description: string }
 
-    [<EntryPoint>]
-    let main args =
-        // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
-        TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
-            e.SetObserved()
-            e.Exception.Handle(fun e ->
-                printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
-                true))
+        [<Authorize; Route("[controller]")>]
+        type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+            inherit ScrumController(configuration, httpContext)
 
-        let host = createHostBuilder(args).Build()
-        host.Run()
-        0
+            [<HttpPost>]
+            member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result =
+                            CreateStoryCommand.runAsync
+                                x.Env.UserIdentity
+                                x.Env.StoryRepository
+                                x.Env.SystemClock
+                                x.Env.Logger
+                                ct
+                                { Id = Guid.NewGuid()
+                                  Title = request.title
+                                  Description = request.description |> Option.ofObj }
+                        do! x.Env.CommitAsync(ct)
+                        return
+                            match result with
+                            | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                            | Error e ->
+                                match e with
+                                | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+            [<HttpPut("{id}")>]
+            member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result =
+                            UpdateStoryCommand.runAsync
+                                x.Env.UserIdentity
+                                x.Env.StoryRepository
+                                x.Env.SystemClock
+                                x.Env.Logger
+                                ct
+                                { Id = id
+                                  Title = request.title
+                                  Description = request.description |> Option.ofObj }
+                        do! x.Env.CommitAsync(ct)
+                        return
+                            match result with
+                            | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                            | Error e ->
+                                match e with
+                                | UpdateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | UpdateStoryCommand.StoryNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+            [<HttpPost("{storyId}/tasks")>]
+            member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result =
+                            AddTaskToStoryCommand.runAsync
+                                x.Env.UserIdentity
+                                x.Env.StoryRepository
+                                x.Env.SystemClock
+                                x.Env.Logger
+                                ct
+                                { TaskId = Guid.NewGuid()
+                                  StoryId = storyId
+                                  Title = request.title
+                                  Description = request.description |> Option.ofObj }
+                        do! x.Env.CommitAsync(ct)
+                        return
+                            match result with
+                            | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
+                            | Error e ->
+                                match e with
+                                | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | AddTaskToStoryCommand.StoryNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+            [<HttpPut("{storyId}/tasks/{taskId}")>]
+            member x.UpdateTaskOnStory
+                (
+                    [<FromBody>] request: StoryTaskUpdateDto,
+                    storyId: Guid,
+                    taskId: Guid,
+                    ct: CancellationToken
+                ) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result =
+                            UpdateTaskCommand.runAsync
+                                x.Env.UserIdentity
+                                x.Env.StoryRepository
+                                x.Env.SystemClock
+                                x.Env.Logger
+                                ct
+                                { StoryId = storyId
+                                  TaskId = taskId
+                                  Title = request.title
+                                  Description = request.description |> Option.ofObj }
+                        do! x.Env.CommitAsync(ct)
+                        return
+                            match result with
+                            | Ok _ -> OkResult() :> ActionResult
+                            | Error e ->
+                                match e with
+                                | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | UpdateTaskCommand.StoryNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                | UpdateTaskCommand.TaskNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+            [<HttpDelete("{storyId}/tasks/{taskId}")>]
+            member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result =
+                            DeleteTaskCommand.runAsync
+                                x.Env.UserIdentity
+                                x.Env.StoryRepository
+                                x.Env.Logger
+                                ct
+                                { StoryId = storyId; TaskId = taskId }
+                        do! x.Env.CommitAsync(ct)
+                        return
+                            match result with
+                            | Ok _ -> OkResult() :> ActionResult
+                            | Error e ->
+                                match e with
+                                | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | DeleteTaskCommand.StoryNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                                | DeleteTaskCommand.TaskNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+            [<HttpDelete("{id}")>]
+            member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result = DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                        do! x.Env.CommitAsync(ct)
+                        return
+                            match result with
+                            | Ok _ -> OkResult() :> ActionResult
+                            | Error e ->
+                                match e with
+                                | DeleteStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | DeleteStoryCommand.StoryNotFound _ ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+            [<HttpGet("{id}")>]
+            member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result = GetStoryByIdQuery.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                        return
+                            match result with
+                            | Ok s -> OkObjectResult(s) :> ActionResult
+                            | Error e ->
+                                match e with
+                                | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                                | GetStoryByIdQuery.StoryNotFound id ->
+                                    ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+        [<Authorize; Route("persisted-domain-events")>]
+        type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+            inherit ScrumController(configuration, httpContext)
+
+            [<HttpGet("{id}")>]
+            member x.GetPersistedDomainEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+                task {
+                    let accept = x.Request.Headers.Accept
+                    try
+                        let! result =
+                            GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                        return
+                            match result with
+                            | Ok s -> OkObjectResult(s) :> ActionResult
+                            | Error e ->
+                                match e with
+                                | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                                | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                    with e ->
+                        return! x.HandleExceptionAsync e accept ct
+                }
+
+    module HealthCheck =
+        type MemoryHealthCheck(allocatedThresholdInMb: int64) =
+            let mb = 1024 * 2024
+            interface IHealthCheck with
+                member _.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
+                    task {
+                        let allocatedBytes = GC.GetTotalMemory(forceFullCollection = false)
+                        let committedBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
+                        let data = Dictionary<string, obj>()
+                        data.Add("allocated_megabytes", Math.Round(float allocatedBytes / float mb, 2))
+                        data.Add("committed_megabytes", Math.Round(float committedBytes / float mb, 2))
+                        data.Add("gen0_collection_count", GC.CollectionCount(0))
+                        data.Add("gen1_collection_count", GC.CollectionCount(1))
+                        data.Add("gen2_collection_count", GC.CollectionCount(2))
+                        return
+                            HealthCheckResult(
+                                (if allocatedBytes < allocatedThresholdInMb * int64 mb then
+                                     HealthStatus.Healthy
+                                 else
+                                     HealthStatus.Degraded),
+                                $"Reports degraded status if process has allocated >= {allocatedThresholdInMb} MB",
+                                null,
+                                data
+                            )
+                    }
+
+        type SQLiteHealthCheck(connectionString: string) =
+            let description = "Reports unhealthy status if SQLite is unavailable"
+            interface IHealthCheck with
+                member _.CheckHealthAsync(_, ct) : Task<HealthCheckResult> =
+                    task {
+                        try
+                            let _, elapsed =
+                                time (fun _ ->
+                                    task {
+                                        use connection = new SQLiteConnection(connectionString)
+                                        do! connection.OpenAsync(ct)
+                                        use cmd = new SQLiteCommand("select 1", connection)
+                                        let! _ = cmd.ExecuteScalarAsync(ct)
+                                        return ()
+                                    })
+                            let data = Dictionary<string, obj>()
+                            data.Add("response_time_milliseconds", elapsed)
+                            return HealthCheckResult(HealthStatus.Healthy, description, null, data)
+                        with e ->
+                            return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
+                    }
+
+    open HealthCheck
+
+    type Startup(configuration: IConfiguration) =
+        // This method gets called by the runtime. Use this method to add services
+        // to the container. For more information on how to configure your
+        // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
+        member _.ConfigureServices(services: IServiceCollection) : unit =
+            services
+                .AddOptions<JwtAuthenticationSettings>()
+                .BindConfiguration(JwtAuthenticationSettings.JwtAuthentication)
+                .ValidateDataAnnotations()
+                .ValidateOnStart()
+            |> ignore
+
+            let serviceProvider = services.BuildServiceProvider()
+            let jwtAuthenticationSettings =
+                serviceProvider.GetService<IOptions<JwtAuthenticationSettings>>().Value
+
+            services
+                .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+                .AddJwtBearer(fun options ->
+                    options.TokenValidationParameters <-
+                        TokenValidationParameters(
+                            ValidateIssuer = true,
+                            ValidateAudience = true,
+                            ValidateIssuerSigningKey = true,
+                            ValidIssuer = jwtAuthenticationSettings.Issuer.ToString(),
+                            ValidAudience = jwtAuthenticationSettings.Audience.ToString(),
+                            ClockSkew = TimeSpan.Zero,
+                            IssuerSigningKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtAuthenticationSettings.SigningKey))
+                        )
+
+                    // Leave in callbacks for troubleshooting JWT issues. Set a
+                    // breakpoint on lines below to track the JWT authentication
+                    // process.
+                    options.Events <-
+                        JwtBearerEvents(
+                            OnAuthenticationFailed = (fun _ -> Task.CompletedTask),
+                            OnTokenValidated = (fun _ -> Task.CompletedTask),
+                            OnForbidden = (fun _ -> Task.CompletedTask),
+                            OnChallenge = (fun _ -> Task.CompletedTask)
+                        ))
+            |> ignore
+
+            services.AddCors(fun options ->
+                options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
+            |> ignore
+
+            services.AddHttpContextAccessor() |> ignore
+
+            services
+                .AddMvc(fun options -> options.EnableEndpointRouting <- false)
+                .ConfigureApplicationPartManager(fun pm -> pm.FeatureProviders.Add(ControllerWithinModule()))
+                .AddJsonOptions(fun options ->
+                    let o = options.JsonSerializerOptions
+                    // Per https://opensource.zalando.com/restful-api-guidelines/#118.
+                    o.PropertyNamingPolicy <- SnakeCaseLowerNamingPolicy()
+                    // Per https://opensource.zalando.com/restful-api-guidelines/#169.
+                    o.Converters.Add(DateTimeJsonConverter())
+                    // Per https://opensource.zalando.com/restful-api-guidelines/#240.
+                    o.Converters.Add(EnumJsonConverter())
+                    o.WriteIndented <- true)
+            |> ignore
+
+            DatabaseMigrator(Logger(), configuration.GetConnectionString("Scrum")).Apply()
+
+            services
+                .AddHealthChecks()
+                .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
+                .AddTypeActivatedCheck<SQLiteHealthCheck>(
+                    "Database",
+                    HealthStatus.Degraded,
+                    Seq.empty,
+                    args = [| configuration.GetConnectionString("Scrum") |]
+                )
+            |> ignore
+
+            services.AddControllers() |> ignore
+            services.AddResponseCaching() |> ignore
+            services.AddEndpointsApiExplorer() |> ignore
+
+            // Azure hosting under a Linux means the application is running a
+            // container. Inside the container, the application is run using the
+            // dotnet command, meaning Kestrel is serving traffic. Kestrel doesn't
+            // have build-in compression support, so we add in application level
+            // compression:
+            // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
+            services
+                .AddResponseCompression(fun options ->
+                    options.EnableForHttps <- true
+                    options.Providers.Add<GzipCompressionProvider>())
+                .Configure<GzipCompressionProviderOptions>(fun (options: GzipCompressionProviderOptions) ->
+                    options.Level <- CompressionLevel.SmallestSize)
+                .Configure<BrotliCompressionProviderOptions>(fun (options: BrotliCompressionProviderOptions) ->
+                    options.Level <- CompressionLevel.SmallestSize)
+            |> ignore
+
+        // This method gets called by the runtime. Use this method to configure the
+        // HTTP request pipeline.
+        member _.Configure (app: IApplicationBuilder) (env: IWebHostEnvironment) : unit =
+            if env.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
+
+            app.UseHttpsRedirection() |> ignore
+            app.UseCors() |> ignore
+
+            // Per https://opensource.zalando.com/restful-api-guidelines/#227 and
+            // https://learn.microsoft.com/en-us/aspnet/core/performance/caching/middleware
+            app.UseResponseCaching() |> ignore
+            app.Use(fun context (next: RequestDelegate) ->
+                task {
+                    let r = context.Response
+                    r.GetTypedHeaders().CacheControl <-
+                        CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(0), NoCache = true, NoStore = true)
+                    r.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
+                    return! next.Invoke(context)
+                }
+                :> Task)
+            |> ignore
+
+            let healthCheckOptions =
+                let jsonOptions =
+                    JsonSerializerOptions(PropertyNamingPolicy = SnakeCaseLowerNamingPolicy(), WriteIndented = true)
+                jsonOptions.Converters.Add(Json.ExceptionJsonConverter())
+                HealthCheckOptions(
+                    ResponseWriter =
+                        fun context report ->
+                            task {
+                                context.Response.ContentType <- "application/json; charset=utf-8"
+                                let result =
+                                    JsonSerializer.Serialize(
+                                        {| Status = report.Status.ToString()
+                                           Result =
+                                            report.Entries
+                                            |> Seq.map (fun e ->
+                                                {| Key = e.Key
+                                                   Value = e.Value.Status.ToString()
+                                                   Description = e.Value.Description
+                                                   Data = e.Value.Data
+                                                   Exception = e.Value.Exception |}) |},
+                                        jsonOptions
+                                    )
+                                return! context.Response.WriteAsync(result)
+                            }
+                )
+
+            app.UseHealthChecks("/health", healthCheckOptions) |> ignore
+            app.UseResponseCompression() |> ignore
+            app.UseRouting() |> ignore
+            app.UseAuthentication() |> ignore
+            app.UseAuthorization() |> ignore
+            app.UseMvcWithDefaultRoute() |> ignore
+
+    module Program =
+        let createHostBuilder args : IHostBuilder =
+            Host
+                .CreateDefaultBuilder(args)
+                .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
+
+        [<EntryPoint>]
+        let main args =
+            // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
+            TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
+                e.SetObserved()
+                e.Exception.Handle(fun e ->
+                    printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
+                    true))
+
+            let host = createHostBuilder(args).Build()
+            host.Run()
+            0

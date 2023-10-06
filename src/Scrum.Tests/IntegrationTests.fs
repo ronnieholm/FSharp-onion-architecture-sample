@@ -4,7 +4,7 @@ open System
 open System.Threading
 open System.Data.SQLite
 open Scrum.Application.StoryAggregateRequest.GetStoryByIdQuery
-open Scrum.Web
+open Scrum.Web.Service
 open Swensen.Unquote
 open Xunit
 open Scrum.Application.Seedwork
@@ -112,7 +112,7 @@ open Setup
 type ApplyDatabaseMigrationsFixture() =
     do
         // Runs before all tests.
-        Migration.apply nullLogger connectionString
+        DatabaseMigrator(nullLogger, connectionString).Apply()
 
     interface IDisposable with
         member _.Dispose() =
@@ -139,7 +139,7 @@ type DisableParallelization() =
 //
 // Commenting out the collection attribute below may results in tests
 // succeeding. But if any test assumes a reset database, tests may start failing
-// because we've introduced the possibilty of a race condition. For tests not to
+// because we've introduced the possibility of a race condition. For tests not to
 // interfere with each other, and the reset, serialize test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
