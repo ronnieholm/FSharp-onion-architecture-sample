@@ -9,4 +9,4 @@
 - Return error codes (cases of error DUs) in JSON error response, inspired by https://www.youtube.com/watch?v=AeZC1z8D5xI for Dapr
 - Store JSON documents in SQLite instead of relations
 - Make logs appear in the console
- 
+- Rename ILogger to ScrumLogger to avoid confusion
