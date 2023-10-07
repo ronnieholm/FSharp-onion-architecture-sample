@@ -10,8 +10,8 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 
 module Seedwork =
     // Contrary to outer layer's Seedwork, core doesn't define a boundary
-    // exception. Core communicates errors as values. 
-        
+    // exception. Core communicates errors as values.
+
     [<Measure>]
     type ms
 
@@ -37,6 +37,11 @@ module Seedwork =
     type ScrumRole =
         | Member
         | Admin
+
+        override x.ToString() =
+            match x with
+            | Member -> "member"
+            | Admin -> "admin"
 
     type ScrumIdentity =
         | Anonymous
@@ -129,15 +134,7 @@ module Seedwork =
     let isInRole (identity: IUserIdentity) (role: ScrumRole) : Result<unit, string> =
         match identity.GetCurrent() with
         | Anonymous -> Error("Anonymous user unsupported")
-        | Authenticated(_, roles) ->
-            if List.contains role roles then
-                Ok()
-            else
-                let roleString =
-                    match role with
-                    | Member -> "member"
-                    | Admin -> "admin"
-                Error($"Missing role '{roleString}'")
+        | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
 
 module SharedModels =
     // Data transfer objects shared across aggregates.
