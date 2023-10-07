@@ -25,7 +25,7 @@ supporting role-based security.
   layer.
 - Integration tests with the ability to fake any dependency.
 - ASP.NET health checks for memory and database.
-- Support for database migration and data seeding.
+- Support for database migrations and data seeding.
 - [Architecture Decision
   Records](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
   under `docs/architecuture`.
