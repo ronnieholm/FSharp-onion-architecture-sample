@@ -50,7 +50,7 @@ The API supports the following operations:
 
 # Authentication (supported roles: member and/or admin)
 curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request post | jq
-curl https://localhost:5000/authentication/renew --insecure --request post -H "Authorization: Bearer <token>" | jq
+curl https://localhost:5000/authentication/renew-token --insecure --request post -H "Authorization: Bearer <token>" | jq
 curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
 
 # Stories

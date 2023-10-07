@@ -9,13 +9,11 @@ open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
 
 module Seedwork =
+    // Contrary to outer layer's Seedwork, core doesn't define a boundary
+    // exception. Core communicates errors as values. 
+        
     [<Measure>]
     type ms
-    
-    // ApplicationException is taken by the .NET framework.
-    exception ApplicationLogicException of string
-    
-    let fail (s: string) : 't = raise (ApplicationLogicException(s))
 
     type ValidationError = { Field: string; Message: string }
 
@@ -39,17 +37,6 @@ module Seedwork =
     type ScrumRole =
         | Member
         | Admin
-
-        static member FromString =
-            function
-            | "member" -> Member
-            | "admin" -> Admin
-            | unsupported -> fail $"Unsupported {nameof ScrumRole}: '{unsupported}'"
-
-        override x.ToString() =
-            match x with
-            | Member -> "member"
-            | Admin -> "admin"
 
     type ScrumIdentity =
         | Anonymous
@@ -82,6 +69,7 @@ module Seedwork =
         abstract LogRequestPayload: string -> obj -> unit
         abstract LogRequestDuration: string -> uint<ms> -> unit
         abstract LogException: exn -> unit
+
         // Delegates to .NET's ILogger.
         abstract LogError: string -> unit
         abstract LogInformation: string -> unit
@@ -145,7 +133,11 @@ module Seedwork =
             if List.contains role roles then
                 Ok()
             else
-                Error($"Missing role '{role.ToString()}'")
+                let roleString =
+                    match role with
+                    | Member -> "member"
+                    | Admin -> "admin"
+                Error($"Missing role '{roleString}'")
 
 module SharedModels =
     // Data transfer objects shared across aggregates.
@@ -553,7 +545,7 @@ module DomainEventRequest =
             let from (event: PersistedDomainEvent) : PersistedDomainEventDto =
                 { Id = event.Id
                   AggregateId = event.AggregateId
-                  AggregateType = event.AggregateType 
+                  AggregateType = event.AggregateType
                   EventType = event.EventType
                   EventPayload = event.EventPayload
                   CreatedAt = event.CreatedAt }

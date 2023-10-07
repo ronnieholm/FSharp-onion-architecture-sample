@@ -56,6 +56,13 @@ module Seedwork =
             base.IsController(typeInfo)
             || typeInfo.FullName.StartsWith("Scrum.Web.Controller")
 
+    module ScrumRole =
+        let fromString =
+            function
+            | "member" -> Member
+            | "admin" -> Admin
+            | unsupported -> fail $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+
     module Json =
         // System.Text.Json cannot serialize an exception without itself
         // throwing an exception: "System.NotSupportedException: Serialization
@@ -169,7 +176,7 @@ module Service =
                             let rolesClaim =
                                 claims
                                 |> Seq.filter (fun c -> c.Type = ClaimTypes.Role)
-                                |> Seq.map (fun c -> ScrumRole.FromString(c.Value))
+                                |> Seq.map (fun c -> ScrumRole.fromString (c.Value))
                                 |> List.ofSeq
 
                             // With a proper identity provider, we'd likely have
@@ -401,12 +408,12 @@ module Service =
                     // Get user from imaginary user store and pass to
                     // issueRegularToken to include information about the user as
                     // claims in the token.
-                    let roles = roles.Split(',') |> Array.map ScrumRole.FromString |> Array.toList
+                    let roles = roles.Split(',') |> Array.map ScrumRole.fromString |> Array.toList
                     let token = idp.IssueToken userId roles
                     return CreatedResult("/authentication/introspect", { Token = token })
                 }
 
-            [<Authorize; HttpPost("renewToken")>]
+            [<Authorize; HttpPost("renew-token")>]
             member _.RenewToken() : Task<ActionResult> =
                 task {
                     let accept = x.Request.Headers.Accept
