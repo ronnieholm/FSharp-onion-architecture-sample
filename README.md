@@ -9,6 +9,11 @@ It's an example of imperative shell, functional core. Specifically, `Program.fs`
 and `Infrastructure.fs` make up the shell while `Application.fs` and `Domain.fs`
 make up the core.
 
+Where F# shines is in `Application.fs`, `Domain.fs`, and `IntegrationTest.fs`.
+As for `Program.fs` and `Integration.fs`, these are similar in nature to many C#
+applications.
+
+
 The application has the following features:
 
 - REST API adhering to the [Zalando API
@@ -29,12 +34,8 @@ The Scrum domain is chosen because it offers sufficient complexity and everyone
 is familiar with it, though most aspects of the application is illustrated with
 stories and tasks only. With only stories and tasks, clean architecture requires
 significant support code. With more aggregates, discriminated unions in the
-domain, and integrations with external services, the support code becomes more
-apparent.
-
-Where F# shines is in `Domain.fs`, `Application.fs`, and `IntegrationTest.fs`.
-As for `Integration.fs` and `Program.fs`, these are similar in nature to many C#
-applications.
+domain, and integrations with external services, the value of the support code
+becomes more apparent.
 
 ## Building and testing
 
