@@ -7,8 +7,8 @@
 // To resolve any access denied errors on the host, from the Git repository
 // root:
 //
-// $ sudo chown -R ${USER} *
-// $ sudo chgrp -R ${USER} *
+// $ sudo chown -R ${USER} .
+// $ sudo chgrp -R ${USER} .
 {
   "name": "Scrum",
   "build": {
