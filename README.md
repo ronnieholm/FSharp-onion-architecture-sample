@@ -13,7 +13,6 @@ Where F# shines is in `Application.fs`, `Domain.fs`, and `IntegrationTest.fs`.
 As for `Program.fs` and `Integration.fs`, these are similar in nature to many C#
 applications.
 
-
 The application has the following features:
 
 - REST API adhering to the [Zalando API
