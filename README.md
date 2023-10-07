@@ -23,10 +23,10 @@ supporting role-based security.
 
 The Scrum domain is chosen because it offers sufficient complexity and because
 everyone is familiar with it, though most aspects of the application is
-illustrated using the concept of stories and tasks only. With only story and
-sask, clean architecture requires significant support code. With more
-aggregates, discriminated unions in the domain, and integrations with external
-services, the support code becomes more apparent.
+illustrated using stories and tasks only. With only stories and tasks, clean
+architecture requires significant support code. With more aggregates,
+discriminated unions in the domain, and integrations with external services, the
+support code becomes more apparent.
 
 Where F# shines is in `Domain.fs`, `Application.fs`, and `IntegrationTest.fs`.
 As for `Integration.fs` and `Program.fs`, these are similar in nature to many C#
