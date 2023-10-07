@@ -9,9 +9,8 @@ It's an example of imperative shell, functional core. Specifically, `Program.fs`
 and `Infrastructure.fs` make up the shell while `Application.fs` and `Domain.fs`
 make up the core.
 
-Where F# shines is in `Application.fs`, `Domain.fs`, and `IntegrationTest.fs`.
-As for `Program.fs` and `Integration.fs`, these are similar in nature to many C#
-applications.
+Where F# shines is in the core and `IntegrationTest.fs`. The shell is similar in
+nature to many C# applications.
 
 The application has the following features:
 
