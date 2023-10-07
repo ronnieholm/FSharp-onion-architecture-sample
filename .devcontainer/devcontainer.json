@@ -1,0 +1,31 @@
+// See https://aka.ms/devcontainer.json for configuration options.
+//
+// Note: files created inside the container will be owned by root
+// on the host's filesystem. A devcontainer doesn't support dynamic
+// user/group assignments to whomever started it.
+{
+  "name": "Scrum",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "args": {}
+  },
+  "containerEnv": {
+    "CHOKIDAR_USEPOLLING": "1"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-dotnettools.vscode-dotnet-runtime",
+        "ms-dotnettools.csharp",
+        "ionide.ionide-fsharp",
+        "formulahendry.dotnet-test-explorer",
+        "stkb.rewrap",
+        "yzhang.markdown-all-in-one",
+        "davidanson.vscode-markdownlint",
+        "donjayamanne.githistory",
+        "humao.rest-client",
+        "editorconfig.editorconfig"
+      ]
+    }
+  }
+}

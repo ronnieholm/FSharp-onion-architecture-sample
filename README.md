@@ -47,7 +47,6 @@ They're found in the Git root as `scrum_web.sqlite` and `scrum_test.sqlite`.
 The API supports the following operations:
 
 ```bash
-
 # Authentication (supported roles: member and/or admin)
 curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request post | jq
 curl https://localhost:5000/authentication/renew-token --insecure --request post -H "Authorization: Bearer <token>" | jq

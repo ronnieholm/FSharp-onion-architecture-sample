@@ -38,7 +38,7 @@ module Seedwork =
         | Member
         | Admin
 
-        override x.ToString() =
+        override x.ToString() : string =
             match x with
             | Member -> "member"
             | Admin -> "admin"
