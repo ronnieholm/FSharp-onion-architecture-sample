@@ -22,8 +22,11 @@ supporting role-based security.
   under `docs/architecuture`.
 
 The Scrum domain is chosen because it offers sufficient complexity and because
-everyone is familiar with it. Though most aspects of the application is
-illustrated using the concept of stories and tasks only.
+everyone is familiar with it, though most aspects of the application is
+illustrated using the concept of stories and tasks only. With only story and
+sask, clean architecture requires significant support code. With more
+aggregates, discriminated unions in the domain, and integrations with external
+services, the support code becomes more apparent.
 
 Where F# shines is in `Domain.fs`, `Application.fs`, and `IntegrationTest.fs`.
 As for `Integration.fs` and `Program.fs`, these are similar in nature to many C#
@@ -91,3 +94,9 @@ compiler is mostly sequential across an assembly, but multiple assemblies may be
 compiled in parallel. For this reasons, separate assemblies for domain,
 application, integration, web, unit test and integration test is ill advised.
 Compilation would become sequential across the solution.
+
+## See also
+
+- [Implementing Domain-Driven Design by Vaughn Vernon](https://www.amazon.com/Implementing-Domain-Driven-Design-Vaughn-Vernon/dp/0321834577/ref=sr_1_2?crid=1WH0G8B548GPO&keywords=vaughn+vernon&qid=1696680557&sprefix=vaughn+vernon%2Caps%2C306&sr=8-2).
+- [Jason Taylor's C# Clean Architecture Solution Template](https://github.com/jasontaylordev/CleanArchitecture).
+ 
