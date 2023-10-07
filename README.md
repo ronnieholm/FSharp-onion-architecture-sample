@@ -1,9 +1,9 @@
 # Scrum clean architecture sample
 
-Focus is on applying functional constructs over cluing together libraries and
-frameworks. Instead of the .NET dependency injection container,
-FluentValidation, MediatR, Entity Framework, Moq, Respawn, and a migration
-tool, this sample implements functional alternatives.
+The sample focuses on applying functional constructs over cluing together
+libraries and frameworks. It substitutes the .NET dependency injection
+container, FluentValidation, MediatR, Entity Framework, Moq, Respawn, and a
+migration tool for simpler alternatives.
 
 It's an example of imperative shell, functional core. Specifically, `Program.fs`
 and `Infrastructure.fs` make up the shell while `Application.fs` and `Domain.fs`
