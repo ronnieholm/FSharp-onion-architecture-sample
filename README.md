@@ -5,7 +5,11 @@ frameworks. Instead of the .NET dependency injection container,
 FluentValidation, MediatR, Entity Framework, Moq, Respawn, and a migration
 tool, this sample implements functional alternatives.
 
-The sample is an imperative shell, functional core with the following features:
+It's an example of imperative shell, functional core. Specifically, `Program.fs`
+and `Infrastructure.fs` make up the shell while `Application.fs` and `Domain.fs`
+make up the core.
+
+The application has the following features:
 
 - REST API adhering to the [Zalando API
 guidelines](https://opensource.zalando.com/restful-api-guidelines/) with JWTs
