@@ -44,7 +44,10 @@ Running tests or web app creates the SQLite databases in the Git root as
     $ dotnet test
     $ dotnet run --project src/Scrum
 
-The API supports the following operations:
+Opening the Git repository with VSCode will pick of the DevContainer
+configuration.
+
+## Operations
 
 ```bash
 # Authentication (supported roles: member and/or admin)
