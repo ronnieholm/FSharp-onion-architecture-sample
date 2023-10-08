@@ -11,7 +11,7 @@
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/src/Scrum/bin/Debug/net7.0/Scrum.dll",
       "args": [],
-      "cwd": "${workspaceFolder}",
+      "cwd": "${workspaceFolder}/src/Scrum/bin/Debug/net7.0",
       "stopAtEntry": false,
       "console": "internalConsole"
     }
