@@ -395,11 +395,8 @@ module Controller =
     // Loosely modeled after the corresponding OAuth2 endpoint.
     [<Route("[controller]")>]
     type AuthenticationController
-        (
-            configuration: IConfiguration,
-            httpContext: IHttpContextAccessor,
-            jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>
-        ) as x =
+        (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>) as x
+        =
         inherit ScrumController(configuration, httpContext)
 
         let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationSettings.Value)
@@ -598,6 +595,7 @@ module Controller =
                         DeleteTaskCommand.runAsync
                             x.Env.UserIdentity
                             x.Env.StoryRepository
+                            x.Env.SystemClock
                             x.Env.Logger
                             ct
                             { StoryId = storyId; TaskId = taskId }
@@ -622,7 +620,8 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                    let! result =
+                        DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.SystemClock x.Env.Logger ct { Id = id }
                     do! x.Env.CommitAsync(ct)
                     return
                         match result with
@@ -665,8 +664,7 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result =
-                        GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                    let! result = GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult

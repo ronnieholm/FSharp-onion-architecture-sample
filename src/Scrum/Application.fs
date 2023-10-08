@@ -182,8 +182,8 @@ module StoryAggregateRequest =
                     do!
                         stories.ExistAsync ct cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
-                    let now = clock.CurrentUtc()
-                    let story, event = StoryAggregate.create cmd.Id cmd.Title cmd.Description now
+                    let story, event =
+                        StoryAggregate.create cmd.Id cmd.Title cmd.Description (clock.CurrentUtc())
                     do! stories.ApplyEventAsync ct event
                     // Example of publishing the StoryCreated domain event to
                     // another aggregate:
@@ -236,8 +236,8 @@ module StoryAggregateRequest =
                     let! story =
                         stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                    let now = clock.CurrentUtc()
-                    let story, event = StoryAggregate.update story cmd.Title cmd.Description now
+                    let story, event =
+                        StoryAggregate.update story cmd.Title cmd.Description (clock.CurrentUtc())
                     do! stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
@@ -263,6 +263,7 @@ module StoryAggregateRequest =
         let runAsync
             (identity: IUserIdentity)
             (stories: IStoryRepository)
+            (clock: ISystemClock)
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: DeleteStoryCommand)
@@ -274,7 +275,7 @@ module StoryAggregateRequest =
                     let! story =
                         stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                    let event = StoryAggregate.delete story
+                    let event = StoryAggregate.delete story (clock.CurrentUtc())
                     do! stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
@@ -330,9 +331,10 @@ module StoryAggregateRequest =
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let now = clock.CurrentUtc()
-                    let task = create cmd.TaskId cmd.Title cmd.Description now
-                    let! _, event = addTaskToStory story task now |> Result.mapError fromDomainError
+                    let task = create cmd.TaskId cmd.Title cmd.Description (clock.CurrentUtc())
+                    let! _, event =
+                        addTaskToStory story task (clock.CurrentUtc())
+                        |> Result.mapError fromDomainError
                     do! stories.ApplyEventAsync ct event
                     return TaskId.value task.Entity.Id
                 }
@@ -391,9 +393,8 @@ module StoryAggregateRequest =
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let now = clock.CurrentUtc()
                     let! _, event =
-                        updateTask story cmd.TaskId cmd.Title cmd.Description now
+                        updateTask story cmd.TaskId cmd.Title cmd.Description (clock.CurrentUtc())
                         |> Result.mapError fromDomainError
                     do! stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
@@ -426,6 +427,7 @@ module StoryAggregateRequest =
         let runAsync
             (identity: IUserIdentity)
             (stories: IStoryRepository)
+            (clock: ISystemClock)
             (logger: ILogger)
             (ct: CancellationToken)
             (cmd: DeleteTaskCommand)
@@ -437,7 +439,9 @@ module StoryAggregateRequest =
                     let! story =
                         stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! _, event = deleteTask story cmd.TaskId |> Result.mapError fromDomainError
+                    let! _, event =
+                        deleteTask story cmd.TaskId (clock.CurrentUtc())
+                        |> Result.mapError fromDomainError
                     do! stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
