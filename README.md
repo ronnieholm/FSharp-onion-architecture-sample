@@ -68,35 +68,6 @@ curl https://localhost:5000/persisted-domain-events/<aggregateId> --insecure -H 
 curl https://localhost:5000/health --insecure | jq
 ```
 
-## Code organization
-
-Code is organized using horizontal slice architecture:
-
-- Domain.fs
-- Application.fs
-- Infrastructure.fs
-- Program.fs
-
-As file ordering matters to the F# compiler, `Domain.fs` depends on nothing,
-`Application.fs` depends on `Domain.fs`, and so on. Similarly, within each
-source file definitions must precede use.
-
-For a larger application, the vertical slice architecture may be preferred. Here
-`Story.fs` could contain domain, application, infrastructure, web, and possibly
-test code (and similar organization for other aggregates):
-
-- Shared.fs
-- Story.fs (domain + application + infrastructure + ASP.NET handlers + test)
-- Program.fs
-
-Or Story could be a folder with multiple files or its own assembly.
-
-Vertical slice architecture has the potential to improve compile times. The F#
-compiler is mostly sequential across an assembly, but multiple assemblies may be
-compiled in parallel. For this reasons, separate assemblies for domain,
-application, integration, web, unit test and integration test is ill advised.
-Compilation would become sequential across the solution.
-
 ## See also
 
 - [Implementing Domain-Driven Design by Vaughn Vernon](https://www.amazon.com/Implementing-Domain-Driven-Design-Vaughn-Vernon/dp/0321834577).
