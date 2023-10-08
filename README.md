@@ -44,7 +44,7 @@ Running tests or web app creates the SQLite databases in the Git root as
     $ dotnet test
     $ dotnet run --project src/Scrum
 
-Opening the Git repository with VSCode will pick of the DevContainer
+Opening the Git repository with VSCode will pick up the DevContainer
 configuration.
 
 ## Operations
