@@ -37,8 +37,8 @@ becomes more apparent.
 
 ## Building and testing
 
-Running the tests or the web app automatically creates the SQLite databases.
-They're found in the Git root as `scrum_web.sqlite` and `scrum_test.sqlite`.
+Running tests or web app creates the SQLite databases in the Git root as
+`scrum_web.sqlite` and `scrum_test.sqlite`.
 
     $ dotnet build
     $ dotnet test
