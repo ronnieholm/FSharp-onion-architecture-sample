@@ -9,4 +9,5 @@
 - Rename ILogger to ScrumLogger to avoid confusion.
 - Add k6 load script
 - Create F# script/console app to drive the application
-- Create Bash script to call every endpoint
+- Create Bash script to call every endpoint (https://github.com/minio/mc/blob/master/functional-tests.sh)
+- Split runDecorator into a pipeline of functions (https://github.com/ronnieholm/Playground/tree/master/CSDecoratorPattern)
