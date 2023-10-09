@@ -65,8 +65,8 @@ module StoryAggregate =
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let create (id: TaskId) (title: TaskTitle) (description: TaskDescription option) (createdAt: DateTime) : Task =
-            { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
+        let create (id: TaskId) (title: TaskTitle) (description: TaskDescription option) (occurredAt: DateTime) : Task =
+            { Entity = { Id = id; CreatedAt = occurredAt; UpdatedAt = None }
               Title = title
               Description = description }
 
