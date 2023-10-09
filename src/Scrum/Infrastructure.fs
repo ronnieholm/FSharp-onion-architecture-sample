@@ -98,6 +98,13 @@ module Seedwork =
                 assert (count = 1)
             }
 
+        let executeNonQuery (aggregateId: Guid) (cmd: SQLiteCommand) (ct: CancellationToken) : Task<Guid> =
+            task {
+                let! count = cmd.ExecuteNonQueryAsync(ct)
+                assert (count = 1)
+                return aggregateId
+            }
+
 open Seedwork
 open Seedwork.Repository
 
@@ -217,13 +224,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
         // We don't have to worry about the shape of events evolving over time;
         // only to keep the store up to date.
         member _.ApplyEventAsync (ct: CancellationToken) (event: StoryDomainEvent) : Task<unit> =
-            let execute (aggregateId: Guid) (cmd: SQLiteCommand) : Task<Guid> =
-                task {
-                    let! count = cmd.ExecuteNonQueryAsync(ct)
-                    assert (count = 1)
-                    return aggregateId
-                }
-
             task {
                 let! aggregateId =
                     match event with
@@ -238,7 +238,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                         p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
-                        execute storyId cmd
+                        executeNonQuery storyId cmd ct
                     | StoryUpdated e ->
                         let sql =
                             "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
@@ -250,13 +250,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                         |> ignore
                         p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", storyId |> string) |> ignore
-                        execute storyId cmd
+                        executeNonQuery storyId cmd ct
                     | StoryDeleted e ->
                         let sql = "delete from stories where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
-                        execute storyId cmd
+                        executeNonQuery storyId cmd ct
                     | TaskAddedToStory e ->
                         let sql =
                             "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
@@ -269,7 +269,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                         p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
-                        execute storyId cmd
+                        executeNonQuery storyId cmd ct
                     | TaskUpdated e ->
                         let sql =
                             "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
@@ -282,7 +282,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                         p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
-                        execute storyId cmd
+                        executeNonQuery storyId cmd ct
                     | TaskDeleted e ->
                         let sql = "delete from tasks where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -290,7 +290,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                         let storyId = e.StoryId |> StoryId.value
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
-                        execute storyId cmd
+                        executeNonQuery storyId cmd ct
 
                 // We don't serialize an event to JSON because F# discriminated
                 // unions aren't supported by System.Text.Json
