@@ -11,3 +11,4 @@
 - Create F# script/console app to drive the application
 - Create Bash script to call every endpoint (https://github.com/minio/mc/blob/master/functional-tests.sh)
 - Split runDecorator into a pipeline of functions (https://github.com/ronnieholm/Playground/tree/master/CSDecoratorPattern)
+- Add github build action (https://github.com/Zaid-Ajaj/pulumi-converter-bicep/blob/master/.github/workflows/test.yml)
