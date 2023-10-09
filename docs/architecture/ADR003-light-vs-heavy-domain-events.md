@@ -36,6 +36,11 @@ type DomainEvent =
     | StoryCreated of StoryCreated
 ```
 
+`OccurredAt` is included for explictness. Some domains don't require it as part
+the event or it may be set by the component persisting the event (if the event
+needs persisting). `OccurredAt` might differ from the `CreatedAt` or `UpdatedAt`
+of entities, though, and establishing the temporal order of events is important.
+
 As domain events are processed by core, we can include domain types. For
 integration events, leaving core, we'd have to stick to basic types.
 

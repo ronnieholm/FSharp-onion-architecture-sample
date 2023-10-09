@@ -7,3 +7,6 @@
 - Return error codes (cases of error DUs) in JSON error response, inspired by https://www.youtube.com/watch?v=AeZC1z8D5xI for Dapr.
 - Make logs appear in the console.
 - Rename ILogger to ScrumLogger to avoid confusion.
+- Add k6 load script
+- Create F# script/console app to drive the application
+- Create Bash script to call every endpoint
