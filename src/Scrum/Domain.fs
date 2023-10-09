@@ -11,9 +11,11 @@ module Seedwork =
     // type AggregateRoot<'id> = { Entity: Entity<'id> }
     // However, current F# makes updating this model cumbersome. In the next
     // version of F#, released Nov 14, 2023, the "Nested record field
-    // copy-and-update" makes it less cumbersome.     
+    // copy-and-update" makes it less cumbersome.
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
+
+    type DomainEvent = { OccurredAt: DateTime }
 
 module Shared =
     // Value objects and entities shared across aggregates.
@@ -116,36 +118,36 @@ module StoryAggregate =
           Tasks: TaskEntity.Task list }
 
     type StoryCreated =
-        { StoryId: StoryId
+        { DomainEvent: DomainEvent
+          StoryId: StoryId
           StoryTitle: StoryTitle
-          StoryDescription: StoryDescription option
-          OccurredAt: DateTime }
+          StoryDescription: StoryDescription option }
 
     type StoryUpdated =
-        { StoryId: StoryId
+        { DomainEvent: DomainEvent
+          StoryId: StoryId
           StoryTitle: StoryTitle
-          StoryDescription: StoryDescription option
-          OccurredAt: DateTime }
+          StoryDescription: StoryDescription option }
 
     type StoryDeleted = { StoryId: StoryId; OccurredAt: DateTime }
 
     type TaskAddedToStory =
-        { StoryId: StoryId
+        { DomainEvent: DomainEvent
+          StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
-          TaskDescription: TaskEntity.TaskDescription option
-          OccurredAt: DateTime }
+          TaskDescription: TaskEntity.TaskDescription option }
 
     type TaskUpdated =
-        { StoryId: StoryId
+        { DomainEvent: DomainEvent
+          StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
-          TaskDescription: TaskEntity.TaskDescription option
-          OccurredAt: DateTime }
+          TaskDescription: TaskEntity.TaskDescription option }
 
-    type TaskDeleted = { StoryId: StoryId; TaskId: TaskEntity.TaskId; OccurredAt: DateTime }
+    type TaskDeleted = { DomainEvent: DomainEvent; StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
-    type DomainEvent =
+    type StoryDomainEvent =
         | StoryCreated of StoryCreated
         | StoryUpdated of StoryUpdated
         | StoryDeleted of StoryDeleted
@@ -153,42 +155,42 @@ module StoryAggregate =
         | TaskUpdated of TaskUpdated
         | TaskDeleted of TaskDeleted
 
-    let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (occurredAt: DateTime) : Story * DomainEvent =
+    let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (occurredAt: DateTime) : Story * StoryDomainEvent =
         { Aggregate = { Id = id; CreatedAt = occurredAt; UpdatedAt = None }
           Title = title
           Description = description
           Tasks = [] },
-        DomainEvent.StoryCreated(
-            { StoryId = id
+        StoryDomainEvent.StoryCreated(
+            { DomainEvent = { OccurredAt = occurredAt }
+              StoryId = id
               StoryTitle = title
-              StoryDescription = description
-              OccurredAt = occurredAt }
+              StoryDescription = description }
         )
 
-    let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (occurredAt: DateTime) : Story * DomainEvent =
+    let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (occurredAt: DateTime) : Story * StoryDomainEvent =
         let root = { story.Aggregate with UpdatedAt = Some occurredAt }
         let story =
             { story with Aggregate = root; Title = title; Description = description }
         let event =
-            DomainEvent.StoryUpdated(
-                { StoryId = story.Aggregate.Id
+            StoryDomainEvent.StoryUpdated(
+                { DomainEvent = { OccurredAt = occurredAt }
+                  StoryId = story.Aggregate.Id
                   StoryTitle = title
-                  StoryDescription = description
-                  OccurredAt = occurredAt }
+                  StoryDescription = description }
             )
         story, event
 
-    let delete (story: Story) (occurredAt: DateTime) : DomainEvent =
+    let delete (story: Story) (occurredAt: DateTime) : StoryDomainEvent =
         // Depending on the specifics of a domain, we might want to explicitly
         // delete the story's tasks and emit task deleted events. In this case,
         // we leave cascade delete to the store.
-        DomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
+        StoryDomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
 
     open TaskEntity
 
     type AddTaskToStoryError = DuplicateTask of TaskId
 
-    let addTaskToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * DomainEvent, AddTaskToStoryError> =
+    let addTaskToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddTaskToStoryError> =
         let duplicate = story.Tasks |> List.exists (equals task)
 
         if duplicate then
@@ -196,12 +198,12 @@ module StoryAggregate =
         else
             Ok(
                 { story with Tasks = task :: story.Tasks },
-                DomainEvent.TaskAddedToStory(
-                    { StoryId = story.Aggregate.Id
+                StoryDomainEvent.TaskAddedToStory(
+                    { DomainEvent = { OccurredAt = occurredAt }
+                      StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
                       TaskTitle = task.Title
-                      TaskDescription = task.Description
-                      OccurredAt = occurredAt }
+                      TaskDescription = task.Description }
                 )
             )
 
@@ -213,7 +215,7 @@ module StoryAggregate =
         (title: TaskTitle)
         (description: TaskDescription option)
         (occurredAt: DateTime)
-        : Result<Story * DomainEvent, UpdateTaskError> =
+        : Result<Story * StoryDomainEvent, UpdateTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
@@ -224,26 +226,30 @@ module StoryAggregate =
                 { task with Entity = entity; Title = title; Description = description }
             let story = { story with Tasks = updatedTask :: tasks }
             let event =
-                DomainEvent.TaskUpdated(
-                    { StoryId = story.Aggregate.Id
+                StoryDomainEvent.TaskUpdated(
+                    { DomainEvent = { OccurredAt = occurredAt }
+                      StoryId = story.Aggregate.Id
                       TaskId = taskId
                       TaskTitle = title
-                      TaskDescription = description
-                      OccurredAt = occurredAt }
+                      TaskDescription = description }
                 )
             Ok(story, event)
         | None -> Error(TaskNotFound taskId)
 
     type DeleteTaskError = TaskNotFound of TaskId
 
-    let deleteTask (story: Story) (taskId: TaskId) (occurredAt: DateTime) : Result<Story * DomainEvent, DeleteTaskError> =
+    let deleteTask (story: Story) (taskId: TaskId) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, DeleteTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
             let tasks = story.Tasks |> List.removeAt idx
             let story = { story with Tasks = tasks }
             let event =
-                DomainEvent.TaskDeleted({ StoryId = story.Aggregate.Id; TaskId = taskId; OccurredAt = occurredAt })
+                StoryDomainEvent.TaskDeleted(
+                    { DomainEvent = { OccurredAt = occurredAt }
+                      StoryId = story.Aggregate.Id
+                      TaskId = taskId }
+                )
             Ok(story, event)
         | None -> Error(TaskNotFound taskId)
 
@@ -251,7 +257,7 @@ module StoryAggregate =
     type IStoryRepository =
         abstract ExistAsync: CancellationToken -> StoryId -> Task<bool>
         abstract GetByIdAsync: CancellationToken -> StoryId -> Task<Story option>
-        abstract ApplyEventAsync: CancellationToken -> DomainEvent -> Task<unit>
+        abstract ApplyEventAsync: CancellationToken -> StoryDomainEvent -> Task<unit>
 
 module DomainService =
     // Services shared across aggregates.

@@ -39,10 +39,16 @@ type DomainEvent =
 `OccurredAt` is included for explictness. Some domains don't require it as part
 the event or it may be set by the component persisting the event (if the event
 needs persisting). `OccurredAt` might differ from the `CreatedAt` or `UpdatedAt`
-of entities, though, and establishing the temporal order of events is important.
+ of entities, though. Being able to establish the temporal order of events is
+what matters important.
 
-As domain events are processed by core, we can include domain types. For
-integration events, leaving core, we'd have to stick to basic types.
+As domain events never leave core, they can include domain types (integration
+events, leaving core, we'd have to convert to primitive types). One issue with
+sticking to domain types and persisting events to a relational store is that
+some fields should be promoted for querying. At a minimum, the aggregate Id to
+which the event belongs should be promoved from the event to a field in a
+database table. As each event may have a different shape, the event itself is
+persisted as a string.
 
 Publishing a domain event may trigger additional publications. If these
 notification handlers require the updated `Story` or `Task` entities, they would
