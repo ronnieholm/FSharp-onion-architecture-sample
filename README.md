@@ -30,10 +30,15 @@ supporting role-based security.
 
 The Scrum domain is chosen because it offers sufficient complexity and everyone
 is familiar with it, though most aspects of the application is illustrated with
-stories and tasks only. With only stories and tasks, clean architecture requires
-significant support code. With more aggregates, discriminated unions in the
-domain, and integrations with external services, the value of the support code
-becomes more apparent.
+stories and tasks only.
+
+With only stories and tasks, clean architecture may seem to require significant
+support code. With more aggregates, discriminated unions in the domain, and
+integrations with external services, the support code starts paying off.
+
+That said, not every project requires an implementation of every domain driven
+design concept. The architecture should be scaled up or down based on actual
+business needs.
 
 ## Building and testing
 
