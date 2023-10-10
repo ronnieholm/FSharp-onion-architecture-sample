@@ -188,6 +188,7 @@ module StoryAggregateRequest =
                     // Example of publishing the StoryCreated domain event to
                     // another aggregate:
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
+                    // Integration events may be generated here and persisted.
                     return StoryId.value story.Aggregate.Id
                 }
 
