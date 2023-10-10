@@ -17,6 +17,26 @@ module Seedwork =
 
     type DomainEvent = { OccurredAt: DateTime }
 
+// Validations on primitive types reused during value object creation.
+module Validation =
+    module Guid =
+        let notEmpty (v: Guid) : Result<Guid, string> = if v = Guid.Empty then Error "Should be non-empty" else Ok(v)
+
+    module String =
+        let notNullOrWhitespace (v: string) : Result<string, string> =
+            if String.IsNullOrWhiteSpace(v) then
+                Error "Should be non-null, non-empty or non-whitespace"
+            else
+                Ok(v)
+
+        let maxLength (l: int) (v: string) : Result<string, string> =
+            if v.Length > l then
+                Error $"Should contain less than or equal to {l} characters"
+            else
+                Ok(v)
+
+open Validation
+
 module Shared =
     // Value objects and entities shared across aggregates.
     ()
@@ -28,36 +48,29 @@ module StoryAggregate =
         type TaskId = TaskId of Guid
 
         module TaskId =
-            let validate =
-                function
-                | v when v = Guid.Empty -> Error "Should be non-empty"
-                | v -> Ok(TaskId v)
+            let validate (g: Guid) : Result<TaskId, string> = g |> Guid.notEmpty |> Result.map TaskId
 
             let value (TaskId id) = id
 
         type TaskTitle = TaskTitle of string
 
         module TaskTitle =
-            let maxLength = 100
-
-            let validate =
-                function
-                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
-                | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
-                | v -> Ok(TaskTitle v)
+            let validate (v: string) : Result<TaskTitle, string> =
+                v
+                |> Validation.String.notNullOrWhitespace
+                |> Result.bind (String.maxLength 100)
+                |> Result.map TaskTitle
 
             let value (TaskTitle id) = id
 
         type TaskDescription = TaskDescription of string
 
         module TaskDescription =
-            let maxLength = 1000
-
-            let validate =
-                function
-                | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
-                | v when v.Length > maxLength -> Error $"Should contain less than or equal to ${maxLength} characters"
-                | v -> Ok(TaskDescription v)
+            let validate (v: string) : Result<TaskDescription, string> =
+                v
+                |> String.notNullOrWhitespace
+                |> Result.bind (String.maxLength 1000)
+                |> Result.map TaskDescription
 
             let value (TaskDescription id) = id
 
@@ -77,36 +90,29 @@ module StoryAggregate =
     type StoryId = StoryId of Guid
 
     module StoryId =
-        let validate =
-            function
-            | v when v = Guid.Empty -> Error "Should be non-empty"
-            | v -> Ok(StoryId v)
+        let validate (v: Guid) : Result<StoryId, string> = v |> Guid.notEmpty |> Result.map StoryId
 
         let value (StoryId id) = id
 
     type StoryTitle = StoryTitle of string
 
     module StoryTitle =
-        let maxLength = 100
-
-        let create =
-            function
-            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
-            | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
-            | v -> Ok(StoryTitle v)
+        let create (v: string) : Result<StoryTitle, string> =
+            v
+            |> String.notNullOrWhitespace
+            |> Result.bind (String.maxLength 100)
+            |> Result.map StoryTitle
 
         let value (StoryTitle id) = id
 
     type StoryDescription = StoryDescription of string
 
     module StoryDescription =
-        let maxLength = 1000
-
-        let validate =
-            function
-            | v when String.IsNullOrWhiteSpace v -> Error "Should be non-null, non-empty or non-whitespace"
-            | v when v.Length > maxLength -> Error $"Should contain less than or equal to {maxLength} characters"
-            | v -> Ok(StoryDescription v)
+        let validate (v: string) : Result<StoryDescription, string> =
+            v
+            |> String.notNullOrWhitespace
+            |> Result.bind (String.maxLength 1000)
+            |> Result.map StoryDescription
 
         let value (StoryDescription id) = id
 
