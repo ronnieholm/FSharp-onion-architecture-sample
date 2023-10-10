@@ -57,7 +57,7 @@ module StoryAggregate =
         module TaskTitle =
             // If we defined operators >=> as Result.bind and <!> as
             // Result.map, a short form would become:
-            // let validate = String.notNullOrWhitespace >=> String.maxLength 1000 <!> StoryDescription
+            // let validate = String.notNullOrWhitespace >=> String.maxLength 100 <!> TaskTitle
             // While short, it's harder to understand.
             let validate (v: string) : Result<TaskTitle, string> =
                 v
