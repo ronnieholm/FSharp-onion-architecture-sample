@@ -17,7 +17,8 @@ module Seedwork =
 
     type DomainEvent = { OccurredAt: DateTime }
 
-// Validations on primitive types reused during value object creation.
+// Constraint validation on primitive types for reuse across value object
+// creations.
 module Validation =
     module Guid =
         let notEmpty (v: Guid) : Result<Guid, string> = if v = Guid.Empty then Error "Should be non-empty" else Ok(v)
