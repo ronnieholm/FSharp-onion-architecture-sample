@@ -57,7 +57,7 @@ module StoryAggregate =
         module TaskTitle =
             let validate (v: string) : Result<TaskTitle, string> =
                 v
-                |> Validation.String.notNullOrWhitespace
+                |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 100)
                 |> Result.map TaskTitle
 
