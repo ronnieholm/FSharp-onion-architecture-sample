@@ -71,7 +71,8 @@ module Seedwork =
         abstract Clock: IClock
 
     [<Interface>]
-    type ILogger =
+    // ILogger is already taken by .NET.
+    type IScrumLogger =
         // Application specific logging.
         abstract LogRequestPayload: string -> obj -> unit
         abstract LogRequestDuration: string -> uint<ms> -> unit
@@ -83,8 +84,8 @@ module Seedwork =
         abstract LogDebug: string -> unit
 
     [<Interface>]
-    type ILoggerFactory =
-        abstract Logger: ILogger
+    type IScrumLoggerFactory =
+        abstract Logger: IScrumLogger
 
     [<Interface>]
     type IStoryRepositoryFactory =
@@ -108,7 +109,7 @@ module Seedwork =
     // dependency injection container.
     type IAppEnv =
         inherit IClockFactory
-        inherit ILoggerFactory
+        inherit IScrumLoggerFactory
         inherit IUserIdentityFactory
         inherit IStoryRepositoryFactory
         inherit IDomainEventRepositoryFactory
@@ -123,7 +124,7 @@ module Seedwork =
         let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
         result, elapsed
 
-    let runWithDecoratorAsync (logger: ILogger) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
+    let runWithDecoratorAsync (logger: IScrumLogger) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
                 logger.LogRequestPayload useCase cmd
@@ -174,8 +175,8 @@ module StoryAggregateRequest =
 
         let fromDomainError =
             function
-            | StoryAggregate.CreateStoryError.DuplicateTasks ids -> DuplicateTasks (ids |> List.map TaskId.value)        
-        
+            | StoryAggregate.CreateStoryError.DuplicateTasks ids -> DuplicateTasks(ids |> List.map TaskId.value)
+
         let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : TaskResult<Guid, CreateStoryError> =
             let aux () =
                 taskResult {
@@ -186,7 +187,7 @@ module StoryAggregateRequest =
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let! story =
                         StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
-                        |> Result.mapError fromDomainError 
+                        |> Result.mapError fromDomainError
                     let event =
                         StoryDomainEvent.StoryCreated(
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }

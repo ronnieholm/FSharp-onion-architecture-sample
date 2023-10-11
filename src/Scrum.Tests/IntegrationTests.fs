@@ -65,7 +65,7 @@ module Fake =
             member _.CurrentUtc() = dt }
 
     let nullLogger =
-        { new ILogger with
+        { new IScrumLogger with
             member _.LogRequestPayload _ _ = ()
             member _.LogRequestDuration _ _ = ()
             member _.LogException _ = ()

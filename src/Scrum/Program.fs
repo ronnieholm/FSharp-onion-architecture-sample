@@ -229,7 +229,7 @@ module Service =
     type AvailableScript = { Name: string; Hash: string; Sql: string }
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
-    type DatabaseMigrator(logger: ILogger, connectionString: string) =
+    type DatabaseMigrator(logger: IScrumLogger, connectionString: string) =
         let createMigrationsSql =
             """
             create table migrations(

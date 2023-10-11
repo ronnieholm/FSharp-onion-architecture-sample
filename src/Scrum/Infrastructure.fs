@@ -368,7 +368,7 @@ type Logger() =
         o.Converters.Add(Json.EnumJsonConverter())
         o
 
-    interface ILogger with
+    interface IScrumLogger with
         member _.LogRequestPayload (useCase: string) (request: obj) : unit =
             let json = JsonSerializer.Serialize(request, jsonSerializationOptions)
             logger.LogInformation($"%s{useCase}: %s{json}")
@@ -384,7 +384,7 @@ type AppEnv
         connectionString: string,
         identity: IUserIdentity,
         ?clock: IClock,
-        ?logger: ILogger,
+        ?logger: IScrumLogger,
         ?stories: IStoryRepository,
         ?domainEvents: IDomainEventRepository
     ) =
