@@ -43,7 +43,7 @@ open Scrum.Infrastructure.Seedwork.Json
 module Seedwork =
     exception WebException of string
 
-    let fail (s: string) : 't = raise (WebException(s))
+    let panic (s: string) : 't = raise (WebException(s))
 
     // By default only a public top-level type ending in Controller is
     // considered one. It means controllers inside a module aren't found. As a
@@ -61,7 +61,7 @@ module Seedwork =
             function
             | "member" -> Member
             | "admin" -> Admin
-            | unsupported -> fail $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+            | unsupported -> panic $"Unsupported {nameof ScrumRole}: '{unsupported}'"
 
     module Json =
         // System.Text.Json cannot serialize an exception without itself
@@ -252,7 +252,7 @@ module Service =
                     if isNull stream then
                         // On the SQL file, did you set Build action to
                         // EmbeddedResource?
-                        fail $"Embedded resource not found: '{path}'"
+                        panic $"Embedded resource not found: '{path}'"
                     use reader = new StreamReader(stream)
                     reader.ReadToEnd()
 
@@ -299,9 +299,9 @@ module Service =
         let verifyAppliedMigrations (available: AvailableScript array) (applied: AppliedMigration array) : unit =
             for i = 0 to applied.Length - 1 do
                 if applied[i].Name <> available[i].Name then
-                    fail $"Mismatch in applied name '{applied[i].Name}' and available name '{available[i].Name}'"
+                    panic $"Mismatch in applied name '{applied[i].Name}' and available name '{available[i].Name}'"
                 if applied[i].Hash <> available[i].Hash then
-                    fail $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{available[i].Hash}'"
+                    panic $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{available[i].Hash}'"
 
         let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) : unit =
             for i = applied.Length to available.Length - 1 do

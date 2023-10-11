@@ -150,12 +150,12 @@ module StoryAggregateRequest =
 
         let validate (c: CreateStoryCommand) : Validation<CreateStoryValidatedCommand, ValidationError> =
             validation {
-                let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
+                let! id = StoryId.create c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
                     match c.Description with
                     | Some d ->
-                        StoryDescription.validate d
+                        StoryDescription.create d
                         |> ValidationError.mapError (nameof c.Description)
                         |> Result.map Some
                     | None -> Ok None
@@ -212,12 +212,12 @@ module StoryAggregateRequest =
                 // of CreateStoryCommand. With more fields on the story, likely
                 // we don't want to allow updating every field set during
                 // creation. At that point, validations will differ.
-                let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
+                let! id = StoryId.create c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
                     match c.Description with
                     | Some d ->
-                        StoryDescription.validate d
+                        StoryDescription.create d
                         |> ValidationError.mapError (nameof c.Description)
                         |> Result.map Some
                     | None -> Ok None
@@ -266,7 +266,7 @@ module StoryAggregateRequest =
 
         let validate (c: DeleteStoryCommand) : Validation<DeleteStoryValidatedCommand, ValidationError> =
             validation {
-                let! id = StoryId.validate c.Id |> ValidationError.mapError (nameof c.Id)
+                let! id = StoryId.create c.Id |> ValidationError.mapError (nameof c.Id)
                 return { Id = id }
             }
 
@@ -310,13 +310,13 @@ module StoryAggregateRequest =
 
         let validate (c: AddTaskToStoryCommand) : Validation<AddTaskToStoryValidatedCommand, ValidationError> =
             validation {
-                let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
-                and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
-                and! title = TaskTitle.validate c.Title |> ValidationError.mapError (nameof c.Title)
+                let! storyId = StoryId.create c.StoryId |> ValidationError.mapError (nameof c.StoryId)
+                and! taskId = TaskId.create c.TaskId |> ValidationError.mapError (nameof c.TaskId)
+                and! title = TaskTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
                     match c.Description with
                     | Some d ->
-                        TaskDescription.validate d
+                        TaskDescription.create d
                         |> ValidationError.mapError (nameof c.Description)
                         |> Result.map Some
                     | None -> Ok None
@@ -378,13 +378,13 @@ module StoryAggregateRequest =
             // validate command. With more fields on the task, the two are
             // likely to differ.
             validation {
-                let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
-                and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
-                and! title = TaskTitle.validate c.Title |> ValidationError.mapError (nameof c.Title)
+                let! storyId = StoryId.create c.StoryId |> ValidationError.mapError (nameof c.StoryId)
+                and! taskId = TaskId.create c.TaskId |> ValidationError.mapError (nameof c.TaskId)
+                and! title = TaskTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
                 and! description =
                     match c.Description with
                     | Some d ->
-                        TaskDescription.validate d
+                        TaskDescription.create d
                         |> ValidationError.mapError (nameof c.Description)
                         |> Result.map Some
                     | None -> Ok None
@@ -440,8 +440,8 @@ module StoryAggregateRequest =
 
         let validate (c: DeleteTaskCommand) : Validation<DeleteTaskValidatedCommand, ValidationError> =
             validation {
-                let! storyId = StoryId.validate c.StoryId |> ValidationError.mapError (nameof c.StoryId)
-                and! taskId = TaskId.validate c.TaskId |> ValidationError.mapError (nameof c.TaskId)
+                let! storyId = StoryId.create c.StoryId |> ValidationError.mapError (nameof c.StoryId)
+                and! taskId = TaskId.create c.TaskId |> ValidationError.mapError (nameof c.TaskId)
                 return { StoryId = storyId; TaskId = taskId }
             }
 
@@ -490,7 +490,7 @@ module StoryAggregateRequest =
 
         let validate (q: GetStoryByIdQuery) : Validation<GetStoryByIdValidatedQuery, ValidationError> =
             validation {
-                let! storyId = StoryId.validate q.Id |> ValidationError.mapError (nameof q.Id)
+                let! storyId = StoryId.create q.Id |> ValidationError.mapError (nameof q.Id)
                 return { Id = storyId }
             }
 

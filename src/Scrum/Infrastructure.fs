@@ -21,7 +21,7 @@ open Scrum.Application.Seedwork
 module Seedwork =
     exception IntegrationException of string
 
-    let fail (s: string) : 't = raise (IntegrationException(s))
+    let panic (s: string) : 't = raise (IntegrationException(s))
 
     module Json =
         type SnakeCaseLowerNamingPolicy() =
@@ -67,6 +67,11 @@ module Seedwork =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
     module Repository =
+        let panicOnError (field: string) (result: Result<_, string>) =
+            match result with
+            | Ok r -> r
+            | Error e -> panic $"Deserialization failed for field '{field}': '{e}'"
+
         let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
 
         let parseUpdatedAt (v: obj) : DateTime option =
@@ -126,7 +131,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                     (match count :?> int64 with
                      | 0L -> false
                      | 1L -> true
-                     | _ -> fail $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
+                     | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         member _.GetByIdAsync (ct: CancellationToken) (id: StoryId) : Task<Story option> =
@@ -140,12 +145,14 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                         { Id = id
                           CreatedAt = parseCreatedAt r["t_created_at"]
                           UpdatedAt = parseUpdatedAt r["t_updated_at"] }
-                      Title = r["t_title"] |> string |> TaskTitle
-                      Description = Option.ofDBNull r["t_description"] |> Option.map (string >> TaskDescription) }
+                      Title = r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title"
+                      Description =
+                        Option.ofDBNull r["t_description"]
+                        |> Option.map (string >> TaskDescription.create >> panicOnError "t_description") }
 
                 let taskId = r["t_id"]
                 if taskId <> DBNull.Value then
-                    let taskId = taskId |> string |> Guid |> TaskId
+                    let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
                     let ok, tasks = idTasks.TryGetValue(storyId)
                     if not ok then
                         let tasks = Dictionary<TaskId, Task>()
@@ -160,7 +167,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
 
             let idStories = Dictionary<StoryId, Story>()
             let toDomain (r: DbDataReader) : unit =
-                let storyId = r["s_id"] |> string |> Guid |> StoryId
+                let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
                 let ok, _ = idStories.TryGetValue(storyId)
                 if not ok then
                     let story =
@@ -169,7 +176,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                               CreatedAt = parseCreatedAt r["s_created_at"]
                               UpdatedAt = parseUpdatedAt r["s_updated_at"] }
                           Title = r["s_title"] |> string |> StoryTitle
-                          Description = Option.ofDBNull r["s_description"] |> Option.map (string >> StoryDescription)
+                          Description =
+                            Option.ofDBNull r["s_description"]
+                            |> Option.map (string >> StoryDescription.create >> panicOnError "s_description")
                           Tasks = [] }
                     idStories.Add(storyId, story)
                 toDomainTask r storyId
@@ -217,7 +226,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                      match count with
                      | 0 -> None
                      | 1 -> stories |> List.exactlyOne |> Some
-                     | _ -> fail $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
+                     | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
         // Compared to event sourcing, we immediately apply events to the store.

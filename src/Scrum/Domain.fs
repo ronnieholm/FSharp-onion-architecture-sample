@@ -46,21 +46,21 @@ module StoryAggregate =
     open Seedwork
 
     module TaskEntity =
-        type TaskId = TaskId of Guid
+        type TaskId = private TaskId of Guid
 
         module TaskId =
-            let validate (g: Guid) : Result<TaskId, string> = g |> Guid.notEmpty |> Result.map TaskId
+            let create (g: Guid) : Result<TaskId, string> = g |> Guid.notEmpty |> Result.map TaskId
 
             let value (TaskId id) = id
 
-        type TaskTitle = TaskTitle of string
+        type TaskTitle = private TaskTitle of string
 
         module TaskTitle =
             // If we defined operators >=> as Result.bind and <!> as
             // Result.map, a short, point-free form would become:
-            // let validate = String.notNullOrWhitespace >=> String.maxLength 100 <!> TaskTitle
+            // let create = String.notNullOrWhitespace >=> String.maxLength 100 <!> TaskTitle
             // While short, it's harder to understand.
-            let validate (v: string) : Result<TaskTitle, string> =
+            let create (v: string) : Result<TaskTitle, string> =
                 v
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 100)
@@ -68,10 +68,10 @@ module StoryAggregate =
 
             let value (TaskTitle id) = id
 
-        type TaskDescription = TaskDescription of string
+        type TaskDescription = private TaskDescription of string
 
         module TaskDescription =
-            let validate (v: string) : Result<TaskDescription, string> =
+            let create (v: string) : Result<TaskDescription, string> =
                 v
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 1000)
@@ -92,10 +92,10 @@ module StoryAggregate =
 
         let equals a b = a.Entity.Id = b.Entity.Id
 
-    type StoryId = StoryId of Guid
+    type StoryId = private StoryId of Guid
 
     module StoryId =
-        let validate (v: Guid) : Result<StoryId, string> = v |> Guid.notEmpty |> Result.map StoryId
+        let create (v: Guid) : Result<StoryId, string> = v |> Guid.notEmpty |> Result.map StoryId
 
         let value (StoryId id) = id
 
@@ -113,7 +113,7 @@ module StoryAggregate =
     type StoryDescription = StoryDescription of string
 
     module StoryDescription =
-        let validate (v: string) : Result<StoryDescription, string> =
+        let create (v: string) : Result<StoryDescription, string> =
             v
             |> String.notNullOrWhitespace
             |> Result.bind (String.maxLength 1000)
