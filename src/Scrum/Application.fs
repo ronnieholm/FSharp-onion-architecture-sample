@@ -189,12 +189,11 @@ module StoryAggregateRequest =
                         StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                         |> Result.mapError fromDomainError
                     let event =
-                        StoryDomainEvent.StoryCreated(
+                        StoryDomainEvent.StoryCreated
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               StoryTitle = story.Title
                               StoryDescription = story.Description }
-                        )
                     do! env.Stories.ApplyEventAsync ct event
                     // Example of publishing the StoryCreated domain event to
                     // another aggregate:
@@ -244,12 +243,11 @@ module StoryAggregateRequest =
                     let story =
                         StoryAggregate.update story cmd.Title cmd.Description (env.Clock.CurrentUtc())
                     let event =
-                        StoryDomainEvent.StoryUpdated(
+                        StoryDomainEvent.StoryUpdated
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               StoryTitle = story.Title
                               StoryDescription = story.Description }
-                        )
                     do! env.Stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
@@ -334,13 +332,12 @@ module StoryAggregateRequest =
                     let task = create cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc()) None
                     let! _ = addTaskToStory story task |> Result.mapError fromDomainError
                     let event =
-                        StoryDomainEvent.TaskAddedToStory(
+                        StoryDomainEvent.TaskAddedToStory
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               TaskId = task.Entity.Id
                               TaskTitle = task.Title
                               TaskDescription = task.Description }
-                        )
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value task.Entity.Id
                 }
@@ -396,13 +393,12 @@ module StoryAggregateRequest =
                         updateTask story cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
                         |> Result.mapError fromDomainError
                     let event =
-                        StoryDomainEvent.TaskUpdated(
+                        StoryDomainEvent.TaskUpdated
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               TaskId = cmd.TaskId
                               TaskTitle = cmd.Title
                               TaskDescription = cmd.Description }
-                        )
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
@@ -441,11 +437,10 @@ module StoryAggregateRequest =
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                     let! story = deleteTask story cmd.TaskId |> Result.mapError fromDomainError
                     let event =
-                        StoryDomainEvent.TaskDeleted(
+                        StoryDomainEvent.TaskDeleted
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               TaskId = cmd.TaskId }
-                        )
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
