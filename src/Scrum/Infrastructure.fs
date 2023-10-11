@@ -67,10 +67,10 @@ module Seedwork =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
     module Repository =
-        let panicOnError (field: string) (result: Result<_, string>) =
+        let panicOnError (column: string) (result: Result<_, string>) =
             match result with
             | Ok r -> r
-            | Error e -> panic $"Deserialization failed for field '{field}': '{e}'"
+            | Error e -> panic $"Deserialization failed for field '{column}': '{e}'"
 
         let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
 
