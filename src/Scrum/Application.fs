@@ -23,7 +23,8 @@ module Seedwork =
 
     // A pseudo-aggregate or an aggregate in the application layer. In
     // principle, we could define value types similar to those making up
-    // aggregates in the domain, but for this case it's overkill.
+    // aggregates in the domain, but for this case it's overkill. Prefixed
+    // with "Persisted" to avoid confusion with domain's DomainEvent.
     type PersistedDomainEvent =
         { Id: Guid
           AggregateId: Guid
