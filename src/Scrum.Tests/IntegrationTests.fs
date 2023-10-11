@@ -163,10 +163,10 @@ type StoryAggregateRequestTests() =
         task {
             let storyCmd = A.createStoryCommand ()
             let! result = fns.CreateStory storyCmd
-            test <@ result = Ok(storyCmd.Id) @>
+            test <@ result = Ok storyCmd.Id @>
             let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
             let! result = fns.AddTaskToStory taskCmd
-            test <@ result = Ok(taskCmd.TaskId) @>
+            test <@ result = Ok taskCmd.TaskId @>
             let! result = fns.GetStoryById { Id = taskCmd.StoryId }
 
             let story: StoryDto =
@@ -182,7 +182,7 @@ type StoryAggregateRequestTests() =
                         CreatedAt = defaultFixedClock.CurrentUtc()
                         UpdatedAt = None } ] }
 
-            test <@ result = Ok(story) @>
+            test <@ result = Ok story @>
             do! fns.Commit()
         }
 
@@ -205,7 +205,7 @@ type StoryAggregateRequestTests() =
             let cmd = A.createStoryCommand ()
             let! _ = fns.CreateStory cmd
             let! result = fns.DeleteStory { Id = cmd.Id }
-            test <@ result = Ok(cmd.Id) @>
+            test <@ result = Ok cmd.Id @>
             let! result = fns.GetStoryById { Id = cmd.Id }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
         }
@@ -220,7 +220,7 @@ type StoryAggregateRequestTests() =
             let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddTaskToStory cmd
             let! result = fns.DeleteStory { Id = cmd.StoryId }
-            test <@ result = Ok(cmd.StoryId) @>
+            test <@ result = Ok cmd.StoryId @>
             let! result = fns.GetStoryById { Id = cmd.StoryId }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.StoryId)) @>
         }
@@ -259,7 +259,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.AddTaskToStory cmd
             let cmd = { StoryId = cmd.StoryId; TaskId = cmd.TaskId }
             let! result = fns.DeleteTask cmd
-            test <@ result = Ok(cmd.TaskId) @>
+            test <@ result = Ok cmd.TaskId @>
             do! fns.Commit()
         }
 
@@ -297,7 +297,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.CreateStory cmd
             let cmd = A.updateStoryCommand cmd
             let! result = fns.UpdateStory cmd
-            test <@ result = Ok(cmd.Id) @>
+            test <@ result = Ok cmd.Id @>
             do! fns.Commit()
         }
 
@@ -323,7 +323,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.AddTaskToStory cmd
             let cmd = A.updateTaskCommand cmd
             let! result = fns.UpdateTask cmd
-            test <@ result = Ok(cmd.TaskId) @>
+            test <@ result = Ok cmd.TaskId @>
             do! fns.Commit()
         }
 

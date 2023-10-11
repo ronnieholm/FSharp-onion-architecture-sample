@@ -21,20 +21,20 @@ module Seedwork =
 // creations.
 module Validation =
     module Guid =
-        let notEmpty (v: Guid) : Result<Guid, string> = if v = Guid.Empty then Error "Should be non-empty" else Ok(v)
+        let notEmpty (v: Guid) : Result<Guid, string> = if v = Guid.Empty then Error "Should be non-empty" else Ok v
 
     module String =
         let notNullOrWhitespace (v: string) : Result<string, string> =
             if String.IsNullOrWhiteSpace(v) then
                 Error "Should be non-null, non-empty or non-whitespace"
             else
-                Ok(v)
+                Ok v
 
         let maxLength (l: int) (v: string) : Result<string, string> =
             if v.Length > l then
                 Error $"Should contain less than or equal to {l} characters"
             else
-                Ok(v)
+                Ok v
 
 open Validation
 
