@@ -150,7 +150,7 @@ module Service =
     // Web specific implementation of IUserIdentity. It therefore belongs in
     // Program.fs rather than Infrastructure.fs.
     type UserIdentity(context: HttpContext) =
-        interface IUserIdentity with
+        interface IScrumIdentity with
             member x.GetCurrent() : ScrumIdentity =
                 // Access to HttpContext from outside a controller goes through
                 // IHttpContextAccess per

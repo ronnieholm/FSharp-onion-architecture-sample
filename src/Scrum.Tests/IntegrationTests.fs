@@ -57,7 +57,7 @@ open Database
 
 module Fake =
     let userIdentityService (roles: ScrumRole list) =
-        { new IUserIdentity with
+        { new IScrumIdentity with
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
     let fixedClock (dt: DateTime) =

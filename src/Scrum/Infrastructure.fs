@@ -181,7 +181,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                              |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
                             []
                             (parseCreatedAt r["s_created_at"])
-                            (parseUpdatedAt r["s_updated_at"])) |> panicOnError "story"
+                            (parseUpdatedAt r["s_updated_at"]))
+                        |> panicOnError "story"
 
                     idStories.Add(storyId, story)
                 toDomainTask r storyId
@@ -382,9 +383,9 @@ type Logger() =
 type AppEnv
     (
         connectionString: string,
-        identity: IUserIdentity,
-        ?clock: IClock,
+        identity: IScrumIdentity,
         ?logger: IScrumLogger,
+        ?clock: IClock,
         ?stories: IStoryRepository,
         ?domainEvents: IDomainEventRepository
     ) =
@@ -401,8 +402,8 @@ type AppEnv
             connection
 
     let transaction = lazy connection.Value.BeginTransaction()
-    let clock = lazy (clock |> Option.defaultValue (SystemClock()))
     let logger = lazy (logger |> Option.defaultValue (Logger()))
+    let clock = lazy (clock |> Option.defaultValue (SystemClock()))
 
     let stories =
         lazy
@@ -443,8 +444,8 @@ type AppEnv
                     do! transaction.Value.RollbackAsync(ct)
             }
 
-        member _.Clock = clock.Value
-        member _.Logger = logger.Value
         member _.Identity = identity
+        member _.Logger = logger.Value
+        member _.Clock = clock.Value
         member _.Stories = stories.Value
         member _.DomainEvents = domainEvents.Value

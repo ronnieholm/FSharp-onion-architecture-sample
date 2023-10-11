@@ -50,7 +50,7 @@ module Seedwork =
 
     [<Interface>]
     // Could be called IIdentity but that interface is part of .NET.
-    type IUserIdentity =
+    type IScrumIdentity =
         abstract GetCurrent: unit -> ScrumIdentity
 
     // The factory interfaces are for groping inside AppEnv. Without factory
@@ -59,8 +59,8 @@ module Seedwork =
     // AppEnv.UserIdentity.GetCurrent, and means we can inject the dependency as
     // a whole into another type by passing into that type AppEnv.UserIdentity.
     [<Interface>]
-    type IUserIdentityFactory =
-        abstract Identity: IUserIdentity
+    type IScrumIdentityFactory =
+        abstract Identity: IScrumIdentity
 
     [<Interface>]
     type IClock =
@@ -108,9 +108,9 @@ module Seedwork =
     // application as a whole. Layers outside application still use the .NET
     // dependency injection container.
     type IAppEnv =
-        inherit IClockFactory
+        inherit IScrumIdentityFactory
         inherit IScrumLoggerFactory
-        inherit IUserIdentityFactory
+        inherit IClockFactory
         inherit IStoryRepositoryFactory
         inherit IDomainEventRepositoryFactory
         inherit IDisposable
@@ -134,7 +134,7 @@ module Seedwork =
         logger.LogRequestDuration useCase elapsed
         result
 
-    let isInRole (identity: IUserIdentity) (role: ScrumRole) : Result<unit, string> =
+    let isInRole (identity: IScrumIdentity) (role: ScrumRole) : Result<unit, string> =
         match identity.GetCurrent() with
         | Anonymous -> Error("Anonymous user unsupported")
         | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
