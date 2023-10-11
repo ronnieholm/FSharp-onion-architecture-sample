@@ -85,9 +85,9 @@ let runAsync
             let event =
                 StoryDomainEvent.StoryCreated(
                     { DomainEvent = { OccurredAt = (clock.CurrentUtc()) }
-                        StoryId = story.Aggregate.Id
-                        StoryTitle = story.Title
-                        StoryDescription = story.Description }
+                      StoryId = story.Aggregate.Id
+                      StoryTitle = story.Title
+                      StoryDescription = story.Description }
                 )
             do! stories.ApplyEventAsync ct event
             // Example of publishing the StoryCreated domain event to
