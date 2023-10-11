@@ -141,14 +141,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             let idTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
             let toDomainTask (r: DbDataReader) (storyId: StoryId) : unit =
                 let parseTaskInner id =
-                    { Entity =
-                        { Id = id
-                          CreatedAt = parseCreatedAt r["t_created_at"]
-                          UpdatedAt = parseUpdatedAt r["t_updated_at"] }
-                      Title = r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title"
-                      Description =
-                        Option.ofDBNull r["t_description"]
-                        |> Option.map (string >> TaskDescription.create >> panicOnError "t_description") }
+                    (TaskEntity.create
+                        id
+                        (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+                        (Option.ofDBNull r["t_description"]
+                         |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
+                        (parseCreatedAt r["t_created_at"])
+                        (parseUpdatedAt r["t_updated_at"]))
 
                 let taskId = r["t_id"]
                 if taskId <> DBNull.Value then
@@ -171,15 +170,15 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 let ok, _ = idStories.TryGetValue(storyId)
                 if not ok then
                     let story =
-                        { Aggregate =
-                            { Id = id
-                              CreatedAt = parseCreatedAt r["s_created_at"]
-                              UpdatedAt = parseUpdatedAt r["s_updated_at"] }
-                          Title = r["s_title"] |> string |> StoryTitle
-                          Description =
-                            Option.ofDBNull r["s_description"]
-                            |> Option.map (string >> StoryDescription.create >> panicOnError "s_description")
-                          Tasks = [] }
+                        StoryAggregate.create
+                            id
+                            (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
+                            (Option.ofDBNull r["s_description"]
+                             |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
+                            []
+                            (parseCreatedAt r["s_created_at"])
+                            (parseUpdatedAt r["s_updated_at"])
+
                     idStories.Add(storyId, story)
                 toDomainTask r storyId
 

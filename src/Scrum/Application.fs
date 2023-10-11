@@ -179,7 +179,7 @@ module StoryAggregateRequest =
                         env.Stories.ExistAsync ct cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let story =
-                        StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc())
+                        StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                     let event =
                         StoryDomainEvent.StoryCreated(
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
@@ -323,7 +323,7 @@ module StoryAggregateRequest =
                     let! story =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let task = create cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
+                    let task = create cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc()) None
                     let! _ = addTaskToStory story task |> Result.mapError fromDomainError
                     let event =
                         StoryDomainEvent.TaskAddedToStory(

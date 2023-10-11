@@ -85,8 +85,14 @@ module StoryAggregate =
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let create (id: TaskId) (title: TaskTitle) (description: TaskDescription option) (occurredAt: DateTime) : Task =
-            { Entity = { Id = id; CreatedAt = occurredAt; UpdatedAt = None }
+        let create
+            (id: TaskId)
+            (title: TaskTitle)
+            (description: TaskDescription option)
+            (createdAt: DateTime)
+            (updatedAt: DateTime option)
+            : Task =
+            { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = updatedAt }
               Title = title
               Description = description }
 
@@ -168,8 +174,16 @@ module StoryAggregate =
 
     open TaskEntity
 
-    let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (tasks: Task list) (createdAt: DateTime) : Story =
-        { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
+    let create
+        (id: StoryId)
+        (title: StoryTitle)
+        (description: StoryDescription option)
+        (tasks: Task list)
+        (createdAt: DateTime)
+        (updatedAt: DateTime option)
+        : Story =
+        // TODO: Should return result as we should validate task Ids are unique.
+        { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = updatedAt }
           Title = title
           Description = description
           Tasks = tasks }
