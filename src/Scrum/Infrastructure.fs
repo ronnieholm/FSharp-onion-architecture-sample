@@ -133,8 +133,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
             // See
             // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
             // for details on the flat table to tree deserialization algorithm.
-            let parsedTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
-            let parseTask (r: DbDataReader) (storyId: StoryId) : unit =
+            let idTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
+            let toDomainTask (r: DbDataReader) (storyId: StoryId) : unit =
                 let parseTaskInner id =
                     { Entity =
                         { Id = id
@@ -146,22 +146,22 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                 let taskId = r["t_id"]
                 if taskId <> DBNull.Value then
                     let taskId = taskId |> string |> Guid |> TaskId
-                    let ok, tasks = parsedTasks.TryGetValue(storyId)
+                    let ok, tasks = idTasks.TryGetValue(storyId)
                     if not ok then
                         let tasks = Dictionary<TaskId, Task>()
                         let task = parseTaskInner taskId
                         tasks.Add(taskId, task)
-                        parsedTasks.Add(storyId, tasks)
+                        idTasks.Add(storyId, tasks)
                     else
                         let ok, _ = tasks.TryGetValue(taskId)
                         if not ok then
                             let task = parseTaskInner taskId
                             tasks.Add(taskId, task)
 
-            let parsedStories = Dictionary<StoryId, Story>()
-            let parseStory (r: DbDataReader) : unit =
+            let idStories = Dictionary<StoryId, Story>()
+            let toDomain (r: DbDataReader) : unit =
                 let storyId = r["s_id"] |> string |> Guid |> StoryId
-                let ok, _ = parsedStories.TryGetValue(storyId)
+                let ok, _ = idStories.TryGetValue(storyId)
                 if not ok then
                     let story =
                         { Aggregate =
@@ -171,8 +171,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                           Title = r["s_title"] |> string |> StoryTitle
                           Description = Option.ofDBNull r["s_description"] |> Option.map (string >> StoryDescription)
                           Tasks = [] }
-                    parsedStories.Add(storyId, story)
-                parseTask r storyId
+                    idStories.Add(storyId, story)
+                toDomainTask r storyId
 
             // For queries involving multiple tables, ADO.NET requires aliasing
             // fields for those to be extractable through the reader.
@@ -202,14 +202,14 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) 
                 let mutable keepGoing = true
                 while keepGoing do
                     match! reader.ReadAsync(ct) with
-                    | true -> parseStory reader
+                    | true -> toDomain reader
                     | false -> keepGoing <- false
 
                 let stories =
-                    parsedStories.Values
+                    idStories.Values
                     |> Seq.toList
                     |> List.map (fun story ->
-                        let ok, tasks = parsedTasks.TryGetValue(story.Aggregate.Id)
+                        let ok, tasks = idTasks.TryGetValue(story.Aggregate.Id)
                         { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
 
                 return
