@@ -48,6 +48,7 @@ module Seedwork =
         | Authenticated of UserId: string * Role: ScrumRole list
 
     [<Interface>]
+    // Could be called IIdentity but that interface is part of .NET.
     type IUserIdentity =
         abstract GetCurrent: unit -> ScrumIdentity
 
@@ -58,15 +59,15 @@ module Seedwork =
     // a whole into another type by passing into that type AppEnv.UserIdentity.
     [<Interface>]
     type IUserIdentityFactory =
-        abstract UserIdentity: IUserIdentity
+        abstract Identity: IUserIdentity
 
     [<Interface>]
-    type ISystemClock =
+    type IClock =
         abstract CurrentUtc: unit -> DateTime
 
     [<Interface>]
     type ISystemClockFactory =
-        abstract SystemClock: ISystemClock
+        abstract Clock: IClock
 
     [<Interface>]
     type ILogger =
@@ -86,7 +87,7 @@ module Seedwork =
 
     [<Interface>]
     type IStoryRepositoryFactory =
-        abstract StoryRepository: IStoryRepository
+        abstract Stories: IStoryRepository
 
     [<Interface>]
     // Mirroring the PersistedDomainEvent type, this repository is defined in
@@ -98,7 +99,7 @@ module Seedwork =
 
     [<Interface>]
     type IDomainEventRepositoryFactory =
-        abstract DomainEventRepository: IDomainEventRepository
+        abstract DomainEvents: IDomainEventRepository
 
     [<Interface>]
     // App in application environment refers to the application layer, not the
@@ -136,6 +137,8 @@ module Seedwork =
         | Anonymous -> Error("Anonymous user unsupported")
         | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
 
+open Seedwork
+
 module SharedModels =
     // Data transfer objects shared across aggregates.
     ()
@@ -167,31 +170,24 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (clock: ISystemClock)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (cmd: CreateStoryCommand)
-            : TaskResult<Guid, CreateStoryError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : TaskResult<Guid, CreateStoryError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     do!
-                        stories.ExistAsync ct cmd.Id
+                        env.Stories.ExistAsync ct cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let story =
-                        StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (clock.CurrentUtc())
+                        StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc())
                     let event =
                         StoryDomainEvent.StoryCreated(
-                            { DomainEvent = { OccurredAt = (clock.CurrentUtc()) }
+                            { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               StoryTitle = story.Title
                               StoryDescription = story.Description }
                         )
-                    do! stories.ApplyEventAsync ct event
+                    do! env.Stories.ApplyEventAsync ct event
                     // Example of publishing the StoryCreated domain event to
                     // another aggregate:
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
@@ -199,7 +195,7 @@ module StoryAggregateRequest =
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync logger (nameof CreateStoryCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof CreateStoryCommand) cmd aux
 
     type UpdateStoryCommand = { Id: Guid; Title: string; Description: string option }
 
@@ -229,35 +225,28 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (clock: ISystemClock)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (cmd: UpdateStoryCommand)
-            : TaskResult<Guid, UpdateStoryError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: UpdateStoryCommand) : TaskResult<Guid, UpdateStoryError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
-                        stories.GetByIdAsync ct cmd.Id
+                        env.Stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                     let story =
-                        StoryAggregate.update story cmd.Title cmd.Description (clock.CurrentUtc())
+                        StoryAggregate.update story cmd.Title cmd.Description (env.Clock.CurrentUtc())
                     let event =
                         StoryDomainEvent.StoryUpdated(
-                            { DomainEvent = { OccurredAt = clock.CurrentUtc() }
+                            { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               StoryTitle = story.Title
                               StoryDescription = story.Description }
                         )
-                    do! stories.ApplyEventAsync ct event
+                    do! env.Stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync logger (nameof UpdateStoryCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof UpdateStoryCommand) cmd aux
 
     type DeleteStoryCommand = { Id: Guid }
 
@@ -275,29 +264,22 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (clock: ISystemClock)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (cmd: DeleteStoryCommand)
-            : TaskResult<Guid, DeleteStoryError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: DeleteStoryCommand) : TaskResult<Guid, DeleteStoryError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
-                        stories.GetByIdAsync ct cmd.Id
+                        env.Stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                     StoryAggregate.delete story
                     let event =
-                        StoryDomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id; OccurredAt = clock.CurrentUtc() })
-                    do! stories.ApplyEventAsync ct event
+                        StoryDomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id; OccurredAt = env.Clock.CurrentUtc() })
+                    do! env.Stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync logger (nameof DeleteStoryCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof DeleteStoryCommand) cmd aux
 
     type AddTaskToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
@@ -333,36 +315,29 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.AddTaskToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (clock: ISystemClock)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (cmd: AddTaskToStoryCommand)
-            : TaskResult<Guid, AddTaskToStoryError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: AddTaskToStoryCommand) : TaskResult<Guid, AddTaskToStoryError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
-                        stories.GetByIdAsync ct cmd.StoryId
+                        env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let task = create cmd.TaskId cmd.Title cmd.Description (clock.CurrentUtc())
+                    let task = create cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
                     let! _ = addTaskToStory story task |> Result.mapError fromDomainError
                     let event =
                         StoryDomainEvent.TaskAddedToStory(
-                            { DomainEvent = { OccurredAt = clock.CurrentUtc() }
+                            { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               TaskId = task.Entity.Id
                               TaskTitle = task.Title
                               TaskDescription = task.Description }
                         )
-                    do! stories.ApplyEventAsync ct event
+                    do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value task.Entity.Id
                 }
 
-            runWithDecoratorAsync logger (nameof AddTaskToStoryCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof AddTaskToStoryCommand) cmd aux
 
     type UpdateTaskCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
@@ -401,37 +376,30 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.UpdateTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (clock: ISystemClock)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (cmd: UpdateTaskCommand)
-            : TaskResult<Guid, UpdateTaskError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: UpdateTaskCommand) : TaskResult<Guid, UpdateTaskError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
-                        stories.GetByIdAsync ct cmd.StoryId
+                        env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                     let! story =
-                        updateTask story cmd.TaskId cmd.Title cmd.Description (clock.CurrentUtc())
+                        updateTask story cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
                         |> Result.mapError fromDomainError
                     let event =
                         StoryDomainEvent.TaskUpdated(
-                            { DomainEvent = { OccurredAt = clock.CurrentUtc() }
+                            { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               TaskId = cmd.TaskId
                               TaskTitle = cmd.Title
                               TaskDescription = cmd.Description }
                         )
-                    do! stories.ApplyEventAsync ct event
+                    do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
 
-            runWithDecoratorAsync logger (nameof UpdateTaskCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof UpdateTaskCommand) cmd aux
 
     type DeleteTaskCommand = { StoryId: Guid; TaskId: Guid }
 
@@ -455,33 +423,26 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.DeleteTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (clock: ISystemClock)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (cmd: DeleteTaskCommand)
-            : TaskResult<Guid, DeleteTaskError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: DeleteTaskCommand) : TaskResult<Guid, DeleteTaskError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
-                        stories.GetByIdAsync ct cmd.StoryId
+                        env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                     let! story = deleteTask story cmd.TaskId |> Result.mapError fromDomainError
                     let event =
                         StoryDomainEvent.TaskDeleted(
-                            { DomainEvent = { OccurredAt = clock.CurrentUtc() }
+                            { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
                               StoryId = story.Aggregate.Id
                               TaskId = cmd.TaskId }
                         )
-                    do! stories.ApplyEventAsync ct event
+                    do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
 
-            runWithDecoratorAsync logger (nameof DeleteTaskCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof DeleteTaskCommand) cmd aux
 
     type GetStoryByIdQuery = { Id: Guid }
 
@@ -537,24 +498,18 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync
-            (identity: IUserIdentity)
-            (stories: IStoryRepository)
-            (logger: ILogger)
-            (ct: CancellationToken)
-            (qry: GetStoryByIdQuery)
-            : TaskResult<StoryDto, GetStoryByIdError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (qry: GetStoryByIdQuery) : TaskResult<StoryDto, GetStoryByIdError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Member |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
                     let! qry = validate qry |> Result.mapError ValidationErrors
                     let! story =
-                        stories.GetByIdAsync ct qry.Id
+                        env.Stories.GetByIdAsync ct qry.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value qry.Id))
                     return StoryDto.from story
                 }
 
-            runWithDecoratorAsync logger (nameof GetStoryByIdQuery) qry aux
+            runWithDecoratorAsync env.Logger (nameof GetStoryByIdQuery) qry aux
 
 module DomainEventRequest =
     type GetByAggregateIdQuery = { Id: Guid }
@@ -591,21 +546,19 @@ module DomainEventRequest =
             | ValidationErrors of ValidationError list
 
         let runAsync
-            (identity: IUserIdentity)
-            (events: IDomainEventRepository)
-            (logger: ILogger)
+            (env: IAppEnv)
             (ct: CancellationToken)
             (qry: GetByAggregateIdQuery)
             : TaskResult<PersistedDomainEventDto list, GetStoryEventsByIdError> =
             let aux () =
                 taskResult {
-                    do! isInRole identity Admin |> Result.mapError AuthorizationError
+                    do! isInRole env.Identity Admin |> Result.mapError AuthorizationError
                     let! qry = validate qry |> Result.mapError ValidationErrors
-                    let! events = events.GetByAggregateIdAsync ct qry.Id
+                    let! events = env.DomainEvents.GetByAggregateIdAsync ct qry.Id
                     return events |> List.map PersistedDomainEventDto.from
                 }
 
-            runWithDecoratorAsync logger (nameof GetByAggregateIdQuery) qry aux
+            runWithDecoratorAsync env.Logger (nameof GetByAggregateIdQuery) qry aux
 
 module ApplicationService =
     // Services shared across requests.

@@ -1,4 +1,5 @@
-// Source: https://gist.github.com/TheAngryByrd/d88870f8aed6e5dfcbd5912a2c458421
+// Source: https://gist.github.com/TheAngryByrd/d88870f8aed6e5dfcbd5912a2c458421.
+// An implementation of the approach suggested in https://www.bartoszsypytkowski.com/dealing-with-complex-dependency-injection-in-f.
 
 #r "nuget: Serilog, 2.9.0"
 

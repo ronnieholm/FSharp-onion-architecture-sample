@@ -61,7 +61,7 @@ module Fake =
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
     let fixedClock (dt: DateTime) =
-        { new ISystemClock with
+        { new IClock with
             member _.CurrentUtc() = dt }
 
     let nullLogger =
@@ -73,8 +73,8 @@ module Fake =
             member _.LogInformation _ = ()
             member _.LogDebug _ = () }
 
-    let customAppEnv (roles: ScrumRole list) (clock: ISystemClock) =
-        new AppEnv(connectionString, userIdentityService roles, systemClock = clock, logger = nullLogger)
+    let customAppEnv (roles: ScrumRole list) (clock: IClock) =
+        new AppEnv(connectionString, userIdentityService roles, clock = clock, logger = nullLogger)
 
     let defaultFixedClock = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
 
@@ -82,29 +82,22 @@ module Fake =
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
-        let u = env.UserIdentity
-        let r = env.StoryRepository
-        let s = env.SystemClock
-        let l = env.Logger
         let ct = CancellationToken.None
 
         // While these functions are async, we forgo the Async prefix to reduce
         // noise.
-        {| CreateStory = CreateStoryCommand.runAsync u r s l ct
-           AddTaskToStory = AddTaskToStoryCommand.runAsync u r s l ct
-           GetStoryById = GetStoryByIdQuery.runAsync u r l ct
-           DeleteStory = DeleteStoryCommand.runAsync u r s l ct
-           DeleteTask = DeleteTaskCommand.runAsync u r s l ct
-           UpdateStory = UpdateStoryCommand.runAsync u r s l ct
-           UpdateTask = UpdateTaskCommand.runAsync u r s l ct
+        {| CreateStory = CreateStoryCommand.runAsync env ct
+           AddTaskToStory = AddTaskToStoryCommand.runAsync env ct
+           GetStoryById = GetStoryByIdQuery.runAsync env ct
+           DeleteStory = DeleteStoryCommand.runAsync env ct
+           DeleteTask = DeleteTaskCommand.runAsync env ct
+           UpdateStory = UpdateStoryCommand.runAsync env ct
+           UpdateTask = UpdateTaskCommand.runAsync env ct
            Commit = fun _ -> env.CommitAsync ct |}
 
     let setupDomainEventRequests (env: IAppEnv) =
-        let u = env.UserIdentity
-        let r = env.DomainEventRepository
-        let l = env.Logger
         let ct = CancellationToken.None
-        {| GetByAggregateIdQuery = GetByAggregateIdQuery.runAsync u r l ct |}
+        {| GetByAggregateIdQuery = GetByAggregateIdQuery.runAsync env ct |}
 
 open Fake
 open Setup

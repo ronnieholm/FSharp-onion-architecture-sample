@@ -114,10 +114,10 @@ open Seedwork
 open Seedwork.Repository
 
 type SystemClock() =
-    interface ISystemClock with
+    interface IClock with
         member _.CurrentUtc() = DateTime.UtcNow
 
-type SqliteStoryRepository(transaction: SQLiteTransaction, clock: ISystemClock) =
+type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
     let connection = transaction.Connection
 
     interface IStoryRepository with
@@ -379,11 +379,11 @@ type Logger() =
 type AppEnv
     (
         connectionString: string,
-        userIdentity: IUserIdentity,
-        ?systemClock: ISystemClock,
+        identity: IUserIdentity,
+        ?clock: IClock,
         ?logger: ILogger,
-        ?storyRepository: IStoryRepository,
-        ?domainEventRepository: IDomainEventRepository
+        ?stories: IStoryRepository,
+        ?domainEvents: IDomainEventRepository
     ) =
     // Bind connection and transaction with a let, not a use, or repository
     // operations will fail with: "System.ObjectDisposedException: Cannot access
@@ -398,20 +398,17 @@ type AppEnv
             connection
 
     let transaction = lazy connection.Value.BeginTransaction()
-    let systemClock = lazy (systemClock |> Option.defaultValue (SystemClock()))
+    let clock = lazy (clock |> Option.defaultValue (SystemClock()))
     let logger = lazy (logger |> Option.defaultValue (Logger()))
 
-    // No point in making it lazy as we're a pass-through.
-    let userIdentityFactory = userIdentity
-
-    let storyRepository =
+    let stories =
         lazy
-            (storyRepository
-             |> Option.defaultValue (SqliteStoryRepository(transaction.Value, systemClock.Value)))
+            (stories
+             |> Option.defaultValue (SqliteStoryRepository(transaction.Value, clock.Value)))
 
-    let domainEventRepository =
+    let domainEvents =
         lazy
-            (domainEventRepository
+            (domainEvents
              |> Option.defaultValue (SqliteDomainEventRepository(transaction.Value)))
 
     interface IDisposable with
@@ -443,8 +440,8 @@ type AppEnv
                     do! transaction.Value.RollbackAsync(ct)
             }
 
-        member _.SystemClock = systemClock.Value
+        member _.Clock = clock.Value
         member _.Logger = logger.Value
-        member _.UserIdentity = userIdentityFactory
-        member _.StoryRepository = storyRepository.Value
-        member _.DomainEventRepository = domainEventRepository.Value
+        member _.Identity = identity
+        member _.Stories = stories.Value
+        member _.DomainEvents = domainEvents.Value

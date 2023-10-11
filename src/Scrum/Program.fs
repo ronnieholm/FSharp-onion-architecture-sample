@@ -193,7 +193,7 @@ module Service =
     // IIdentityProvider. Therefore, we could've implemented it inside the
     // Authentication controller, but decided to keep the controller lean and
     // extract the logic into a separate service.
-    type IdentityProvider(clock: ISystemClock, settings: JwtAuthenticationSettings) =
+    type IdentityProvider(clock: IClock, settings: JwtAuthenticationSettings) =
         let sign (claims: Claim array) : string =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
@@ -399,7 +399,7 @@ module Controller =
         =
         inherit ScrumController(configuration, httpContext)
 
-        let idp = IdentityProvider(x.Env.SystemClock, jwtAuthenticationSettings.Value)
+        let idp = IdentityProvider(x.Env.Clock, jwtAuthenticationSettings.Value)
 
         [<HttpPost("issue-token")>]
         member _.IssueToken(userId: string, roles: string) : Task<ActionResult> =
@@ -416,7 +416,7 @@ module Controller =
         member _.RenewToken() : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
-                let identity = x.Env.UserIdentity.GetCurrent()
+                let identity = x.Env.Identity.GetCurrent()
                 let token = idp.RenewToken identity
                 return
                     (match token with
@@ -467,10 +467,7 @@ module Controller =
                 try
                     let! result =
                         CreateStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
+                            x.Env
                             ct
                             { Id = Guid.NewGuid()
                               Title = request.title
@@ -495,10 +492,7 @@ module Controller =
                 try
                     let! result =
                         UpdateStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
+                            x.Env
                             ct
                             { Id = id
                               Title = request.title
@@ -524,10 +518,7 @@ module Controller =
                 try
                     let! result =
                         AddTaskToStoryCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
+                            x.Env
                             ct
                             { TaskId = Guid.NewGuid()
                               StoryId = storyId
@@ -561,10 +552,7 @@ module Controller =
                 try
                     let! result =
                         UpdateTaskCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
+                            x.Env
                             ct
                             { StoryId = storyId
                               TaskId = taskId
@@ -593,10 +581,7 @@ module Controller =
                 try
                     let! result =
                         DeleteTaskCommand.runAsync
-                            x.Env.UserIdentity
-                            x.Env.StoryRepository
-                            x.Env.SystemClock
-                            x.Env.Logger
+                            x.Env
                             ct
                             { StoryId = storyId; TaskId = taskId }
                     do! x.Env.CommitAsync(ct)
@@ -620,8 +605,7 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result =
-                        DeleteStoryCommand.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.SystemClock x.Env.Logger ct { Id = id }
+                    let! result = DeleteStoryCommand.runAsync x.Env ct { Id = id }
                     do! x.Env.CommitAsync(ct)
                     return
                         match result with
@@ -641,7 +625,7 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = GetStoryByIdQuery.runAsync x.Env.UserIdentity x.Env.StoryRepository x.Env.Logger ct { Id = id }
+                    let! result = GetStoryByIdQuery.runAsync x.Env ct { Id = id }
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult
@@ -664,7 +648,7 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result = GetByAggregateIdQuery.runAsync x.Env.UserIdentity x.Env.DomainEventRepository x.Env.Logger ct { Id = id }
+                    let! result = GetByAggregateIdQuery.runAsync x.Env ct { Id = id }
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult
