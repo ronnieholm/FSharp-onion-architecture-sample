@@ -66,7 +66,7 @@ module Seedwork =
         abstract CurrentUtc: unit -> DateTime
 
     [<Interface>]
-    type ISystemClockFactory =
+    type IClockFactory =
         abstract Clock: IClock
 
     [<Interface>]
@@ -106,7 +106,7 @@ module Seedwork =
     // application as a whole. Layers outside application still use the .NET
     // dependency injection container.
     type IAppEnv =
-        inherit ISystemClockFactory
+        inherit IClockFactory
         inherit ILoggerFactory
         inherit IUserIdentityFactory
         inherit IStoryRepositoryFactory
