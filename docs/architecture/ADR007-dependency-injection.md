@@ -36,14 +36,6 @@ implicit. Instead in web (inside controller actions), we extract relevant
 dependencies fro the `AppEnv` instance and pass explicitly pass those into
 request handlers (the `runAsync` functions).
 
-One could make the argument that passing `IStoryRepository` instead of indivial
-functions we're still not explicit enough about dependencies. But passing
-individual functions can lead to many more arguments. Passing individual
-interface implementations is the middle ground between a single `IAppEnv`
-argument and individual functions (but perhaps we should backtrack and pass
-`IAppEnv`. Handlers aren't that long anyway and one can extract a list of
-depedencies by searching handler code for `env.`).
-
 We don't inject the .NET DI container into `AppEnv`. Rather, if a dependency
 requires a type held by the .NET DI, such as the database connection string or
 `IOptions<SomeType>` configuration data, web extract these types from the .NET
@@ -69,6 +61,20 @@ infrastructure layer), and pass the constructed instance to `AppEnv`. This way
 `UserIdentity` can accept any dependency it needs without affecting the
 interface. Request handlers inside the application layer then make authorization
 decisions based on `GetCurrent`.
+
+### Comparison to Wlaschin book
+
+One could make the argument that passing `IStoryRepository` instead of only the
+needed functions we're still not explicit enough about dependencies. But passing
+individual functions leads to more arguments. Passing individual interface
+implementations is the middle ground between a single `IAppEnv` argument and
+individual functions (but perhaps we should backtrack and pass `IAppEnv`.
+Handlers aren't that long anyway and one can extract a list of depedencies by
+searching handler code for `env.`).
+
+While Wlaschin doesn't have an explicit `appEnv`, he still has to combine
+depedencies (the many functions). It just so happens more free floating in his
+code.
 
 ## Decision
 
