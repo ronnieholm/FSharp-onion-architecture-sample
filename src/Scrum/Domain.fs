@@ -57,7 +57,7 @@ module StoryAggregate =
 
         module TaskTitle =
             // If we defined operators >=> as Result.bind and <!> as
-            // Result.map, a short form would become:
+            // Result.map, a short, point-free form would become:
             // let validate = String.notNullOrWhitespace >=> String.maxLength 100 <!> TaskTitle
             // While short, it's harder to understand.
             let validate (v: string) : Result<TaskTitle, string> =
@@ -166,57 +166,32 @@ module StoryAggregate =
         | TaskUpdated of TaskUpdated
         | TaskDeleted of TaskDeleted
 
-    let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (occurredAt: DateTime) : Story * StoryDomainEvent =
-        { Aggregate = { Id = id; CreatedAt = occurredAt; UpdatedAt = None }
+    open TaskEntity
+
+    let create (id: StoryId) (title: StoryTitle) (description: StoryDescription option) (tasks: Task list) (createdAt: DateTime) : Story =
+        { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
           Title = title
           Description = description
-          Tasks = [] },
-        StoryDomainEvent.StoryCreated(
-            { DomainEvent = { OccurredAt = occurredAt }
-              StoryId = id
-              StoryTitle = title
-              StoryDescription = description }
-        )
+          Tasks = tasks }
 
-    let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (occurredAt: DateTime) : Story * StoryDomainEvent =
-        let root = { story.Aggregate with UpdatedAt = Some occurredAt }
-        let story =
-            { story with Aggregate = root; Title = title; Description = description }
-        let event =
-            StoryDomainEvent.StoryUpdated(
-                { DomainEvent = { OccurredAt = occurredAt }
-                  StoryId = story.Aggregate.Id
-                  StoryTitle = title
-                  StoryDescription = description }
-            )
-        story, event
+    let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story =
+        let root = { story.Aggregate with UpdatedAt = Some updatedAt }
+        { story with Aggregate = root; Title = title; Description = description }
 
-    let delete (story: Story) (occurredAt: DateTime) : StoryDomainEvent =
+    let delete (_: Story) : unit =
         // Depending on the specifics of a domain, we might want to explicitly
         // delete the story's tasks and emit task deleted events. In this case,
         // we leave cascade delete to the store.
-        StoryDomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
-
-    open TaskEntity
+        ()
 
     type AddTaskToStoryError = DuplicateTask of TaskId
 
-    let addTaskToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddTaskToStoryError> =
+    let addTaskToStory (story: Story) (task: Task) : Result<Story, AddTaskToStoryError> =
         let duplicate = story.Tasks |> List.exists (equals task)
-
         if duplicate then
             Error(DuplicateTask task.Entity.Id)
         else
-            Ok(
-                { story with Tasks = task :: story.Tasks },
-                StoryDomainEvent.TaskAddedToStory(
-                    { DomainEvent = { OccurredAt = occurredAt }
-                      StoryId = story.Aggregate.Id
-                      TaskId = task.Entity.Id
-                      TaskTitle = task.Title
-                      TaskDescription = task.Description }
-                )
-            )
+            Ok { story with Tasks = task :: story.Tasks }
 
     type UpdateTaskError = TaskNotFound of TaskId
 
@@ -225,43 +200,29 @@ module StoryAggregate =
         (taskId: TaskId)
         (title: TaskTitle)
         (description: TaskDescription option)
-        (occurredAt: DateTime)
-        : Result<Story * StoryDomainEvent, UpdateTaskError> =
+        (updatedAt: DateTime)
+        : Result<Story, UpdateTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
             let task = story.Tasks[idx]
             let tasks = story.Tasks |> List.removeAt idx
-            let entity = { task.Entity with UpdatedAt = Some occurredAt }
+            let entity = { task.Entity with UpdatedAt = Some updatedAt }
             let updatedTask =
                 { task with Entity = entity; Title = title; Description = description }
             let story = { story with Tasks = updatedTask :: tasks }
-            let event =
-                StoryDomainEvent.TaskUpdated(
-                    { DomainEvent = { OccurredAt = occurredAt }
-                      StoryId = story.Aggregate.Id
-                      TaskId = taskId
-                      TaskTitle = title
-                      TaskDescription = description }
-                )
-            Ok(story, event)
+            Ok story
         | None -> Error(TaskNotFound taskId)
 
     type DeleteTaskError = TaskNotFound of TaskId
 
-    let deleteTask (story: Story) (taskId: TaskId) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, DeleteTaskError> =
+    let deleteTask (story: Story) (taskId: TaskId) : Result<Story, DeleteTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
             let tasks = story.Tasks |> List.removeAt idx
             let story = { story with Tasks = tasks }
-            let event =
-                StoryDomainEvent.TaskDeleted(
-                    { DomainEvent = { OccurredAt = occurredAt }
-                      StoryId = story.Aggregate.Id
-                      TaskId = taskId }
-                )
-            Ok(story, event)
+            Ok story
         | None -> Error(TaskNotFound taskId)
 
     [<Interface>]
