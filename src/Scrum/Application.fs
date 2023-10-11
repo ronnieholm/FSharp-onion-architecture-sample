@@ -71,7 +71,7 @@ module Seedwork =
         abstract Clock: IClock
 
     [<Interface>]
-    // ILogger is already taken by .NET.
+    // Could be ILogger but that interface is part of .NET.
     type IScrumLogger =
         // Application specific logging.
         abstract LogRequestPayload: string -> obj -> unit
