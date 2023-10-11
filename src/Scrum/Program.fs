@@ -481,6 +481,7 @@ module Controller =
                             | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
                             | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
+                            | CreateStoryCommand.DuplicateTasks ids -> raise (UnreachableException(String.Join(", ", ids)))
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }

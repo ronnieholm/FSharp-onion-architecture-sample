@@ -174,6 +174,8 @@ module StoryAggregate =
 
     open TaskEntity
 
+    type CreateStoryError = DuplicateTasks of TaskId list
+
     let create
         (id: StoryId)
         (title: StoryTitle)
@@ -181,12 +183,20 @@ module StoryAggregate =
         (tasks: Task list)
         (createdAt: DateTime)
         (updatedAt: DateTime option)
-        : Story =
-        // TODO: Should return result as we should validate task Ids are unique.
-        { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = updatedAt }
-          Title = title
-          Description = description
-          Tasks = tasks }
+        : Result<Story, CreateStoryError> =
+        let duplicates =
+            tasks
+            |> List.groupBy (fun t -> t.Entity.Id)
+            |> List.filter (fun (_, tasks) -> List.length tasks > 1)
+            |> List.map fst
+        if List.length duplicates > 0 then
+            Error(DuplicateTasks duplicates)
+        else
+            Ok
+                { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = updatedAt }
+                  Title = title
+                  Description = description
+                  Tasks = tasks }
 
     let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story =
         let root = { story.Aggregate with UpdatedAt = Some updatedAt }

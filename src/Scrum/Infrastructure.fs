@@ -67,10 +67,14 @@ module Seedwork =
         let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
     module Repository =
-        let panicOnError (column: string) (result: Result<_, string>) =
+        let panicOnError (datum: string) (result: Result<'t, _>) : 't =
             match result with
             | Ok r -> r
-            | Error e -> panic $"Deserialization failed for field '{column}': '{e}'"
+            | Error e ->
+                // Value object create functions return string as their error
+                // and entity create functions return a union member. To
+                // accomodate both, we print the error using %A.
+                panic $"Deserialization failed for '{datum}': '%A{e}'"
 
         let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
 
@@ -170,14 +174,14 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 let ok, _ = idStories.TryGetValue(storyId)
                 if not ok then
                     let story =
-                        StoryAggregate.create
+                        (StoryAggregate.create
                             id
                             (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
                             (Option.ofDBNull r["s_description"]
                              |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
                             []
                             (parseCreatedAt r["s_created_at"])
-                            (parseUpdatedAt r["s_updated_at"])
+                            (parseUpdatedAt r["s_updated_at"])) |> panicOnError "story"
 
                     idStories.Add(storyId, story)
                 toDomainTask r storyId

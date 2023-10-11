@@ -170,7 +170,12 @@ module StoryAggregateRequest =
             | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
+            | DuplicateTasks of Guid list
 
+        let fromDomainError =
+            function
+            | StoryAggregate.CreateStoryError.DuplicateTasks ids -> DuplicateTasks (ids |> List.map TaskId.value)        
+        
         let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : TaskResult<Guid, CreateStoryError> =
             let aux () =
                 taskResult {
@@ -179,8 +184,9 @@ module StoryAggregateRequest =
                     do!
                         env.Stories.ExistAsync ct cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
-                    let story =
+                    let! story =
                         StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
+                        |> Result.mapError fromDomainError 
                     let event =
                         StoryDomainEvent.StoryCreated(
                             { DomainEvent = { OccurredAt = env.Clock.CurrentUtc() }
