@@ -62,13 +62,14 @@ Technically the environment is dependency injection -- it forms a [composition
 root](https://blog.ploeh.dk/2011/07/28/CompositionRoot) -- through a service
 locator. Conceptually, the environment is a mediator between core and the
 outside world. That mediation happens though a set of instantiated services is
-an implementation detail.
+an implementation detail in the same way that an operating system doesn't access
+hardware through dependency injection.
 
 ### Comparison to Wlaschin book
 
-While Wlaschin's example doesn't have an explicit environment, it still has to
-combine depedencies (the many functions). It just happens more free floating in
-code.
+While Wlaschin's example doesn't contain an explicit environment, it still has
+to combine dependencies (the many functions). It just happens more free floating
+in code.
 
 ## Decision
 
