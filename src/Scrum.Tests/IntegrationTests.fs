@@ -59,10 +59,6 @@ module Fake =
         { new IScrumIdentity with
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
-    let fixedClock (fixed_: DateTime) : IClock =
-        { new IClock with
-            member _.CurrentUtc() = fixed_ }
-
     let counterClock (start: DateTime) : IClock =
         let mutable calls = 0
         let count =
@@ -86,10 +82,9 @@ module Fake =
     let customAppEnv (roles: ScrumRole list) (clock: IClock) =
         new AppEnv(connectionString, userIdentityService roles, clock = clock, logger = nullLogger)
 
-    let defaultFixedClock = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
-    let defaultContinuousClock = counterClock (DateTime(2023, 1, 1, 6, 0, 0))
+    let defaultClock = counterClock (DateTime(2023, 1, 1, 6, 0, 0))
 
-    let defaultAppEnv () = customAppEnv [ Member; Admin ] defaultFixedClock
+    let defaultAppEnv () = customAppEnv [ Member; Admin ] defaultClock
 
 module Setup =
     let setupStoryAggregateRequests (env: IAppEnv) =
@@ -152,7 +147,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``must have member role to create story`` () =
-        use env = customAppEnv [ Admin ] defaultFixedClock
+        use env = customAppEnv [ Admin ] defaultClock
         let fns = env |> setupStoryAggregateRequests
         task {
             let storyCmd = A.createStoryCommand ()
@@ -174,17 +169,17 @@ type StoryAggregateRequestTests() =
             test <@ result = Ok taskCmd.TaskId @>
             let! result = fns.GetStoryById { Id = taskCmd.StoryId }
 
-            let story: StoryDto =
+            let story =
                 { Id = storyCmd.Id
                   Title = storyCmd.Title
                   Description = storyCmd.Description |> Option.defaultValue null
-                  CreatedAt = defaultFixedClock.CurrentUtc()
+                  CreatedAt = defaultClock.CurrentUtc()
                   UpdatedAt = None
                   Tasks =
                     [ { Id = taskCmd.TaskId
                         Title = taskCmd.Title
                         Description = taskCmd.Description |> Option.defaultValue null
-                        CreatedAt = defaultFixedClock.CurrentUtc()
+                        CreatedAt = defaultClock.CurrentUtc()
                         UpdatedAt = None } ] }
 
             test <@ result = Ok story @>
@@ -362,7 +357,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``get stories paged`` () =
-        use env = customAppEnv [ Member ] defaultContinuousClock
+        use env = customAppEnv [ Member ] defaultClock
         let fns = env |> setupStoryAggregateRequests
         task {
             for i = 1 to 14 do
@@ -400,7 +395,7 @@ type DomainEventRequestTests() =
     let ``query domain events`` () =
         task {
             // This could be one user making a request.
-            let fixedClock1 = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
+            let fixedClock1 = counterClock (DateTime(2023, 1, 1, 6, 0, 0))
             use env = customAppEnv [ Member; Admin ] fixedClock1
             let storyFns = env |> setupStoryAggregateRequests
 
@@ -409,7 +404,7 @@ type DomainEventRequestTests() =
             do! storyFns.Commit()
 
             // This could be another user making a request.
-            let fixedClock2 = fixedClock (DateTime(2023, 1, 1, 7, 0, 0))
+            let fixedClock2 = counterClock (DateTime(2023, 1, 1, 7, 0, 0))
             use env = customAppEnv [ Member; Admin ] fixedClock2
             let storyFns = env |> setupStoryAggregateRequests
             let domainFns = env |> setupDomainEventRequests
@@ -437,7 +432,7 @@ type DomainEventRequestTests() =
 
     [<Fact>]
     let ``must have admin role to query domain events`` () =
-        use env = customAppEnv [ Member ] defaultFixedClock
+        use env = customAppEnv [ Member ] defaultClock
         let storyFns = env |> setupStoryAggregateRequests
         let domainFns = env |> setupDomainEventRequests
 
