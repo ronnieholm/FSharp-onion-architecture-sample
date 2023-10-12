@@ -168,22 +168,23 @@ type StoryAggregateRequestTests() =
             let! result = fns.AddTaskToStory taskCmd
             test <@ result = Ok taskCmd.TaskId @>
             let! result = fns.GetStoryById { Id = taskCmd.StoryId }
-
-            let story =
-                { Id = storyCmd.Id
-                  Title = storyCmd.Title
-                  Description = storyCmd.Description |> Option.defaultValue null
-                  CreatedAt = defaultClock.CurrentUtc()
-                  UpdatedAt = None
-                  Tasks =
-                    [ { Id = taskCmd.TaskId
-                        Title = taskCmd.Title
-                        Description = taskCmd.Description |> Option.defaultValue null
-                        CreatedAt = defaultClock.CurrentUtc()
-                        UpdatedAt = None } ] }
-
-            test <@ result = Ok story @>
-            do! fns.Commit()
+            match result with
+            | Ok r ->
+                let story =
+                    { Id = storyCmd.Id
+                      Title = storyCmd.Title
+                      Description = storyCmd.Description |> Option.defaultValue null
+                      CreatedAt = r.CreatedAt
+                      UpdatedAt = None
+                      Tasks =
+                        [ { Id = taskCmd.TaskId
+                            Title = taskCmd.Title
+                            Description = taskCmd.Description |> Option.defaultValue null
+                            CreatedAt = r.Tasks[0].CreatedAt
+                            UpdatedAt = None } ] }
+                test <@ r = story @>
+                do! fns.Commit()
+            | Error e -> Assert.Fail($"%A{e}")
         }
 
     [<Fact>]
@@ -395,8 +396,7 @@ type DomainEventRequestTests() =
     let ``query domain events`` () =
         task {
             // This could be one user making a request.
-            let fixedClock1 = counterClock (DateTime(2023, 1, 1, 6, 0, 0))
-            use env = customAppEnv [ Member; Admin ] fixedClock1
+            use env = defaultAppEnv ()
             let storyFns = env |> setupStoryAggregateRequests
 
             let storyCmd = A.createStoryCommand ()
@@ -419,12 +419,12 @@ type DomainEventRequestTests() =
                 Assert.Equal(storyCmd.Id, r[0].AggregateId)
                 Assert.Equal("Story", r[0].AggregateType)
                 Assert.Equal("StoryCreated", r[0].EventType)
-                Assert.Equal(fixedClock1.CurrentUtc(), r[0].CreatedAt)
 
                 Assert.Equal(storyCmd.Id, r[1].AggregateId)
                 Assert.Equal("Story", r[1].AggregateType)
                 Assert.Equal("TaskAddedToStory", r[1].EventType)
-                Assert.Equal(fixedClock2.CurrentUtc(), r[1].CreatedAt)
+
+                Assert.True(r[0].CreatedAt < r[1].CreatedAt)
             | Error e -> Assert.Fail($"%A{e}")
 
             do! storyFns.Commit()

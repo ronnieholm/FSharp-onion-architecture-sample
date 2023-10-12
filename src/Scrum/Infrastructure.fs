@@ -279,7 +279,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 let! stories = toDomainAsync ct reader
                 let stories = stories |> List.sortBy (fun s -> s.Aggregate.CreatedAt)
 
-                let lastInPageTicks = (stories.Item(stories.Length - 1)).Aggregate.CreatedAt.Ticks
+                let lastInPageTicks = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
                 let cursor =
                     if lastInPageTicks = lastTicks then
                         None
