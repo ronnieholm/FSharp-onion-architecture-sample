@@ -580,11 +580,7 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 try
-                    let! result =
-                        DeleteTaskCommand.runAsync
-                            x.Env
-                            ct
-                            { StoryId = storyId; TaskId = taskId }
+                    let! result = DeleteTaskCommand.runAsync x.Env ct { StoryId = storyId; TaskId = taskId }
                     do! x.Env.CommitAsync(ct)
                     return
                         match result with
@@ -636,6 +632,23 @@ module Controller =
                             | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                             | GetStoryByIdQuery.StoryNotFound id ->
                                 ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                with e ->
+                    return! x.HandleExceptionAsync e accept ct
+            }
+
+        [<HttpGet>]
+        member x.GetStoriesPaged(limit: int, cursor: string, ct: CancellationToken) : Task<ActionResult> =
+            task {
+                let accept = x.Request.Headers.Accept
+                try
+                    let! result = GetStoriesPagedQuery.runAsync x.Env ct { Limit = limit; Cursor = cursor |> Option.ofObj }
+                    return
+                        match result with
+                        | Ok s -> OkObjectResult(s) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetail.createAuthorizationError accept ae
+                            | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                 with e ->
                     return! x.HandleExceptionAsync e accept ct
             }
