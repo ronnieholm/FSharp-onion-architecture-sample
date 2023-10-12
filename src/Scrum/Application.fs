@@ -142,10 +142,9 @@ module Seedwork =
 open Seedwork
 
 module SharedModels =
-    // Data transfer objects shared across aggregates.
-    ()
+    type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
-open Seedwork
+open SharedModels
 
 module StoryAggregateRequest =
     type CreateStoryCommand = { Id: Guid; Title: string; Description: string option }
@@ -449,6 +448,44 @@ module StoryAggregateRequest =
 
     type GetStoryByIdQuery = { Id: Guid }
 
+    type TaskDto =
+        { Id: Guid
+          Title: string
+          Description: string
+          CreatedAt: DateTime
+          UpdatedAt: DateTime option }
+
+    module TaskDto =
+        let from (task: Task) : TaskDto =
+            { Id = task.Entity.Id |> TaskId.value
+              Title = task.Title |> TaskTitle.value
+              Description =
+                match task.Description with
+                | Some d -> d |> TaskDescription.value
+                | None -> null
+              CreatedAt = task.Entity.CreatedAt
+              UpdatedAt = task.Entity.UpdatedAt }
+
+    type StoryDto =
+        { Id: Guid
+          Title: string
+          Description: string
+          CreatedAt: DateTime
+          UpdatedAt: DateTime option
+          Tasks: TaskDto list }
+
+    module StoryDto =
+        let from (story: Story) : StoryDto =
+            { Id = story.Aggregate.Id |> StoryId.value
+              Title = story.Title |> StoryTitle.value
+              Description =
+                story.Description
+                |> Option.map StoryDescription.value
+                |> Option.defaultValue null
+              CreatedAt = story.Aggregate.CreatedAt
+              UpdatedAt = story.Aggregate.UpdatedAt
+              Tasks = story.Tasks |> List.map TaskDto.from }
+
     module GetStoryByIdQuery =
         type GetStoryByIdValidatedQuery = { Id: StoryId }
 
@@ -457,44 +494,6 @@ module StoryAggregateRequest =
                 let! storyId = StoryId.create q.Id |> ValidationError.mapError (nameof q.Id)
                 return { Id = storyId }
             }
-
-        type TaskDto =
-            { Id: Guid
-              Title: string
-              Description: string
-              CreatedAt: DateTime
-              UpdatedAt: DateTime option }
-
-        module TaskDto =
-            let from (task: Task) : TaskDto =
-                { Id = task.Entity.Id |> TaskId.value
-                  Title = task.Title |> TaskTitle.value
-                  Description =
-                    match task.Description with
-                    | Some d -> d |> TaskDescription.value
-                    | None -> null
-                  CreatedAt = task.Entity.CreatedAt
-                  UpdatedAt = task.Entity.UpdatedAt }
-
-        type StoryDto =
-            { Id: Guid
-              Title: string
-              Description: string
-              CreatedAt: DateTime
-              UpdatedAt: DateTime option
-              Tasks: TaskDto list }
-
-        module StoryDto =
-            let from (story: Story) : StoryDto =
-                { Id = story.Aggregate.Id |> StoryId.value
-                  Title = story.Title |> StoryTitle.value
-                  Description =
-                    story.Description
-                    |> Option.map StoryDescription.value
-                    |> Option.defaultValue null
-                  CreatedAt = story.Aggregate.CreatedAt
-                  UpdatedAt = story.Aggregate.UpdatedAt
-                  Tasks = story.Tasks |> List.map TaskDto.from }
 
         type GetStoryByIdError =
             | AuthorizationError of string
@@ -513,6 +512,46 @@ module StoryAggregateRequest =
                 }
 
             runWithDecoratorAsync env.Logger (nameof GetStoryByIdQuery) qry aux
+
+    open SharedDomain.Paging
+
+    type GetStoriesPagedQuery = { Limit: int; Cursor: string option }
+
+    module GetStoriesPagedQuery =
+        type GetStoriesPagedValidatedQuery = { Limit: Limit; Cursor: Cursor option }
+
+        let validate (q: GetStoriesPagedQuery) : Validation<GetStoriesPagedValidatedQuery, ValidationError> =
+            validation {
+                let! limit = Limit.create q.Limit |> ValidationError.mapError (nameof q.Limit)
+                and! cursor =
+                    match q.Cursor with
+                    | Some c -> Cursor.create c |> ValidationError.mapError (nameof q.Cursor) |> Result.map Some
+                    | None -> Ok None
+                return { Limit = limit; Cursor = cursor }
+            }
+
+        type GetStoriesPagedError =
+            | AuthorizationError of string
+            | ValidationErrors of ValidationError list
+
+        let runAsync
+            (env: IAppEnv)
+            (ct: CancellationToken)
+            (qry: GetStoriesPagedQuery)
+            : TaskResult<PagedDto<StoryDto>, GetStoriesPagedError> =
+            let aux () =
+                taskResult {
+                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
+                    let! qry = validate qry |> Result.mapError ValidationErrors
+                    let! stories = env.Stories.GetStoriesPagedAsync ct qry.Limit qry.Cursor
+                    return
+                        // Per Zalando guidelines, we could write a
+                        // JsonConverter to replace "Items" by "Stories".
+                        { Cursor = stories.Cursor |> Option.map Cursor.value
+                          Items = stories.Items |> List.map StoryDto.from }
+                }
+
+            runWithDecoratorAsync env.Logger (nameof GetStoriesPagedQuery) qry aux
 
 module DomainEventRequest =
     type GetByAggregateIdQuery = { Id: Guid }

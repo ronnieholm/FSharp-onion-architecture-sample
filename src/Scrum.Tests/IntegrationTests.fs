@@ -3,7 +3,6 @@
 open System
 open System.Threading
 open System.Data.SQLite
-open Scrum.Application.StoryAggregateRequest.GetStoryByIdQuery
 open Scrum.Web.Service
 open Swensen.Unquote
 open Xunit
@@ -60,9 +59,20 @@ module Fake =
         { new IScrumIdentity with
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
-    let fixedClock (dt: DateTime) =
+    let fixedClock (fixed_: DateTime) : IClock =
         { new IClock with
-            member _.CurrentUtc() = dt }
+            member _.CurrentUtc() = fixed_ }
+
+    let counterClock (start: DateTime) : IClock =
+        let mutable calls = 0
+        let count =
+            fun () ->
+                let r = start.AddSeconds(calls).ToUniversalTime()
+                calls <- calls + 1
+                r
+
+        { new IClock with
+            member _.CurrentUtc() = count () }
 
     let nullLogger =
         { new IScrumLogger with
@@ -77,6 +87,7 @@ module Fake =
         new AppEnv(connectionString, userIdentityService roles, clock = clock, logger = nullLogger)
 
     let defaultFixedClock = fixedClock (DateTime(2023, 1, 1, 6, 0, 0))
+    let defaultContinuousClock = counterClock (DateTime(2023, 1, 1, 6, 0, 0))
 
     let defaultAppEnv () = customAppEnv [ Member; Admin ] defaultFixedClock
 
@@ -89,6 +100,7 @@ module Setup =
         {| CreateStory = CreateStoryCommand.runAsync env ct
            AddTaskToStory = AddTaskToStoryCommand.runAsync env ct
            GetStoryById = GetStoryByIdQuery.runAsync env ct
+           GetStoriesPaged = GetStoriesPagedQuery.runAsync env ct
            DeleteStory = DeleteStoryCommand.runAsync env ct
            DeleteTask = DeleteTaskCommand.runAsync env ct
            UpdateStory = UpdateStoryCommand.runAsync env ct
@@ -346,6 +358,38 @@ type StoryAggregateRequestTests() =
             let cmd = { A.updateTaskCommand cmd with StoryId = missingId () }
             let! result = fns.UpdateTask cmd
             test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
+        }
+
+    [<Fact>]
+    let ``get stories paged`` () =
+        use env = customAppEnv [ Member ] defaultContinuousClock
+        let fns = env |> setupStoryAggregateRequests
+        task {
+            for i = 1 to 14 do
+                let cmd = { A.createStoryCommand () with Title = $"{i}" }
+                let! result = fns.CreateStory cmd
+                test <@ result = Ok cmd.Id @>
+
+            let! page1 = fns.GetStoriesPaged { Limit = 5; Cursor = None }
+            match page1 with
+            | Ok page1 ->
+                let! page2 = fns.GetStoriesPaged { Limit = 5; Cursor = page1.Cursor }
+                match page2 with
+                | Ok page2 ->
+                    let! page3 = fns.GetStoriesPaged { Limit = 5; Cursor = page2.Cursor }
+                    match page3 with
+                    | Ok page3 ->
+                        let unique =
+                            List.concat [ page1.Items; page2.Items; page3.Items ]
+                            |> List.map (fun s -> s.Title)
+                            |> List.distinct
+                            |> List.length
+                        Assert.Equal(14, unique)
+                    | Error _ -> Assert.Fail("Expected page 3")
+                | Error _ -> Assert.Fail("Expected page 2")
+            | Error _ -> Assert.Fail("Expected page 1")
+
+            do! fns.Commit()
         }
 
 [<Collection(nameof DisableParallelization)>]

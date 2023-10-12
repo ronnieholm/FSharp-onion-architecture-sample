@@ -36,11 +36,40 @@ module Validation =
             else
                 Ok v
 
+    module Int =
+        let between (from: int) (to_: int) (v: int) : Result<int, string> =
+            if v < from && v > to_ then
+                Error $"Should be between {from} and {to_}, both inclusive"
+            else
+                Ok v
+
 open Validation
 
-module Shared =
-    // Value objects and entities shared across aggregates.
-    ()
+module SharedDomain =
+    // Even though core is presentation agnostic, we can be inspired by the
+    // Zalando API guidelines
+    // (https://opensource.zalando.com/restful-api-guidelines/#137), which
+    // states that querystring parameters for paging must be named limit and
+    // cursor.
+    module Paging =
+        type Limit = private Limit of int
+
+        module Limit =
+            let create (v: int) : Result<Limit, string> = v |> Int.between 1 100 |> Result.map Limit
+
+            let value (Limit v) = v
+
+        type Cursor = private Cursor of string
+
+        module Cursor =
+            let create (v: string) : Result<Cursor, string> = v |> String.notNullOrWhitespace |> Result.map Cursor
+
+            let value (Cursor v) = v
+
+    type Paged<'t> = { Cursor: Paging.Cursor option; Items: 't list }
+
+open SharedDomain
+open SharedDomain.Paging
 
 module StoryAggregate =
     open Seedwork
@@ -49,9 +78,9 @@ module StoryAggregate =
         type TaskId = private TaskId of Guid
 
         module TaskId =
-            let create (g: Guid) : Result<TaskId, string> = g |> Guid.notEmpty |> Result.map TaskId
+            let create (v: Guid) : Result<TaskId, string> = v |> Guid.notEmpty |> Result.map TaskId
 
-            let value (TaskId id) = id
+            let value (TaskId v) = v
 
         type TaskTitle = private TaskTitle of string
 
@@ -66,7 +95,7 @@ module StoryAggregate =
                 |> Result.bind (String.maxLength 100)
                 |> Result.map TaskTitle
 
-            let value (TaskTitle id) = id
+            let value (TaskTitle v) = v
 
         type TaskDescription = private TaskDescription of string
 
@@ -77,7 +106,7 @@ module StoryAggregate =
                 |> Result.bind (String.maxLength 1000)
                 |> Result.map TaskDescription
 
-            let value (TaskDescription id) = id
+            let value (TaskDescription v) = v
 
         [<NoComparison; NoEquality>]
         type Task =
@@ -103,7 +132,7 @@ module StoryAggregate =
     module StoryId =
         let create (v: Guid) : Result<StoryId, string> = v |> Guid.notEmpty |> Result.map StoryId
 
-        let value (StoryId id) = id
+        let value (StoryId v) = v
 
     type StoryTitle = StoryTitle of string
 
@@ -114,7 +143,7 @@ module StoryAggregate =
             |> Result.bind (String.maxLength 100)
             |> Result.map StoryTitle
 
-        let value (StoryTitle id) = id
+        let value (StoryTitle v) = v
 
     type StoryDescription = StoryDescription of string
 
@@ -125,7 +154,7 @@ module StoryAggregate =
             |> Result.bind (String.maxLength 1000)
             |> Result.map StoryDescription
 
-        let value (StoryDescription id) = id
+        let value (StoryDescription v) = v
 
     [<NoComparison; NoEquality>]
     type Story =
@@ -253,6 +282,7 @@ module StoryAggregate =
     type IStoryRepository =
         abstract ExistAsync: CancellationToken -> StoryId -> Task<bool>
         abstract GetByIdAsync: CancellationToken -> StoryId -> Task<Story option>
+        abstract GetStoriesPagedAsync: CancellationToken -> Limit -> Cursor option -> Task<Paged<Story>>
         abstract ApplyEventAsync: CancellationToken -> StoryDomainEvent -> Task<unit>
 
 module DomainService =
