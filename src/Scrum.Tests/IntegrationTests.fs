@@ -404,8 +404,7 @@ type DomainEventRequestTests() =
             do! storyFns.Commit()
 
             // This could be another user making a request.
-            let fixedClock2 = counterClock (DateTime(2023, 1, 1, 7, 0, 0))
-            use env = customAppEnv [ Member; Admin ] fixedClock2
+            use env = defaultAppEnv ()
             let storyFns = env |> setupStoryAggregateRequests
             let domainFns = env |> setupDomainEventRequests
 
