@@ -4,49 +4,61 @@ Status: Accepted and active.
 
 ## Context
 
-An entity's identity is the value of its `Id` field. Therefore we disable
-compiler generated `Equals` and `GetHashCode` methods on entities and
-aggregates.
+The identity of an entity is the value of its `Id` field, not all fields. To
+indicate this, we prevent the compiler generated `Equals` and `GetHashCode`
+methods on entities.
 
-## Decision
-
-A less idiomatic approach would be to implement equally per entity like so:
+A less F# idiomatic approach might then be to implement equally like so:
 
 ```fsharp
 [<NoComparison; NoEquality>]
 type Task =
-    { Id: TaskId
+    { Entity: Entity<TaskId>
       Title: TaskTitle
       Description: TaskDescription option }
                            
     interface IEquatable<Task> with
-        member this.Equals other = other.Id.Equals this.Id
+        member x.Equals (other: Task) : bool = other.Entity.Id.Equals x.Entity.Id
         
-    override this.Equals other =
+    override x.Equals (other: Task) : bool =
         match other with
-        | :? Task as t -> (this :> IEquatable<_>).Equals t
+        | :? Task as t -> (x :> IEquatable<_>).Equals t
         | _ -> false
         
-    override this.GetHashCode () = this.Id.GetHashCode()
+    override x.GetHashCode() : int = x.Entity.Id.GetHashCode()
 ```
 
-Adding custom equality through generic overrides ad ds ceremony. Instead we add
-an `equals` function to the entity's module when required:
+Adding custom equality through generic overrides is ceremony. Instead we could
+add an `equals` function to the entity's module:
 
 ```fsharp
 let equals a b = a.Entity.Id = b.Entity.Id
 ```
 
-In comparision, with C# object orientation would reduce boilerplate through
-inheritance: `Task` would inherit from `Entity` which holds the `Id` field, and
-`Equals` and `GetHashCode` could by implemented by the `Entity` base.
+In the application, not every entity is tested for equality, so `equals` could
+be added ad hoc. If instead we decided to compare `Id`s at call sites, the
+difference would be
+
+```fsharp
+let duplicate = story.Tasks |> List.exists (equals task)
+let duplicate = story.Tasks |> List.exists (fun t -> t.Entity.Id = task.Entity.Id)
+```
+
+At the call site, we'd have to write different code depending on if it's an
+entity or an aggregate.
+
+## Decision
+
+With C# and object orientation, comparison code would go in an entity base
+class, which also holds the `Id` fields. Adding `equals` to entities which
+actually require comparison is a reasonable trade-off for less ceremony.
 
 ## Consequences
 
-To avoid ceremony, we forego the standard. NET equals pattern.
+To avoid ceremony, we forego the standard. NET equals pattern. If we were to
+call the code from C#, the behavior might be surprising.
 
 ## See also
 
 - https://www.compositional-it.com/news-blog/custom-equality-and-comparison-in-f
 - https://fsharpforfunandprofit.com/posts/conciseness-type-definitions
-- https://github.com/fsprojects/FSharp.UMX

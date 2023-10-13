@@ -11,7 +11,6 @@
 - Create Bash script to call every endpoint (https://github.com/minio/mc/blob/master/functional-tests.sh)
 - Split runDecorator into a pipeline of functions (https://github.com/ronnieholm/Playground/tree/master/CSDecoratorPattern)
 - Add github build action (https://github.com/Zaid-Ajaj/pulumi-converter-bicep/blob/master/.github/workflows/test.yml)
-- Move domain events creation back into the domain
 - Add estimate fields
 - Equivalent of EF mapping now in repository toDomain functions
 - Switch to >=> and <%> for validation
