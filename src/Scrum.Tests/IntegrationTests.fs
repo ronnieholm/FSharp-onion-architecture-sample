@@ -55,11 +55,11 @@ module Database =
 open Database
 
 module Fake =
-    let userIdentityService (roles: ScrumRole list) =
+    let identity (roles: ScrumRole list) =
         { new IScrumIdentity with
             member _.GetCurrent() = ScrumIdentity.Authenticated("1", roles) }
 
-    let counterClock (start: DateTime) : IClock =
+    let clock (start: DateTime) : IClock =
         let mutable calls = 0
         let count =
             fun () ->
@@ -80,9 +80,9 @@ module Fake =
             member _.LogDebug _ = () }
 
     let customAppEnv (roles: ScrumRole list) (clock: IClock) =
-        new AppEnv(connectionString, userIdentityService roles, clock = clock, logger = nullLogger)
+        new AppEnv(connectionString, identity roles, clock = clock, logger = nullLogger)
 
-    let defaultClock = counterClock (DateTime(2023, 1, 1, 6, 0, 0))
+    let defaultClock = clock (DateTime(2023, 1, 1, 6, 0, 0))
 
     let defaultAppEnv () = customAppEnv [ Member; Admin ] defaultClock
 
