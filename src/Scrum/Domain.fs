@@ -236,7 +236,12 @@ module StoryAggregate =
                       StoryDescription = description }
             )
 
-    let reviseBasicStoryDetails (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * StoryDomainEvent =
+    let reviseBasicStoryDetails
+        (story: Story)
+        (title: StoryTitle)
+        (description: StoryDescription option)
+        (updatedAt: DateTime)
+        : Story * StoryDomainEvent =
         let root = { story.Aggregate with UpdatedAt = Some updatedAt }
         { story with Aggregate = root; Title = title; Description = description },
         StoryDomainEvent.BasicStoryDetailsRevised
@@ -253,7 +258,11 @@ module StoryAggregate =
 
     type AddBasicTaskDetailsToStoryError = DuplicateTask of TaskId
 
-    let addBasicTaskDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddBasicTaskDetailsToStoryError> =
+    let addBasicTaskDetailsToStory
+        (story: Story)
+        (task: Task)
+        (occurredAt: DateTime)
+        : Result<Story * StoryDomainEvent, AddBasicTaskDetailsToStoryError> =
         let duplicate = story.Tasks |> List.exists (equals task)
         if duplicate then
             Error(DuplicateTask task.Entity.Id)

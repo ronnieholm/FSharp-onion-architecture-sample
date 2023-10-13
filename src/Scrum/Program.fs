@@ -527,7 +527,12 @@ module Controller =
             }
 
         [<HttpPost("{storyId}/tasks")>]
-        member x.AddBasicTaskDetailsToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
+        member x.AddBasicTaskDetailsToStory
+            (
+                [<FromBody>] request: AddTaskToStoryDto,
+                storyId: Guid,
+                ct: CancellationToken
+            ) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
                 let! result =

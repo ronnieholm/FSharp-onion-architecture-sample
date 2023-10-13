@@ -176,7 +176,11 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.CaptureBasicStoryDetailsError.DuplicateTasks ids -> DuplicateTasks(ids |> List.map TaskId.value)
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureBasicStoryDetailsCommand) : TaskResult<Guid, CaptureBasicStoryDetailsError> =
+        let runAsync
+            (env: IAppEnv)
+            (ct: CancellationToken)
+            (cmd: CaptureBasicStoryDetailsCommand)
+            : TaskResult<Guid, CaptureBasicStoryDetailsError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -225,7 +229,11 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: ReviseBasicStoryDetailsCommand) : TaskResult<Guid, ReviseBasicStoryDetailsError> =
+        let runAsync
+            (env: IAppEnv)
+            (ct: CancellationToken)
+            (cmd: ReviseBasicStoryDetailsCommand)
+            : TaskResult<Guid, ReviseBasicStoryDetailsError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -306,7 +314,11 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: AddBasicTaskDetailsToStoryCommand) : TaskResult<Guid, AddBasicTaskDetailsToStoryError> =
+        let runAsync
+            (env: IAppEnv)
+            (ct: CancellationToken)
+            (cmd: AddBasicTaskDetailsToStoryCommand)
+            : TaskResult<Guid, AddBasicTaskDetailsToStoryError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -315,7 +327,9 @@ module StoryAggregateRequest =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                     let task = create cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc()) None
-                    let! _, event = addBasicTaskDetailsToStory story task (env.Clock.CurrentUtc()) |> Result.mapError fromDomainError
+                    let! _, event =
+                        addBasicTaskDetailsToStory story task (env.Clock.CurrentUtc())
+                        |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value task.Entity.Id
                 }
@@ -359,7 +373,11 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.ReviseBasicTaskDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: ReviseBasicTaskDetailsCommand) : TaskResult<Guid, ReviseBasicTaskDetailsError> =
+        let runAsync
+            (env: IAppEnv)
+            (ct: CancellationToken)
+            (cmd: ReviseBasicTaskDetailsCommand)
+            : TaskResult<Guid, ReviseBasicTaskDetailsError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -406,7 +424,9 @@ module StoryAggregateRequest =
                     let! story =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! story, event = removeTask story cmd.TaskId (env.Clock.CurrentUtc()) |> Result.mapError fromDomainError
+                    let! story, event =
+                        removeTask story cmd.TaskId (env.Clock.CurrentUtc())
+                        |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
