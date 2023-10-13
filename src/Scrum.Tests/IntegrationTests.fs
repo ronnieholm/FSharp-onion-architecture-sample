@@ -368,12 +368,15 @@ type StoryAggregateRequestTests() =
             let! page1 = fns.GetStoriesPaged { Limit = 5; Cursor = None }
             match page1 with
             | Ok page1 ->
+                Assert.Equal(5, page1.Items.Length)
                 let! page2 = fns.GetStoriesPaged { Limit = 5; Cursor = page1.Cursor }
                 match page2 with
                 | Ok page2 ->
+                    Assert.Equal(5, page2.Items.Length)
                     let! page3 = fns.GetStoriesPaged { Limit = 5; Cursor = page2.Cursor }
                     match page3 with
                     | Ok page3 ->
+                        Assert.Equal(4, page3.Items.Length)
                         let unique =
                             List.concat [ page1.Items; page2.Items; page3.Items ]
                             |> List.map (fun s -> s.Title)
