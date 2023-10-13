@@ -12,17 +12,17 @@ open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 
 module A =
-    let createStoryCommand () : CreateStoryCommand = { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
+    let captureStoryBasicDetailsCommand () : CaptureStoryBasicDetailsCommand = { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
 
-    let updateStoryCommand (source: CreateStoryCommand) = { Id = source.Id; Title = source.Title; Description = source.Description }
+    let reviseStoryBasicDetailsCommand (source: CaptureStoryBasicDetailsCommand) = { Id = source.Id; Title = source.Title; Description = source.Description }
 
-    let addTaskToStoryCommand () : AddTaskToStoryCommand =
+    let addTaskBasicDetailsToStoryCommand () : AddTaskBasicDetailsToStoryCommand =
         { TaskId = Guid.NewGuid()
           StoryId = Guid.Empty
           Title = "title"
           Description = Some "description" }
 
-    let updateTaskCommand (cmd: AddTaskToStoryCommand) =
+    let reviseTaskBasicDetailsToStoryCommand (cmd: AddTaskBasicDetailsToStoryCommand) =
         { StoryId = cmd.StoryId
           TaskId = cmd.TaskId
           Title = cmd.Title
@@ -91,14 +91,14 @@ module Setup =
 
         // While these functions are async, we forgo the Async prefix to reduce
         // noise.
-        {| CreateStory = CreateStoryCommand.runAsync env ct
-           AddTaskToStory = AddTaskToStoryCommand.runAsync env ct
+        {| CaptureStoryBasicDetails = CaptureStoryBasicDetailsCommand.runAsync env ct
+           AddTaskBasicDetailsToStory = AddTaskBasicDetailsToStoryCommand.runAsync env ct
            GetStoryById = GetStoryByIdQuery.runAsync env ct
            GetStoriesPaged = GetStoriesPagedQuery.runAsync env ct
-           DeleteStory = DeleteStoryCommand.runAsync env ct
-           DeleteTask = DeleteTaskCommand.runAsync env ct
-           UpdateStory = UpdateStoryCommand.runAsync env ct
-           UpdateTask = UpdateTaskCommand.runAsync env ct
+           RemoveStory = RemoveStoryCommand.runAsync env ct
+           RemoveTask = RemoveTaskCommand.runAsync env ct
+           ReviseBasicDetails = ReviseBasicDetailsCommand.runAsync env ct
+           ReviseTaskBasicDetails = ReviseTaskBasicDetailsCommand.runAsync env ct
            Commit = fun _ -> env.CommitAsync ct |}
 
     let setupDomainEventRequests (env: IAppEnv) =
@@ -145,26 +145,26 @@ type StoryAggregateRequestTests() =
     do reset ()
 
     [<Fact>]
-    let ``must have member role to create story`` () =
+    let ``must have member role to create story basic details`` () =
         use env = customAppEnv [ Admin ] defaultClock
         let fns = env |> setupStoryAggregateRequests
         task {
-            let storyCmd = A.createStoryCommand ()
-            let! result = fns.CreateStory storyCmd
-            test <@ result = Error(CreateStoryCommand.AuthorizationError("Missing role 'member'")) @>
+            let storyCmd = A.captureStoryBasicDetailsCommand ()
+            let! result = fns.CaptureStoryBasicDetails storyCmd
+            test <@ result = Error(CaptureStoryBasicDetailsCommand.AuthorizationError("Missing role 'member'")) @>
             do! fns.Commit()
         }
 
     [<Fact>]
-    let ``create story with task`` () =
+    let ``capture story and task basic details`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let storyCmd = A.createStoryCommand ()
-            let! result = fns.CreateStory storyCmd
+            let storyCmd = A.captureStoryBasicDetailsCommand ()
+            let! result = fns.CaptureStoryBasicDetails storyCmd
             test <@ result = Ok storyCmd.Id @>
-            let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
-            let! result = fns.AddTaskToStory taskCmd
+            let taskCmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = storyCmd.Id }
+            let! result = fns.AddTaskBasicDetailsToStory taskCmd
             test <@ result = Ok taskCmd.TaskId @>
             let! result = fns.GetStoryById { Id = taskCmd.StoryId }
             match result with
@@ -187,39 +187,39 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``create duplicate story`` () =
+    let ``capture duplicate story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let! result = fns.CreateStory cmd
-            test <@ result = Error(CreateStoryCommand.DuplicateStory(cmd.Id)) @>
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! result = fns.CaptureStoryBasicDetails cmd
+            test <@ result = Error(CaptureStoryBasicDetailsCommand.DuplicateStory(cmd.Id)) @>
         }
 
     [<Fact>]
-    let ``delete story without task`` () =
+    let ``remove story without task`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let! result = fns.DeleteStory { Id = cmd.Id }
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! result = fns.RemoveStory { Id = cmd.Id }
             test <@ result = Ok cmd.Id @>
             let! result = fns.GetStoryById { Id = cmd.Id }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
-    let ``delete story with task`` () =
+    let ``remove story with task`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = fns.AddTaskToStory cmd
-            let! result = fns.DeleteStory { Id = cmd.StoryId }
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = cmd.Id }
+            let! _ = fns.AddTaskBasicDetailsToStory cmd
+            let! result = fns.RemoveStory { Id = cmd.StoryId }
             test <@ result = Ok cmd.StoryId @>
             let! result = fns.GetStoryById { Id = cmd.StoryId }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.StoryId)) @>
@@ -230,12 +230,12 @@ type StoryAggregateRequestTests() =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let createStoryCmd = A.createStoryCommand ()
-            let addTaskCmd = { A.addTaskToStoryCommand () with StoryId = createStoryCmd.Id }
-            let! _ = fns.CreateStory createStoryCmd
-            let! _ = fns.AddTaskToStory addTaskCmd
-            let! result = fns.AddTaskToStory addTaskCmd
-            test <@ result = Error(AddTaskToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
+            let createStoryCmd = A.captureStoryBasicDetailsCommand ()
+            let addTaskCmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = createStoryCmd.Id }
+            let! _ = fns.CaptureStoryBasicDetails createStoryCmd
+            let! _ = fns.AddTaskBasicDetailsToStory addTaskCmd
+            let! result = fns.AddTaskBasicDetailsToStory addTaskCmd
+            test <@ result = Error(AddTaskBasicDetailsToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
         }
 
     [<Fact>]
@@ -243,116 +243,116 @@ type StoryAggregateRequestTests() =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = { A.addTaskToStoryCommand () with StoryId = missingId () }
-            let! result = fns.AddTaskToStory cmd
-            test <@ result = Error(AddTaskToStoryCommand.StoryNotFound(cmd.StoryId)) @>
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = missingId () }
+            let! result = fns.AddTaskBasicDetailsToStory cmd
+            test <@ result = Error(AddTaskBasicDetailsToStoryCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
-    let ``delete task on story`` () =
+    let ``remove task on story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = fns.AddTaskToStory cmd
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = cmd.Id }
+            let! _ = fns.AddTaskBasicDetailsToStory cmd
             let cmd = { StoryId = cmd.StoryId; TaskId = cmd.TaskId }
-            let! result = fns.DeleteTask cmd
+            let! result = fns.RemoveTask cmd
             test <@ result = Ok cmd.TaskId @>
             do! fns.Commit()
         }
 
     [<Fact>]
-    let ``delete task on non-existing story`` () =
+    let ``remove task on non-existing story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = cmd.Id }
             let cmd = { StoryId = missingId (); TaskId = cmd.TaskId }
-            let! result = fns.DeleteTask cmd
-            test <@ result = Error(DeleteTaskCommand.StoryNotFound(cmd.StoryId)) @>
+            let! result = fns.RemoveTask cmd
+            test <@ result = Error(RemoveTaskCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
-    let ``delete non-existing task on story`` () =
+    let ``remove non-existing task on story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
             let cmd = { StoryId = cmd.Id; TaskId = missingId () }
-            let! result = fns.DeleteTask cmd
-            test <@ result = Error(DeleteTaskCommand.TaskNotFound(cmd.TaskId)) @>
+            let! result = fns.RemoveTask cmd
+            test <@ result = Error(RemoveTaskCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
-    let ``update story`` () =
+    let ``revise story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = A.updateStoryCommand cmd
-            let! result = fns.UpdateStory cmd
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = A.reviseStoryBasicDetailsCommand cmd
+            let! result = fns.ReviseBasicDetails cmd
             test <@ result = Ok cmd.Id @>
             do! fns.Commit()
         }
 
     [<Fact>]
-    let ``update non-existing story`` () =
+    let ``revise non-existing story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let cmd = A.updateStoryCommand cmd
-            let! result = fns.UpdateStory cmd
-            test <@ result = Error(UpdateStoryCommand.StoryNotFound(cmd.Id)) @>
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let cmd = A.reviseStoryBasicDetailsCommand cmd
+            let! result = fns.ReviseBasicDetails cmd
+            test <@ result = Error(ReviseBasicDetailsCommand.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
-    let ``update task`` () =
+    let ``revise task`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = fns.AddTaskToStory cmd
-            let cmd = A.updateTaskCommand cmd
-            let! result = fns.UpdateTask cmd
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = cmd.Id }
+            let! _ = fns.AddTaskBasicDetailsToStory cmd
+            let cmd = A.reviseTaskBasicDetailsToStoryCommand cmd
+            let! result = fns.ReviseTaskBasicDetails cmd
             test <@ result = Ok cmd.TaskId @>
             do! fns.Commit()
         }
 
     [<Fact>]
-    let ``update non-existing task on story`` () =
+    let ``revise non-existing task on story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = fns.AddTaskToStory cmd
-            let cmd = { A.updateTaskCommand cmd with TaskId = missingId () }
-            let! result = fns.UpdateTask cmd
-            test <@ result = Error(UpdateTaskCommand.TaskNotFound(cmd.TaskId)) @>
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = cmd.Id }
+            let! _ = fns.AddTaskBasicDetailsToStory cmd
+            let cmd = { A.reviseTaskBasicDetailsToStoryCommand cmd with TaskId = missingId () }
+            let! result = fns.ReviseTaskBasicDetails cmd
+            test <@ result = Error(ReviseTaskBasicDetailsCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
-    let ``update task on non-existing story`` () =
+    let ``revise task on non-existing story`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
-            let cmd = A.createStoryCommand ()
-            let! _ = fns.CreateStory cmd
-            let cmd = { A.addTaskToStoryCommand () with StoryId = cmd.Id }
-            let! _ = fns.AddTaskToStory cmd
-            let cmd = { A.updateTaskCommand cmd with StoryId = missingId () }
-            let! result = fns.UpdateTask cmd
-            test <@ result = Error(UpdateTaskCommand.StoryNotFound(cmd.StoryId)) @>
+            let cmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = fns.CaptureStoryBasicDetails cmd
+            let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = cmd.Id }
+            let! _ = fns.AddTaskBasicDetailsToStory cmd
+            let cmd = { A.reviseTaskBasicDetailsToStoryCommand cmd with StoryId = missingId () }
+            let! result = fns.ReviseTaskBasicDetails cmd
+            test <@ result = Error(ReviseTaskBasicDetailsCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
@@ -361,8 +361,8 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             for i = 1 to 14 do
-                let cmd = { A.createStoryCommand () with Title = $"{i}" }
-                let! result = fns.CreateStory cmd
+                let cmd = { A.captureStoryBasicDetailsCommand () with Title = $"{i}" }
+                let! result = fns.CaptureStoryBasicDetails cmd
                 test <@ result = Ok cmd.Id @>
 
             let! page1 = fns.GetStoriesPaged { Limit = 5; Cursor = None }
@@ -401,8 +401,8 @@ type DomainEventRequestTests() =
             use env = defaultAppEnv ()
             let storyFns = env |> setupStoryAggregateRequests
 
-            let storyCmd = A.createStoryCommand ()
-            let! _ = storyFns.CreateStory storyCmd
+            let storyCmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = storyFns.CaptureStoryBasicDetails storyCmd
             do! storyFns.Commit()
 
             // This could be another user making a request.
@@ -410,8 +410,8 @@ type DomainEventRequestTests() =
             let storyFns = env |> setupStoryAggregateRequests
             let domainFns = env |> setupDomainEventRequests
 
-            let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
-            let! _ = storyFns.AddTaskToStory taskCmd
+            let taskCmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = storyCmd.Id }
+            let! _ = storyFns.AddTaskBasicDetailsToStory taskCmd
             let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
 
             match result with
@@ -419,11 +419,11 @@ type DomainEventRequestTests() =
                 Assert.Equal(2, r.Length)
                 Assert.Equal(storyCmd.Id, r[0].AggregateId)
                 Assert.Equal("Story", r[0].AggregateType)
-                Assert.Equal("StoryCreated", r[0].EventType)
+                Assert.Equal("StoryBasicDetailsCaptured", r[0].EventType)
 
                 Assert.Equal(storyCmd.Id, r[1].AggregateId)
                 Assert.Equal("Story", r[1].AggregateType)
-                Assert.Equal("TaskAddedToStory", r[1].EventType)
+                Assert.Equal("TaskBasicDetailsAddedToStory", r[1].EventType)
 
                 Assert.True(r[0].CreatedAt < r[1].CreatedAt)
             | Error e -> Assert.Fail($"%A{e}")
@@ -438,10 +438,10 @@ type DomainEventRequestTests() =
         let domainFns = env |> setupDomainEventRequests
 
         task {
-            let storyCmd = A.createStoryCommand ()
-            let! _ = storyFns.CreateStory storyCmd
-            let taskCmd = { A.addTaskToStoryCommand () with StoryId = storyCmd.Id }
-            let! _ = storyFns.AddTaskToStory taskCmd
+            let storyCmd = A.captureStoryBasicDetailsCommand ()
+            let! _ = storyFns.CaptureStoryBasicDetails storyCmd
+            let taskCmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = storyCmd.Id }
+            let! _ = storyFns.AddTaskBasicDetailsToStory taskCmd
             let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
             test <@ result = Error(GetByAggregateIdQuery.AuthorizationError("Missing role 'admin'")) @>
         }

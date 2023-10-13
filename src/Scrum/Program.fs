@@ -481,11 +481,11 @@ module Controller =
         inherit ScrumController(configuration, httpContext)
 
         [<HttpPost>]
-        member x.CreateStory([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
+        member x.CaptureStoryBasicDetails([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
                 let! result =
-                    CreateStoryCommand.runAsync
+                    CaptureStoryBasicDetailsCommand.runAsync
                         x.Env
                         ct
                         { Id = Guid.NewGuid()
@@ -497,18 +497,18 @@ module Controller =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | CreateStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | CreateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | CreateStoryCommand.DuplicateStory id -> raise (UnreachableException(string id))
-                        | CreateStoryCommand.DuplicateTasks ids -> raise (UnreachableException(String.Join(", ", ids)))
+                        | CaptureStoryBasicDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                        | CaptureStoryBasicDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | CaptureStoryBasicDetailsCommand.DuplicateStory id -> raise (UnreachableException(string id))
+                        | CaptureStoryBasicDetailsCommand.DuplicateTasks ids -> raise (UnreachableException(String.Join(", ", ids)))
             }
 
         [<HttpPut("{id}")>]
-        member x.UpdateStory([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
+        member x.ReviseBasicDetails([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
                 let! result =
-                    UpdateStoryCommand.runAsync
+                    ReviseBasicDetailsCommand.runAsync
                         x.Env
                         ct
                         { Id = id
@@ -520,18 +520,18 @@ module Controller =
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | UpdateStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | UpdateStoryCommand.StoryNotFound id ->
+                        | ReviseBasicDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                        | ReviseBasicDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | ReviseBasicDetailsCommand.StoryNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             }
 
         [<HttpPost("{storyId}/tasks")>]
-        member x.AddTaskToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
+        member x.AddTaskBasicDetailsToStory([<FromBody>] request: AddTaskToStoryDto, storyId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
                 let! result =
-                    AddTaskToStoryCommand.runAsync
+                    AddTaskBasicDetailsToStoryCommand.runAsync
                         x.Env
                         ct
                         { TaskId = Guid.NewGuid()
@@ -544,15 +544,15 @@ module Controller =
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
                         match e with
-                        | AddTaskToStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | AddTaskToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | AddTaskToStoryCommand.StoryNotFound id ->
+                        | AddTaskBasicDetailsToStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                        | AddTaskBasicDetailsToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | AddTaskBasicDetailsToStoryCommand.StoryNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | AddTaskToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
+                        | AddTaskBasicDetailsToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
             }
 
         [<HttpPut("{storyId}/tasks/{taskId}")>]
-        member x.UpdateTaskOnStory
+        member x.ReviseTaskBasicDetails
             (
                 [<FromBody>] request: StoryTaskUpdateDto,
                 storyId: Guid,
@@ -562,7 +562,7 @@ module Controller =
             task {
                 let accept = x.Request.Headers.Accept
                 let! result =
-                    UpdateTaskCommand.runAsync
+                    ReviseTaskBasicDetailsCommand.runAsync
                         x.Env
                         ct
                         { StoryId = storyId
@@ -575,47 +575,47 @@ module Controller =
                     | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
                         match e with
-                        | UpdateTaskCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | UpdateTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | UpdateTaskCommand.StoryNotFound id ->
+                        | ReviseTaskBasicDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                        | ReviseTaskBasicDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | ReviseTaskBasicDetailsCommand.StoryNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | UpdateTaskCommand.TaskNotFound id ->
+                        | ReviseTaskBasicDetailsCommand.TaskNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
             }
 
         [<HttpDelete("{storyId}/tasks/{taskId}")>]
-        member x.DeleteTaskFromStory(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
+        member x.RemoveTask(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
-                let! result = DeleteTaskCommand.runAsync x.Env ct { StoryId = storyId; TaskId = taskId }
+                let! result = RemoveTaskCommand.runAsync x.Env ct { StoryId = storyId; TaskId = taskId }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
                     | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteTaskCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | DeleteTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | DeleteTaskCommand.StoryNotFound id ->
+                        | RemoveTaskCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                        | RemoveTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | RemoveTaskCommand.StoryNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | DeleteTaskCommand.TaskNotFound id ->
+                        | RemoveTaskCommand.TaskNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
             }
 
         [<HttpDelete("{id}")>]
-        member x.DeleteStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+        member x.RemoveStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
-                let! result = DeleteStoryCommand.runAsync x.Env ct { Id = id }
+                let! result = RemoveStoryCommand.runAsync x.Env ct { Id = id }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
                     | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
                         match e with
-                        | DeleteStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | DeleteStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | DeleteStoryCommand.StoryNotFound _ ->
+                        | RemoveStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                        | RemoveStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | RemoveStoryCommand.StoryNotFound _ ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             }
 

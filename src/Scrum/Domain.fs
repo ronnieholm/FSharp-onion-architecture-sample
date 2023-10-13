@@ -206,16 +206,16 @@ module StoryAggregate =
 
     open TaskEntity
 
-    type CreateStoryError = DuplicateTasks of TaskId list
+    type CaptureStoryBasicDetailsError = DuplicateTasks of TaskId list
 
-    let create
+    let captureStoryBasicDetails
         (id: StoryId)
         (title: StoryTitle)
         (description: StoryDescription option)
         (tasks: Task list)
         (createdAt: DateTime)
         (updatedAt: DateTime option)
-        : Result<Story * StoryDomainEvent, CreateStoryError> =
+        : Result<Story * StoryDomainEvent, CaptureStoryBasicDetailsError> =
         let duplicates =
             tasks
             |> List.groupBy (fun t -> t.Entity.Id)
@@ -236,7 +236,7 @@ module StoryAggregate =
                       StoryDescription = description }
             )
 
-    let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * StoryDomainEvent =
+    let reviseBasicDetails (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * StoryDomainEvent =
         let root = { story.Aggregate with UpdatedAt = Some updatedAt }
         { story with Aggregate = root; Title = title; Description = description },
         StoryDomainEvent.StoryBasicDetailsRevised
@@ -245,15 +245,15 @@ module StoryAggregate =
               StoryTitle = title
               StoryDescription = description }
 
-    let delete (story: Story) (occurredAt: DateTime) : StoryDomainEvent =
+    let remove (story: Story) (occurredAt: DateTime) : StoryDomainEvent =
         // Depending on the specifics of a domain, we might want to explicitly
         // delete the story's tasks and emit task deleted events. In this case,
         // we leave cascade delete to the store.
         StoryDomainEvent.StoryRemoved({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
 
-    type AddTaskToStoryError = DuplicateTask of TaskId
+    type AddTaskBasicDetailsToStoryError = DuplicateTask of TaskId
 
-    let addTaskToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddTaskToStoryError> =
+    let addTaskBasicDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddTaskBasicDetailsToStoryError> =
         let duplicate = story.Tasks |> List.exists (equals task)
         if duplicate then
             Error(DuplicateTask task.Entity.Id)
@@ -268,15 +268,15 @@ module StoryAggregate =
                       TaskDescription = task.Description }
             )
 
-    type UpdateTaskError = TaskNotFound of TaskId
+    type ReviseTaskBasicDetailsError = TaskNotFound of TaskId
 
-    let updateTask
+    let reviseTaskBasicDetails
         (story: Story)
         (taskId: TaskId)
         (title: TaskTitle)
         (description: TaskDescription option)
         (updatedAt: DateTime)
-        : Result<Story * StoryDomainEvent, UpdateTaskError> =
+        : Result<Story * StoryDomainEvent, ReviseTaskBasicDetailsError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->
@@ -298,9 +298,9 @@ module StoryAggregate =
 
         | None -> Error(TaskNotFound taskId)
 
-    type DeleteTaskError = TaskNotFound of TaskId
+    type RemoveTaskError = TaskNotFound of TaskId
 
-    let deleteTask (story: Story) (taskId: TaskId) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, DeleteTaskError> =
+    let removeTask (story: Story) (taskId: TaskId) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, RemoveTaskError> =
         let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
         match idx with
         | Some idx ->

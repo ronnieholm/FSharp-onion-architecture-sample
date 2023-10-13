@@ -17,10 +17,10 @@ application layer handler doesn't have to repeat the same code.
 In F#, going for a more explicit approach is more idiomatic, i.e., instead of a
 pipeline, have each handler call `runWithDecoratorAsync`.
 
-As an example, `CreateStoryCommand` becomes:
+As an example, `CaptureStoryBasicDetails` becomes:
 
 ```fsharp
-let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : TaskResult<Guid, CreateStoryError> =
+let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureStoryBasicDetailsCommand) : TaskResult<Guid, CaptureStoryBasicDetailsError> =
     let aux () =
         taskResult {
             do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -29,13 +29,13 @@ let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : 
                 env.Stories.ExistAsync ct cmd.Id
                 |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
             let! story, event =
-                StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
+                StoryAggregate.captureStoryBasicDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                 |> Result.mapError fromDomainError
             do! env.Stories.ApplyEventAsync ct event
             return StoryId.value story.Aggregate.Id
         }
 
-    runWithDecoratorAsync env.Logger (nameof CreateStoryCommand) cmd aux
+    runWithDecoratorAsync env.Logger (nameof CaptureStoryBasicDetailsCommand) cmd aux
 ```
 
 where the decorator is defined as:

@@ -23,14 +23,14 @@ type DomainEvent =
 we prefer
 
 ```fsharp
-type StoryCreated =
-    { StoryId: StoryId
+type StoryBasicDetailsCaptured =
+    { DomainEvent: DomainEvent
+      StoryId: StoryId
       StoryTitle: StoryTitle
-      StoryDescription: StoryDescription option
-      OccurredAt: DateTime }
+      StoryDescription: StoryDescription option }
 
 type DomainEvent =
-    | StoryCreated of StoryCreated
+    | StoryBasicDetailsCaptured of StoryCreated
 ```
 
 As the events never leave core, they can include domain types. Integration

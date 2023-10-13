@@ -50,7 +50,7 @@ transaction. Thus, directly dispatching from `runAsync` to
 `SomeOtherAggregate.SomeEventNotificationAsync` is even simpler:
 
 ```fsharp
-let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : TaskResult<Guid, CreateStoryError> =
+let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureStoryBasicDetailsCommand) : TaskResult<Guid, CaptureStoryBasicDetailsError> =
     let aux () =
         taskResult {
             do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -59,17 +59,17 @@ let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CreateStoryCommand) : 
                 env.Stories.ExistAsync ct cmd.Id
                 |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
             let! story, event =
-                StoryAggregate.create cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
+                StoryAggregate.captureStoryBasicDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                 |> Result.mapError fromDomainError
             do! env.Stories.ApplyEventAsync ct event
-            // Example of publishing the StoryCreated domain event to
+            // Example of publishing the StoryBasicDetailsCaptured domain event to
             // another aggregate:
             // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
             // Integration events may be generated here and persisted.
             return StoryId.value story.Aggregate.Id
         }
 
-    runWithDecoratorAsync env.Logger (nameof CreateStoryCommand) cmd aux
+    runWithDecoratorAsync env.Logger (nameof CaptureStoryBasicDetailsCommand) cmd aux
 ```
 
 ## Consequences
