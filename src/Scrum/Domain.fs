@@ -125,7 +125,7 @@ module StoryAggregate =
               Title = title
               Description = description }
 
-        let equals a b = a.Entity.Id = b.Entity.Id
+        let equals (a: Task) (b: Task) : bool = a.Entity.Id = b.Entity.Id
 
     type StoryId = private StoryId of Guid
 

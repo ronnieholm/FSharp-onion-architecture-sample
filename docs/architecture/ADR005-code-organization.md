@@ -1,4 +1,4 @@
-# ADR014: Code organization
+# ADR005: Code organization
 
 Status: Accepted and active.
 
@@ -36,9 +36,10 @@ Compilation would become sequential across the solution.
 
 To best illustrate the concepts, and until the sample grows sufficiently large,
 we use horizontal architecture. We also stick with one F# file per layer of the
-onion, even though compared to the typical C# file, F# files are large. With
-things defined in dependency order and a reasonable IDE, navigating large files
-is a non-issue.
+onion, even though compared to the typical C# file, F# files are large. Roughly
+speaking, each module within each file would correspond to a class in F# (and
+nested modules to subfolders). With things defined in dependency order and a
+reasonable IDE, navigating large files is a non-issue.
 
 ## Consequences
 
