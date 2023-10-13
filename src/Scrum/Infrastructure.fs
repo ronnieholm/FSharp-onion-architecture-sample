@@ -167,7 +167,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
             let ok, _ = idStories.TryGetValue(storyId)
             if not ok then
-                let story =
+                let story, _ =
                     (StoryAggregate.create
                         storyId
                         (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
