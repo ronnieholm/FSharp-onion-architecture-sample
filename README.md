@@ -66,7 +66,7 @@ curl https://localhost:5000/stories/<storyId> --insecure --request put -H 'Conte
 curl https://localhost:5000/stories/<storyId>/tasks --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}' | jq
 curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}' | jq
 curl https://localhost:5000/stories/<storyId> --insecure -H 'Authorization: Bearer <token>' | jq
-curl -v "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>' | jq
+curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>' | jq
 curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request delete -H 'Authorization: Bearer <token>' | jq
 curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>' | jq
 

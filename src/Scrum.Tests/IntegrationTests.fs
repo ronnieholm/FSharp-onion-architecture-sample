@@ -66,7 +66,6 @@ module Fake =
                 let r = start.AddSeconds(calls).ToUniversalTime()
                 calls <- calls + 1
                 r
-
         { new IClock with
             member _.CurrentUtc() = count () }
 
@@ -358,7 +357,7 @@ type StoryAggregateRequestTests() =
 
     [<Fact>]
     let ``get stories paged`` () =
-        use env = customAppEnv [ Member ] defaultClock
+        use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {
             for i = 1 to 14 do
