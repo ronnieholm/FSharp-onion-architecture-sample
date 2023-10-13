@@ -163,47 +163,46 @@ module StoryAggregate =
           Description: StoryDescription option
           Tasks: TaskEntity.Task list }
 
-    // TODO:
     // Instead of naming events after CRUD operations, name events after
     // concepts in the business domain. StoryCreated doesn't capture business
-    // intent as well as ScopeExpanded.
-    type StoryCreated =
+    // intent.
+    type NewHighLevelRequirementCaptured =
         { DomainEvent: DomainEvent
           StoryId: StoryId
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option }
 
-    type StoryUpdated =
+    type HighLevelRequirementRevised =
         { DomainEvent: DomainEvent
           StoryId: StoryId
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option }
 
-    type StoryDeleted = { StoryId: StoryId; OccurredAt: DateTime }
+    type HighLevelRequirementRemoved = { StoryId: StoryId; OccurredAt: DateTime }
 
-    type TaskAddedToStory =
+    type NewDetailLevelRequirementCaptured =
         { DomainEvent: DomainEvent
           StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option }
 
-    type TaskUpdated =
+    type DetailLevelRequirementRevised =
         { DomainEvent: DomainEvent
           StoryId: StoryId
           TaskId: TaskEntity.TaskId
           TaskTitle: TaskEntity.TaskTitle
           TaskDescription: TaskEntity.TaskDescription option }
 
-    type TaskDeleted = { DomainEvent: DomainEvent; StoryId: StoryId; TaskId: TaskEntity.TaskId }
+    type DetailLevelRequirementRemoved = { DomainEvent: DomainEvent; StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
     type StoryDomainEvent =
-        | StoryCreated of StoryCreated
-        | StoryUpdated of StoryUpdated
-        | StoryDeleted of StoryDeleted
-        | TaskAddedToStory of TaskAddedToStory
-        | TaskUpdated of TaskUpdated
-        | TaskDeleted of TaskDeleted
+        | NewHighLevelRequirementCaptured of NewHighLevelRequirementCaptured
+        | HighLevelRequirementRevised of HighLevelRequirementRevised
+        | HighLevelRequirementRemoved of HighLevelRequirementRemoved
+        | NewDetailLevelRequirementCaptured of NewDetailLevelRequirementCaptured
+        | DetailLevelRequirementRevised of DetailLevelRequirementRevised
+        | DetailLevelRequirementRemoved of DetailLevelRequirementRemoved
 
     open TaskEntity
 
@@ -230,7 +229,7 @@ module StoryAggregate =
                   Title = title
                   Description = description
                   Tasks = tasks },
-                StoryDomainEvent.StoryCreated
+                StoryDomainEvent.NewHighLevelRequirementCaptured
                     { DomainEvent = { OccurredAt = createdAt }
                       StoryId = id
                       StoryTitle = title
@@ -240,7 +239,7 @@ module StoryAggregate =
     let update (story: Story) (title: StoryTitle) (description: StoryDescription option) (updatedAt: DateTime) : Story * StoryDomainEvent =
         let root = { story.Aggregate with UpdatedAt = Some updatedAt }
         { story with Aggregate = root; Title = title; Description = description },
-        StoryDomainEvent.StoryUpdated
+        StoryDomainEvent.HighLevelRequirementRevised
             { DomainEvent = { OccurredAt = updatedAt }
               StoryId = story.Aggregate.Id
               StoryTitle = title
@@ -250,7 +249,7 @@ module StoryAggregate =
         // Depending on the specifics of a domain, we might want to explicitly
         // delete the story's tasks and emit task deleted events. In this case,
         // we leave cascade delete to the store.
-        StoryDomainEvent.StoryDeleted({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
+        StoryDomainEvent.HighLevelRequirementRemoved({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
 
     type AddTaskToStoryError = DuplicateTask of TaskId
 
@@ -261,7 +260,7 @@ module StoryAggregate =
         else
             Ok(
                 { story with Tasks = task :: story.Tasks },
-                StoryDomainEvent.TaskAddedToStory
+                StoryDomainEvent.NewDetailLevelRequirementCaptured
                     { DomainEvent = { OccurredAt = occurredAt }
                       StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
@@ -289,7 +288,7 @@ module StoryAggregate =
             let story = { story with Tasks = updatedTask :: tasks }
             Ok(
                 story,
-                StoryDomainEvent.TaskUpdated
+                StoryDomainEvent.DetailLevelRequirementRevised
                     { DomainEvent = { OccurredAt = updatedAt }
                       StoryId = story.Aggregate.Id
                       TaskId = taskId
@@ -309,7 +308,7 @@ module StoryAggregate =
             let story = { story with Tasks = tasks }
             Ok(
                 story,
-                StoryDomainEvent.TaskDeleted
+                StoryDomainEvent.DetailLevelRequirementRemoved
                     { DomainEvent = { OccurredAt = occurredAt }
                       StoryId = story.Aggregate.Id
                       TaskId = taskId }
