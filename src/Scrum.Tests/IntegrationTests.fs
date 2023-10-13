@@ -45,7 +45,9 @@ module Database =
     let reset () : unit =
         // Organize in reverse dependency order.
         let sql =
-            [| "delete from tasks"; "delete from stories"; "delete from domain_events" |]
+            [| "delete from tasks where id like '%'"
+               "delete from stories where id like '%'"
+               "delete from domain_events where id like '%'" |]
         use connection = new SQLiteConnection(connectionString)
         connection.Open()
         use transaction = connection.BeginTransaction()
