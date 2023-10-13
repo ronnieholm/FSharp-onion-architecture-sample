@@ -23,22 +23,22 @@ module Notification =
     type DomainEvent = StoryDomainEvent of StoryAggregate.DomainEvent
 
     // Substitute functions for actual subscribers.
-    let captureStoryBasicDetailsAsync (_: Seedwork.IAppEnv) (e: StoryBasicDetailsCaptured) (_: CancellationToken) =
+    let basicStoryDetailsCapturedAsync (_: Seedwork.IAppEnv) (e: BasicStoryDetailsCaptured) (_: CancellationToken) =
         printfn $"%A{e.StoryId}"
 
-    let taskBasicDetailsAddedToStoryAsync (_: Seedwork.IAppEnv) (e: TaskBasicDetailsAddedToStory) (_: CancellationToken) =
+    let basicTaskDetailsAddedToStoryAsync (_: Seedwork.IAppEnv) (e: BasicTaskDetailsAddedToStory) (_: CancellationToken) =
         printfn $"%A{e.StoryId}"
 
     let publish (env: Seedwork.IAppEnv) event (ct: CancellationToken) =
         match event with
         | StoryDomainEvent e ->
             match e with
-            | DomainEvent.StoryBasicDetailsCaptured e -> captureStoryBasicDetailsAsync env e ct
-            | DomainEvent.TaskBasicDetailsAddedToStory e -> taskBasicDetailsAddedToStoryAsync env e ct
+            | DomainEvent.BasicStoryDetailsCaptured e -> basicStoryDetailsCapturedAsync env e ct
+            | DomainEvent.BasicTaskDetailsAddedToStory e -> basicTaskDetailsAddedToStoryAsync env e ct
 ```
 
 Based on the type of an event, we require one or more dependencies from the
-environment. For instance, `captureStoryBasicDetailsAsync` might require access to the story
+environment. For instance, `basicStoryDetailsCapturedAsync` might require access to the story
 repository.
 
 ## Decision
@@ -62,7 +62,7 @@ let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureStoryBasicDetai
                 StoryAggregate.captureStoryBasicDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                 |> Result.mapError fromDomainError
             do! env.Stories.ApplyEventAsync ct event
-            // Example of publishing the StoryBasicDetailsCaptured domain event to
+            // Example of publishing the BasicStoryDetailsCaptured domain event to
             // another aggregate:
             // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
             // Integration events may be generated here and persisted.

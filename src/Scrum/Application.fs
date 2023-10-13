@@ -147,12 +147,12 @@ module SharedModels =
 open SharedModels
 
 module StoryAggregateRequest =
-    type CaptureStoryBasicDetailsCommand = { Id: Guid; Title: string; Description: string option }
+    type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
-    module CaptureStoryBasicDetailsCommand =
-        type CaptureStoryBasicDetailsValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
+    module CaptureBasicStoryDetailsCommand =
+        type CaptureBasicStoryDetailsValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
 
-        let validate (c: CaptureStoryBasicDetailsCommand) : Validation<CaptureStoryBasicDetailsValidatedCommand, ValidationError> =
+        let validate (c: CaptureBasicStoryDetailsCommand) : Validation<CaptureBasicStoryDetailsValidatedCommand, ValidationError> =
             validation {
                 let! id = StoryId.create c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
@@ -166,7 +166,7 @@ module StoryAggregateRequest =
                 return { Id = id; Title = title; Description = description }
             }
 
-        type CaptureStoryBasicDetailsError =
+        type CaptureBasicStoryDetailsError =
             | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
@@ -174,9 +174,9 @@ module StoryAggregateRequest =
 
         let fromDomainError =
             function
-            | StoryAggregate.CaptureStoryBasicDetailsError.DuplicateTasks ids -> DuplicateTasks(ids |> List.map TaskId.value)
+            | StoryAggregate.CaptureBasicStoryDetailsError.DuplicateTasks ids -> DuplicateTasks(ids |> List.map TaskId.value)
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureStoryBasicDetailsCommand) : TaskResult<Guid, CaptureStoryBasicDetailsError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureBasicStoryDetailsCommand) : TaskResult<Guid, CaptureBasicStoryDetailsError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -185,7 +185,7 @@ module StoryAggregateRequest =
                         env.Stories.ExistAsync ct cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let! story, event =
-                        StoryAggregate.captureStoryBasicDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
+                        StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                         |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
                     // Example of publishing the StoryBasicDetailsCaptured domain event to
@@ -195,14 +195,14 @@ module StoryAggregateRequest =
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof CaptureStoryBasicDetailsCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof CaptureBasicStoryDetailsCommand) cmd aux
 
-    type ReviseBasicDetailsCommand = { Id: Guid; Title: string; Description: string option }
+    type ReviseBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
-    module ReviseBasicDetailsCommand =
-        type ReviseBasicDetailsValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
+    module ReviseBasicStoryDetailsCommand =
+        type ReviseBasicStoryDetailsValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
 
-        let validate (c: ReviseBasicDetailsCommand) : Validation<ReviseBasicDetailsValidatedCommand, ValidationError> =
+        let validate (c: ReviseBasicStoryDetailsCommand) : Validation<ReviseBasicStoryDetailsValidatedCommand, ValidationError> =
             validation {
                 // Except for return type, this validation is identical to that
                 // of CreateStoryCommand. With more fields on the story, likely
@@ -220,12 +220,12 @@ module StoryAggregateRequest =
                 return { Id = id; Title = title; Description = description }
             }
 
-        type ReviseBasicDetailsError =
+        type ReviseBasicStoryDetailsError =
             | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: ReviseBasicDetailsCommand) : TaskResult<Guid, ReviseBasicDetailsError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: ReviseBasicStoryDetailsCommand) : TaskResult<Guid, ReviseBasicStoryDetailsError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -234,12 +234,12 @@ module StoryAggregateRequest =
                         env.Stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                     let story, event =
-                        StoryAggregate.reviseBasicDetails story cmd.Title cmd.Description (env.Clock.CurrentUtc())
+                        StoryAggregate.reviseBasicStoryDetails story cmd.Title cmd.Description (env.Clock.CurrentUtc())
                     do! env.Stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof ReviseBasicDetailsCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof ReviseBasicStoryDetailsCommand) cmd aux
 
     type RemoveStoryCommand = { Id: Guid }
 
@@ -265,23 +265,23 @@ module StoryAggregateRequest =
                     let! story =
                         env.Stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                    let event = StoryAggregate.remove story (env.Clock.CurrentUtc())
+                    let event = StoryAggregate.removeStory story (env.Clock.CurrentUtc())
                     do! env.Stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
             runWithDecoratorAsync env.Logger (nameof RemoveStoryCommand) cmd aux
 
-    type AddTaskBasicDetailsToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
+    type AddBasicTaskDetailsToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
-    module AddTaskBasicDetailsToStoryCommand =
-        type AddTaskBasicDetailsToStoryValidatedCommand =
+    module AddBasicTaskDetailsToStoryCommand =
+        type AddBasicTaskDetailsToStoryValidatedCommand =
             { StoryId: StoryId
               TaskId: TaskId
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let validate (c: AddTaskBasicDetailsToStoryCommand) : Validation<AddTaskBasicDetailsToStoryValidatedCommand, ValidationError> =
+        let validate (c: AddBasicTaskDetailsToStoryCommand) : Validation<AddBasicTaskDetailsToStoryValidatedCommand, ValidationError> =
             validation {
                 let! storyId = StoryId.create c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.create c.TaskId |> ValidationError.mapError (nameof c.TaskId)
@@ -296,7 +296,7 @@ module StoryAggregateRequest =
                 return { StoryId = storyId; TaskId = taskId; Title = title; Description = description }
             }
 
-        type AddTaskBasicDetailsToStoryError =
+        type AddBasicTaskDetailsToStoryError =
             | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
@@ -304,9 +304,9 @@ module StoryAggregateRequest =
 
         let fromDomainError =
             function
-            | StoryAggregate.AddTaskBasicDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
+            | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: AddTaskBasicDetailsToStoryCommand) : TaskResult<Guid, AddTaskBasicDetailsToStoryError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: AddBasicTaskDetailsToStoryCommand) : TaskResult<Guid, AddBasicTaskDetailsToStoryError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -315,23 +315,23 @@ module StoryAggregateRequest =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                     let task = create cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc()) None
-                    let! _, event = addTaskBasicDetailsToStory story task (env.Clock.CurrentUtc()) |> Result.mapError fromDomainError
+                    let! _, event = addBasicTaskDetailsToStory story task (env.Clock.CurrentUtc()) |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value task.Entity.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof AddTaskBasicDetailsToStoryCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof AddBasicTaskDetailsToStoryCommand) cmd aux
 
-    type ReviseTaskBasicDetailsCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
+    type ReviseBasicTaskDetailsCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
-    module ReviseTaskBasicDetailsCommand =
-        type ReviseTaskBasicDetailsValidatedCommand =
+    module ReviseBasicTaskDetailsCommand =
+        type ReviseBasicTaskDetailsValidatedCommand =
             { StoryId: StoryId
               TaskId: TaskId
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let validate (c: ReviseTaskBasicDetailsCommand) : Validation<ReviseTaskBasicDetailsValidatedCommand, ValidationError> =
+        let validate (c: ReviseBasicTaskDetailsCommand) : Validation<ReviseBasicTaskDetailsValidatedCommand, ValidationError> =
             // Except for return type, identical to AddTaskToStoryCommand's
             // validate command. With more fields on the task, the two are
             // likely to differ.
@@ -349,7 +349,7 @@ module StoryAggregateRequest =
                 return { StoryId = storyId; TaskId = taskId; Title = title; Description = description }
             }
 
-        type ReviseTaskBasicDetailsError =
+        type ReviseBasicTaskDetailsError =
             | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
@@ -357,9 +357,9 @@ module StoryAggregateRequest =
 
         let fromDomainError =
             function
-            | StoryAggregate.ReviseTaskBasicDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
+            | StoryAggregate.ReviseBasicTaskDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: ReviseTaskBasicDetailsCommand) : TaskResult<Guid, ReviseTaskBasicDetailsError> =
+        let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: ReviseBasicTaskDetailsCommand) : TaskResult<Guid, ReviseBasicTaskDetailsError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -368,13 +368,13 @@ module StoryAggregateRequest =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                     let! story, event =
-                        reviseTaskBasicDetails story cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
+                        reviseBasicTaskDetails story cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
                         |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
                     return TaskId.value cmd.TaskId
                 }
 
-            runWithDecoratorAsync env.Logger (nameof ReviseTaskBasicDetailsCommand) cmd aux
+            runWithDecoratorAsync env.Logger (nameof ReviseBasicTaskDetailsCommand) cmd aux
 
     type RemoveTaskCommand = { StoryId: Guid; TaskId: Guid }
 

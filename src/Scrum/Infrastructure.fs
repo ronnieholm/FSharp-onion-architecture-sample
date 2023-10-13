@@ -168,7 +168,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             let ok, _ = idStories.TryGetValue(storyId)
             if not ok then
                 let story, _ =
-                    (StoryAggregate.captureStoryBasicDetails
+                    (StoryAggregate.captureBasicStoryDetails
                         storyId
                         (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
                         (Option.ofDBNull r["s_description"]
@@ -301,7 +301,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             task {
                 let! aggregateId =
                     match event with
-                    | StoryBasicDetailsCaptured e ->
+                    | BasicStoryDetailsCaptured e ->
                         let sql =
                             "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -313,7 +313,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         executeNonQuery storyId cmd ct
-                    | StoryBasicDetailsRevised e ->
+                    | BasicStoryDetailsRevised e ->
                         let sql =
                             "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -331,7 +331,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
                         executeNonQuery storyId cmd ct
-                    | TaskBasicDetailsAddedToStory e ->
+                    | BasicTaskDetailsAddedToStory e ->
                         let sql =
                             "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -344,7 +344,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         executeNonQuery storyId cmd ct
-                    | TaskBasicDetailsRevised e ->
+                    | BasicTaskDetailsRevised e ->
                         let sql =
                             "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)

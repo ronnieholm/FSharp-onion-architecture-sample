@@ -21,7 +21,7 @@ task to story command, we could imagine the application exposing these possible
 errors
 
 ```fsharp
-type AddTaskBasicDetailsToStoryError =
+type AddBasicTaskDetailsToStoryError =
     | AuthorizationError of string
     | ValidationErrors of ValidationError list
     | StoryNotFound of Guid
@@ -31,17 +31,17 @@ type AddTaskBasicDetailsToStoryError =
 where `BusinessError` is any error returned by the domain layer.
 
 Inside the domain layer we would do as follows and have the application layer
-map errors to the `AddTaskBasicDetailsToStoryError` type:
+map errors to the `AddBasicTaskDetailsToStoryError` type:
 
 ```fsharp
-let addTaskBasicDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddTaskBasicDetailsToStoryError> =
+let addBasicTaskDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddBasicTaskDetailsToStoryError> =
     let duplicate = story.Tasks |> List.exists (equals task)
     if duplicate then
         Error "Duplicate task Id"
     else
         Ok(
             { story with Tasks = task :: story.Tasks },
-            StoryDomainEvent.TaskBasicDetailsAddedToStory
+            StoryDomainEvent.BasicTaskDetailsAddedToStory
                 { DomainEvent = { OccurredAt = occurredAt }
                   StoryId = story.Aggregate.Id
                   TaskId = task.Entity.Id
@@ -52,15 +52,15 @@ let addTaskBasicDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime
 
 But as error propagation is now stringly typed, we (1) don't have a way to
 switch HTTP response code based on the error and (2) as a caller looking at
-`AddTaskBasicDetailsToStoryError` it's unclear which errors to expect.
+`AddBasicTaskDetailsToStoryError` it's unclear which errors to expect.
 
 ## Decision
 
-We want the application layer `AddTaskBasicDetailsToStoryError` to reflect all
+We want the application layer `AddBasicTaskDetailsToStoryError` to reflect all
 possible error cases, so it must become
 
 ```fsharp
-type AddTaskBasicDetailsToStoryError =
+type AddBasicTaskDetailsToStoryError =
     | AuthorizationError of string
     | ValidationErrors of ValidationError list
     | StoryNotFound of Guid
@@ -70,16 +70,16 @@ type AddTaskBasicDetailsToStoryError =
 Then in `addTaskBasicDetailsToStory`, we return an error union type as well:
 
 ```fsharp
-type AddTaskBasicDetailsToStoryError = DuplicateTask of TaskId
+type AddBasicTaskDetailsToStoryError = DuplicateTask of TaskId
 
-let addTaskBasicDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddTaskBasicDetailsToStoryError> =
+let addTaskBasicDetailsToStory (story: Story) (task: Task) (occurredAt: DateTime) : Result<Story * StoryDomainEvent, AddBasicTaskDetailsToStoryError> =
     let duplicate = story.Tasks |> List.exists (equals task)
     if duplicate then
         Error(DuplicateTask task.Entity.Id)
     else
         Ok(
             { story with Tasks = task :: story.Tasks },
-            StoryDomainEvent.TaskBasicDetailsAddedToStory
+            StoryDomainEvent.BasicTaskDetailsAddedToStory
                 { DomainEvent = { OccurredAt = occurredAt }
                   StoryId = story.Aggregate.Id
                   TaskId = task.Entity.Id
@@ -96,7 +96,7 @@ In the application layer we map domain error cases to application error cases:
 ```fsharp
 let fromDomainError =
     function
-    | StoryAggregate.AddTaskBasicDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
+    | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 ```
 
 ## Consequences

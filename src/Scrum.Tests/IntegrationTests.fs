@@ -3,6 +3,7 @@
 open System
 open System.Threading
 open System.Data.SQLite
+open Scrum.Domain.StoryAggregate
 open Scrum.Web.Service
 open Swensen.Unquote
 open Xunit
@@ -12,17 +13,17 @@ open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 
 module A =
-    let captureStoryBasicDetailsCommand () : CaptureStoryBasicDetailsCommand = { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
+    let captureStoryBasicDetailsCommand () : CaptureBasicStoryDetailsCommand = { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
 
-    let reviseStoryBasicDetailsCommand (source: CaptureStoryBasicDetailsCommand) = { Id = source.Id; Title = source.Title; Description = source.Description }
+    let reviseStoryBasicDetailsCommand (source: CaptureBasicStoryDetailsCommand) = { Id = source.Id; Title = source.Title; Description = source.Description }
 
-    let addTaskBasicDetailsToStoryCommand () : AddTaskBasicDetailsToStoryCommand =
+    let addTaskBasicDetailsToStoryCommand () : AddBasicTaskDetailsToStoryCommand =
         { TaskId = Guid.NewGuid()
           StoryId = Guid.Empty
           Title = "title"
           Description = Some "description" }
 
-    let reviseTaskBasicDetailsToStoryCommand (cmd: AddTaskBasicDetailsToStoryCommand) =
+    let reviseTaskBasicDetailsToStoryCommand (cmd: AddBasicTaskDetailsToStoryCommand) =
         { StoryId = cmd.StoryId
           TaskId = cmd.TaskId
           Title = cmd.Title
@@ -91,14 +92,14 @@ module Setup =
 
         // While these functions are async, we forgo the Async prefix to reduce
         // noise.
-        {| CaptureStoryBasicDetails = CaptureStoryBasicDetailsCommand.runAsync env ct
-           AddTaskBasicDetailsToStory = AddTaskBasicDetailsToStoryCommand.runAsync env ct
+        {| CaptureStoryBasicDetails = CaptureBasicStoryDetailsCommand.runAsync env ct
+           AddTaskBasicDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync env ct
            GetStoryById = GetStoryByIdQuery.runAsync env ct
            GetStoriesPaged = GetStoriesPagedQuery.runAsync env ct
            RemoveStory = RemoveStoryCommand.runAsync env ct
            RemoveTask = RemoveTaskCommand.runAsync env ct
-           ReviseBasicDetails = ReviseBasicDetailsCommand.runAsync env ct
-           ReviseTaskBasicDetails = ReviseTaskBasicDetailsCommand.runAsync env ct
+           ReviseBasicDetails = ReviseBasicStoryDetailsCommand.runAsync env ct
+           ReviseTaskBasicDetails = ReviseBasicTaskDetailsCommand.runAsync env ct
            Commit = fun _ -> env.CommitAsync ct |}
 
     let setupDomainEventRequests (env: IAppEnv) =
@@ -151,7 +152,7 @@ type StoryAggregateRequestTests() =
         task {
             let storyCmd = A.captureStoryBasicDetailsCommand ()
             let! result = fns.CaptureStoryBasicDetails storyCmd
-            test <@ result = Error(CaptureStoryBasicDetailsCommand.AuthorizationError("Missing role 'member'")) @>
+            test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError("Missing role 'member'")) @>
             do! fns.Commit()
         }
 
@@ -194,7 +195,7 @@ type StoryAggregateRequestTests() =
             let cmd = A.captureStoryBasicDetailsCommand ()
             let! _ = fns.CaptureStoryBasicDetails cmd
             let! result = fns.CaptureStoryBasicDetails cmd
-            test <@ result = Error(CaptureStoryBasicDetailsCommand.DuplicateStory(cmd.Id)) @>
+            test <@ result = Error(CaptureBasicStoryDetailsCommand.DuplicateStory(cmd.Id)) @>
         }
 
     [<Fact>]
@@ -235,7 +236,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.CaptureStoryBasicDetails createStoryCmd
             let! _ = fns.AddTaskBasicDetailsToStory addTaskCmd
             let! result = fns.AddTaskBasicDetailsToStory addTaskCmd
-            test <@ result = Error(AddTaskBasicDetailsToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
+            test <@ result = Error(AddBasicTaskDetailsToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
         }
 
     [<Fact>]
@@ -245,7 +246,7 @@ type StoryAggregateRequestTests() =
         task {
             let cmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = missingId () }
             let! result = fns.AddTaskBasicDetailsToStory cmd
-            test <@ result = Error(AddTaskBasicDetailsToStoryCommand.StoryNotFound(cmd.StoryId)) @>
+            test <@ result = Error(AddBasicTaskDetailsToStoryCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
@@ -309,7 +310,7 @@ type StoryAggregateRequestTests() =
             let cmd = A.captureStoryBasicDetailsCommand ()
             let cmd = A.reviseStoryBasicDetailsCommand cmd
             let! result = fns.ReviseBasicDetails cmd
-            test <@ result = Error(ReviseBasicDetailsCommand.StoryNotFound(cmd.Id)) @>
+            test <@ result = Error(ReviseBasicStoryDetailsCommand.StoryNotFound(cmd.Id)) @>
         }
 
     [<Fact>]
@@ -338,7 +339,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.AddTaskBasicDetailsToStory cmd
             let cmd = { A.reviseTaskBasicDetailsToStoryCommand cmd with TaskId = missingId () }
             let! result = fns.ReviseTaskBasicDetails cmd
-            test <@ result = Error(ReviseTaskBasicDetailsCommand.TaskNotFound(cmd.TaskId)) @>
+            test <@ result = Error(ReviseBasicTaskDetailsCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
     [<Fact>]
@@ -352,7 +353,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.AddTaskBasicDetailsToStory cmd
             let cmd = { A.reviseTaskBasicDetailsToStoryCommand cmd with StoryId = missingId () }
             let! result = fns.ReviseTaskBasicDetails cmd
-            test <@ result = Error(ReviseTaskBasicDetailsCommand.StoryNotFound(cmd.StoryId)) @>
+            test <@ result = Error(ReviseBasicTaskDetailsCommand.StoryNotFound(cmd.StoryId)) @>
         }
 
     [<Fact>]
@@ -419,11 +420,11 @@ type DomainEventRequestTests() =
                 Assert.Equal(2, r.Length)
                 Assert.Equal(storyCmd.Id, r[0].AggregateId)
                 Assert.Equal("Story", r[0].AggregateType)
-                Assert.Equal("StoryBasicDetailsCaptured", r[0].EventType)
+                Assert.Equal(nameof BasicStoryDetailsCaptured, r[0].EventType)
 
                 Assert.Equal(storyCmd.Id, r[1].AggregateId)
                 Assert.Equal("Story", r[1].AggregateType)
-                Assert.Equal("TaskBasicDetailsAddedToStory", r[1].EventType)
+                Assert.Equal(nameof BasicTaskDetailsAddedToStory, r[1].EventType)
 
                 Assert.True(r[0].CreatedAt < r[1].CreatedAt)
             | Error e -> Assert.Fail($"%A{e}")

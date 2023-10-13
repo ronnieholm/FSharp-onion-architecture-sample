@@ -17,10 +17,10 @@ application layer handler doesn't have to repeat the same code.
 In F#, going for a more explicit approach is more idiomatic, i.e., instead of a
 pipeline, have each handler call `runWithDecoratorAsync`.
 
-As an example, `CaptureStoryBasicDetails` becomes:
+As an example, `CaptureBasicStoryDetailsCommand` becomes:
 
 ```fsharp
-let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureStoryBasicDetailsCommand) : TaskResult<Guid, CaptureStoryBasicDetailsError> =
+let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureBasicStoryDetailsCommand) : TaskResult<Guid, CaptureBasicStoryDetailsCommand> =
     let aux () =
         taskResult {
             do! isInRole env.Identity Member |> Result.mapError AuthorizationError
@@ -29,7 +29,7 @@ let runAsync (env: IAppEnv) (ct: CancellationToken) (cmd: CaptureStoryBasicDetai
                 env.Stories.ExistAsync ct cmd.Id
                 |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
             let! story, event =
-                StoryAggregate.captureStoryBasicDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
+                StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (env.Clock.CurrentUtc()) None
                 |> Result.mapError fromDomainError
             do! env.Stories.ApplyEventAsync ct event
             return StoryId.value story.Aggregate.Id
