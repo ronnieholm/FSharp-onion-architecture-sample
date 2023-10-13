@@ -13,9 +13,11 @@ open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
 
 module A =
-    let captureStoryBasicDetailsCommand () : CaptureBasicStoryDetailsCommand = { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
+    let captureStoryBasicDetailsCommand () : CaptureBasicStoryDetailsCommand =
+        { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
 
-    let reviseStoryBasicDetailsCommand (source: CaptureBasicStoryDetailsCommand) = { Id = source.Id; Title = source.Title; Description = source.Description }
+    let reviseStoryBasicDetailsCommand (source: CaptureBasicStoryDetailsCommand) =
+        { Id = source.Id; Title = source.Title; Description = source.Description }
 
     let addTaskBasicDetailsToStoryCommand () : AddBasicTaskDetailsToStoryCommand =
         { TaskId = Guid.NewGuid()
@@ -232,7 +234,8 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let createStoryCmd = A.captureStoryBasicDetailsCommand ()
-            let addTaskCmd = { A.addTaskBasicDetailsToStoryCommand () with StoryId = createStoryCmd.Id }
+            let addTaskCmd =
+                { A.addTaskBasicDetailsToStoryCommand () with StoryId = createStoryCmd.Id }
             let! _ = fns.CaptureStoryBasicDetails createStoryCmd
             let! _ = fns.AddTaskBasicDetailsToStory addTaskCmd
             let! result = fns.AddTaskBasicDetailsToStory addTaskCmd
