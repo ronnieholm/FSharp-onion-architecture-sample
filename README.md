@@ -1,6 +1,6 @@
 # Scrum clean architecture sample
 
-*Got comments or questions? Don't hesitate to drop me an email or open an issue.*
+*Got a comment or a question? Don't hesitate to drop me an email or open an issue.*
 
 This sample focuses on applying functional constructs over cluing together
 libraries and frameworks. It substitutes the .NET dependency injection
