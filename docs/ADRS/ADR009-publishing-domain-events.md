@@ -23,22 +23,22 @@ module Notification =
     type DomainEvent = StoryDomainEvent of StoryAggregate.DomainEvent
 
     // Substitute functions for actual subscribers.
-    let createdStoryAsync (_: Seedwork.IAppEnv) (e: StoryCreatedEvent) (_: CancellationToken) =
+    let captureStoryBasicDetailsAsync (_: Seedwork.IAppEnv) (e: StoryBasicDetailsCaptured) (_: CancellationToken) =
         printfn $"%A{e.StoryId}"
 
-    let addedTaskToStoryAsync (_: Seedwork.IAppEnv) (e: TaskAddedToStoryEvent) (_: CancellationToken) =
+    let taskBasicDetailsAddedToStoryAsync (_: Seedwork.IAppEnv) (e: TaskBasicDetailsAddedToStory) (_: CancellationToken) =
         printfn $"%A{e.StoryId}"
 
     let publish (env: Seedwork.IAppEnv) event (ct: CancellationToken) =
         match event with
         | StoryDomainEvent e ->
             match e with
-            | DomainEvent.StoryCreatedEvent p -> createdStoryAsync env p ct
-            | DomainEvent.TaskAddedToStoryEvent p -> addedTaskToStoryAsync env p ct
+            | DomainEvent.StoryBasicDetailsCaptured e -> captureStoryBasicDetailsAsync env e ct
+            | DomainEvent.TaskBasicDetailsAddedToStory e -> taskBasicDetailsAddedToStoryAsync env e ct
 ```
 
 Based on the type of an event, we require one or more dependencies from the
-environment. For instance, `createdStoryAsync` might require access to the story
+environment. For instance, `captureStoryBasicDetailsAsync` might require access to the story
 repository.
 
 ## Decision
