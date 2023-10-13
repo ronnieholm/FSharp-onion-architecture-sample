@@ -301,7 +301,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             task {
                 let! aggregateId =
                     match event with
-                    | NewHighLevelRequirementCaptured e ->
+                    | StoryBasicDetailsCaptured e ->
                         let sql =
                             "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -313,7 +313,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         executeNonQuery storyId cmd ct
-                    | HighLevelRequirementRevised e ->
+                    | StoryBasicDetailsRevised e ->
                         let sql =
                             "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -325,13 +325,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", storyId |> string) |> ignore
                         executeNonQuery storyId cmd ct
-                    | HighLevelRequirementRemoved e ->
+                    | StoryRemoved e ->
                         let sql = "delete from stories where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
                         executeNonQuery storyId cmd ct
-                    | NewDetailLevelRequirementCaptured e ->
+                    | TaskBasicDetailsAddedToStory e ->
                         let sql =
                             "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -344,7 +344,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         executeNonQuery storyId cmd ct
-                    | DetailLevelRequirementRevised e ->
+                    | TaskBasicDetailsRevised e ->
                         let sql =
                             "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -357,7 +357,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
                         executeNonQuery storyId cmd ct
-                    | DetailLevelRequirementRemoved e ->
+                    | TaskRemoved e ->
                         let sql = "delete from tasks where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
