@@ -83,3 +83,4 @@ even simpler. At least until aggregates evolve and they'd require versioning.
 - [Domain events: Design and
   implementation](https://learn.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns/domain-events-design-implementation)
 - [Versioning in an Event Sourced System by Gregory Young](https://leanpub.com/esversioning)
+- [Event-Driven Architecture lost its way](https://www.youtube.com/watch?v=YusVrd9rHJU)

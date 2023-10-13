@@ -163,6 +163,10 @@ module StoryAggregate =
           Description: StoryDescription option
           Tasks: TaskEntity.Task list }
 
+    // TODO:
+    // Instead of naming events after CRUD operations, name events after
+    // concepts in the business domain. StoryCreated doesn't capture business
+    // intent as well as ScopeExpanded.
     type StoryCreated =
         { DomainEvent: DomainEvent
           StoryId: StoryId
