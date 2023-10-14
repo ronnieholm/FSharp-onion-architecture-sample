@@ -17,3 +17,5 @@
 - Consider removing select type annotations where type is obvious from context
 - Apply maximum limit from appsettings
 - Log user object together with request
+- Add WebExceptionFilter for unhalted exceptions
+ 
