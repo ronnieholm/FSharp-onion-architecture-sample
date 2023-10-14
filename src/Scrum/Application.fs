@@ -500,7 +500,7 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env.Logger (nameof GetStoryByIdQuery) qry aux
 
-    open SharedDomain.Paging
+    open Shared.Paging
 
     type GetStoriesPagedQuery = { Limit: int; Cursor: string option }
 
@@ -534,7 +534,7 @@ module StoryAggregateRequest =
                     return
                         // Per Zalando guidelines, we could write a
                         // JsonConverter to replace "Items" by "Stories".
-                        { Cursor = stories.Cursor |> Option.map Cursor.value
+                        { PagedDto.Cursor = stories.Cursor |> Option.map Cursor.value
                           Items = stories.Items |> List.map StoryDto.from }
                 }
 

@@ -45,7 +45,7 @@ module Validation =
 
 open Validation
 
-module SharedDomain =
+module Shared =
     // Even though core is presentation agnostic, we can be inspired by the
     // Zalando API guidelines
     // (https://opensource.zalando.com/restful-api-guidelines/#137), which
@@ -56,20 +56,17 @@ module SharedDomain =
 
         module Limit =
             let create (v: int) : Result<Limit, string> = v |> Int.between 1 100 |> Result.map Limit
-
-            let value (Limit v) = v
+            let value (Limit v) : int = v
 
         type Cursor = private Cursor of string
 
         module Cursor =
             let create (v: string) : Result<Cursor, string> = v |> String.notNullOrWhitespace |> Result.map Cursor
+            let value (Cursor v) : string = v
 
-            let value (Cursor v) = v
+        type Paged<'t> = { Cursor: Cursor option; Items: 't list }
 
-    type Paged<'t> = { Cursor: Paging.Cursor option; Items: 't list }
-
-open SharedDomain
-open SharedDomain.Paging
+open Shared.Paging
 
 module StoryAggregate =
     open Seedwork
@@ -79,8 +76,7 @@ module StoryAggregate =
 
         module TaskId =
             let create (v: Guid) : Result<TaskId, string> = v |> Guid.notEmpty |> Result.map TaskId
-
-            let value (TaskId v) = v
+            let value (TaskId v) : Guid = v
 
         type TaskTitle = private TaskTitle of string
 
@@ -95,7 +91,7 @@ module StoryAggregate =
                 |> Result.bind (String.maxLength 100)
                 |> Result.map TaskTitle
 
-            let value (TaskTitle v) = v
+            let value (TaskTitle v) : string = v
 
         type TaskDescription = private TaskDescription of string
 
@@ -131,8 +127,7 @@ module StoryAggregate =
 
     module StoryId =
         let create (v: Guid) : Result<StoryId, string> = v |> Guid.notEmpty |> Result.map StoryId
-
-        let value (StoryId v) = v
+        let value (StoryId v) : Guid = v
 
     type StoryTitle = StoryTitle of string
 
@@ -154,7 +149,7 @@ module StoryAggregate =
             |> Result.bind (String.maxLength 1000)
             |> Result.map StoryDescription
 
-        let value (StoryDescription v) = v
+        let value (StoryDescription v) : string = v
 
     [<NoComparison; NoEquality>]
     type Story =

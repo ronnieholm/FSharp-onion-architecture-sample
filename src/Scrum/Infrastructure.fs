@@ -15,11 +15,10 @@ open Microsoft.Extensions.Logging
 open FsToolkit.ErrorHandling
 open Scrum.Domain
 open Scrum.Domain.Seedwork
-open Scrum.Domain.SharedDomain
+open Scrum.Domain.Shared.Paging
 open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
 open Scrum.Application.Seedwork
-open Scrum.Domain.SharedDomain.Paging
 
 module Seedwork =
     exception IntegrationException of string
