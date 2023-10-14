@@ -14,4 +14,6 @@
 - Add estimate fields
 - Equivalent of EF mapping now in repository toDomain functions
 - Switch to >=> and <%> for validation
-- Re-organize example API calls by verbs
+- Consider removing select type annotations where type is obvious from context
+- Apply maximum limit from appsettings
+- Log user object together with request

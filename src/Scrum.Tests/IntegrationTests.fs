@@ -25,7 +25,7 @@ module A =
           Title = "title"
           Description = Some "description" }
 
-    let reviseBasicTaskDetailsToStoryCommand (cmd: AddBasicTaskDetailsToStoryCommand) =
+    let reviseBasicTaskDetailsCommand (cmd: AddBasicTaskDetailsToStoryCommand) =
         { StoryId = cmd.StoryId
           TaskId = cmd.TaskId
           Title = cmd.Title
@@ -327,7 +327,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
-            let cmd = A.reviseBasicTaskDetailsToStoryCommand cmd
+            let cmd = A.reviseBasicTaskDetailsCommand cmd
             let! result = fns.ReviseBasicTaskDetails cmd
             test <@ result = Ok cmd.TaskId @>
             do! fns.Commit()
@@ -342,7 +342,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
-            let cmd = { A.reviseBasicTaskDetailsToStoryCommand cmd with TaskId = missingId () }
+            let cmd = { A.reviseBasicTaskDetailsCommand cmd with TaskId = missingId () }
             let! result = fns.ReviseBasicTaskDetails cmd
             test <@ result = Error(ReviseBasicTaskDetailsCommand.TaskNotFound(cmd.TaskId)) @>
         }
@@ -356,7 +356,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
-            let cmd = { A.reviseBasicTaskDetailsToStoryCommand cmd with StoryId = missingId () }
+            let cmd = { A.reviseBasicTaskDetailsCommand cmd with StoryId = missingId () }
             let! result = fns.ReviseBasicTaskDetails cmd
             test <@ result = Error(ReviseBasicTaskDetailsCommand.StoryNotFound(cmd.StoryId)) @>
         }
