@@ -7,6 +7,30 @@
       "commands": [
         "fantomas"
       ]
+    },
+    "dotnet-trace": {
+      "version": "7.0.447801",
+      "commands": [
+        "dotnet-trace"
+      ]
+    },
+    "dotnet-counters": {
+      "version": "7.0.447801",
+      "commands": [
+        "dotnet-counters"
+      ]
+    },
+    "dotnet-dump": {
+      "version": "7.0.447801",
+      "commands": [
+        "dotnet-dump"
+      ]
+    },
+    "dotnet-gcdump": {
+      "version": "7.0.447801",
+      "commands": [
+        "dotnet-gcdump"
+      ]
     }
   }
 }

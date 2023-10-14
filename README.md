@@ -29,8 +29,7 @@ supporting role-based security.
 - Integration tests with the ability to fake any dependency.
 - Database migrations and initial data seeding.
 - ASP.NET health checks for memory and database.
-- Architecture decision
-  decords under `docs/architecture-decision-records`.
+- Architecture decision records under `docs/architecture-decision-records`.
 
 The Scrum domain was chosen because it offers sufficient complexity and everyone
 is familiar with it, though most aspects of the application is illustrated with
