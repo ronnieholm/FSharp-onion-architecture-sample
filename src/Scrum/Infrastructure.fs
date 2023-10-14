@@ -157,10 +157,10 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         tasks.Add(taskId, task)
 
         // Dictionary doesn't maintain insertion order, so when an SQL query
-        // contains an "order by" clause, the dictionary will mess up
-        // ordering. The caller of toDomainAsync therefore must perform a
-        // second sort. An alternative would be to switch to ResizeArray but
-        // it has linear lookup times.
+        // contains an "order by" clause, the dictionary will mess up ordering.
+        // The caller of toDomainAsync therefore must perform a second sort. An
+        // alternative would be to switch to a combination of Dictionary and
+        // ResizeArray (for storing read order).
         let idStories = Dictionary<StoryId, Story>()
         let toDomain (r: DbDataReader) : unit =
             let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
