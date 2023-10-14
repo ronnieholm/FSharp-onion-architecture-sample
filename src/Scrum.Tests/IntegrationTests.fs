@@ -150,7 +150,7 @@ type StoryAggregateRequestTests() =
     do reset ()
 
     [<Fact>]
-    let ``must have member role to create story basic details`` () =
+    let ``must have member role to create basic story details`` () =
         use env = customAppEnv [ Admin ] defaultClock
         let fns = env |> setupStoryAggregateRequests
         task {
@@ -161,7 +161,7 @@ type StoryAggregateRequestTests() =
         }
 
     [<Fact>]
-    let ``capture story and task basic details`` () =
+    let ``capture basic story and task details`` () =
         use env = defaultAppEnv ()
         let fns = env |> setupStoryAggregateRequests
         task {

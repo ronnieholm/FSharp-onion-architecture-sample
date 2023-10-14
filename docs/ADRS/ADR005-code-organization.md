@@ -44,3 +44,8 @@ reasonable IDE, navigating large files is a non-issue.
 ## Consequences
 
 Compile time is starting to become a concern.
+
+## See also
+
+- [A methodical approach to looking at F# compile
+  times](https://github.com/dotnet/fsharp/discussions/11134)
