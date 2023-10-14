@@ -96,7 +96,7 @@ module Setup =
 
         // While these functions are async, we forgo the Async prefix to reduce
         // noise.
-        {| CaptureStoryBasicDetails = CaptureBasicStoryDetailsCommand.runAsync env ct
+        {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync env ct
            AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync env ct
            GetStoryById = GetStoryByIdQuery.runAsync env ct
            GetStoriesPaged = GetStoriesPagedQuery.runAsync env ct
@@ -155,7 +155,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! result = fns.CaptureStoryBasicDetails storyCmd
+            let! result = fns.CaptureBasicStoryDetails storyCmd
             test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError("Missing role 'member'")) @>
             do! fns.Commit()
         }
@@ -166,7 +166,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! result = fns.CaptureStoryBasicDetails storyCmd
+            let! result = fns.CaptureBasicStoryDetails storyCmd
             test <@ result = Ok storyCmd.Id @>
             let taskCmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = storyCmd.Id }
             let! result = fns.AddBasicTaskDetailsToStory taskCmd
@@ -197,8 +197,8 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
-            let! result = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
+            let! result = fns.CaptureBasicStoryDetails cmd
             test <@ result = Error(CaptureBasicStoryDetailsCommand.DuplicateStory(cmd.Id)) @>
         }
 
@@ -208,7 +208,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let! result = fns.RemoveStory { Id = cmd.Id }
             test <@ result = Ok cmd.Id @>
             let! result = fns.GetStoryById { Id = cmd.Id }
@@ -221,7 +221,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
             let! result = fns.RemoveStory { Id = cmd.StoryId }
@@ -238,7 +238,7 @@ type StoryAggregateRequestTests() =
             let createStoryCmd = A.captureBasicStoryDetailsCommand ()
             let addTaskCmd =
                 { A.addBasicTaskDetailsToStoryCommand () with StoryId = createStoryCmd.Id }
-            let! _ = fns.CaptureStoryBasicDetails createStoryCmd
+            let! _ = fns.CaptureBasicStoryDetails createStoryCmd
             let! _ = fns.AddBasicTaskDetailsToStory addTaskCmd
             let! result = fns.AddBasicTaskDetailsToStory addTaskCmd
             test <@ result = Error(AddBasicTaskDetailsToStoryCommand.DuplicateTask(addTaskCmd.TaskId)) @>
@@ -260,7 +260,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
             let cmd = { StoryId = cmd.StoryId; TaskId = cmd.TaskId }
@@ -275,7 +275,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let cmd = { StoryId = missingId (); TaskId = cmd.TaskId }
             let! result = fns.RemoveTask cmd
@@ -288,7 +288,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { StoryId = cmd.Id; TaskId = missingId () }
             let! result = fns.RemoveTask cmd
             test <@ result = Error(RemoveTaskCommand.TaskNotFound(cmd.TaskId)) @>
@@ -300,7 +300,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = A.reviseBasicStoryDetailsCommand cmd
             let! result = fns.ReviseBasicStoryDetails cmd
             test <@ result = Ok cmd.Id @>
@@ -324,7 +324,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
             let cmd = A.reviseBasicTaskDetailsToStoryCommand cmd
@@ -339,7 +339,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
             let cmd = { A.reviseBasicTaskDetailsToStoryCommand cmd with TaskId = missingId () }
@@ -353,7 +353,7 @@ type StoryAggregateRequestTests() =
         let fns = env |> setupStoryAggregateRequests
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureStoryBasicDetails cmd
+            let! _ = fns.CaptureBasicStoryDetails cmd
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = cmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory cmd
             let cmd = { A.reviseBasicTaskDetailsToStoryCommand cmd with StoryId = missingId () }
@@ -368,7 +368,7 @@ type StoryAggregateRequestTests() =
         task {
             for i = 1 to 14 do
                 let cmd = { A.captureBasicStoryDetailsCommand () with Title = $"{i}" }
-                let! result = fns.CaptureStoryBasicDetails cmd
+                let! result = fns.CaptureBasicStoryDetails cmd
                 test <@ result = Ok cmd.Id @>
 
             let! page1 = fns.GetStoriesPaged { Limit = 5; Cursor = None }
@@ -408,7 +408,7 @@ type DomainEventRequestTests() =
             let storyFns = env |> setupStoryAggregateRequests
 
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = storyFns.CaptureStoryBasicDetails storyCmd
+            let! _ = storyFns.CaptureBasicStoryDetails storyCmd
             do! storyFns.Commit()
 
             // This could be another user making a request.
@@ -445,7 +445,7 @@ type DomainEventRequestTests() =
 
         task {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = storyFns.CaptureStoryBasicDetails storyCmd
+            let! _ = storyFns.CaptureBasicStoryDetails storyCmd
             let taskCmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = storyCmd.Id }
             let! _ = storyFns.AddBasicTaskDetailsToStory taskCmd
             let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
