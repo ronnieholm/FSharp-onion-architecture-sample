@@ -1,4 +1,4 @@
-# ADR009: Publishing domain events
+# ADR0009: Publishing domain events
 
 Status: Accepted and active.
 

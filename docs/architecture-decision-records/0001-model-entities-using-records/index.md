@@ -1,4 +1,4 @@
-# ADR001: Model entities using records
+# ADR0001: Model entities using records
 
 Status: Accepted and active.
 

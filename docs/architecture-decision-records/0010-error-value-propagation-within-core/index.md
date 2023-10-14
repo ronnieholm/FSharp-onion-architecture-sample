@@ -1,4 +1,4 @@
-# ADR010: Error value propagation within core
+# ADR0010: Error value propagation within core
 
 Status: Accepted and active.
 

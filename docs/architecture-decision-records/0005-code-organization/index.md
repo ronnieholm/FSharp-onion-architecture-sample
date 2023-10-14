@@ -1,4 +1,4 @@
-# ADR005: Code organization
+# ADR0005: Code organization
 
 Status: Accepted and active.
 

@@ -1,4 +1,4 @@
-# ADR004: When to persist changes to the store
+# ADR0004: When to persist changes to the store
 
 Status: Accepted and active.
 

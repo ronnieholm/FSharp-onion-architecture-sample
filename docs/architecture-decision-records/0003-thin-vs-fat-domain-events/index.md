@@ -1,4 +1,4 @@
-# ADR003: Thin vs fat domain events
+# ADR0003: Thin vs fat domain events
 
 Status: Accepted and active.
 

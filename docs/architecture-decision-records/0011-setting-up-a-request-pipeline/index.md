@@ -1,4 +1,4 @@
-# ADR011: Setting up a request pipeline
+# ADR0011: Setting up a request pipeline
 
 Status: Accepted and active.
 

@@ -1,4 +1,4 @@
-# ADR006: Prefer OpenAPI design-first over Swagger
+# ADR0006: Prefer OpenAPI design-first over Swagger
 
 Status: Accepted and active.
 

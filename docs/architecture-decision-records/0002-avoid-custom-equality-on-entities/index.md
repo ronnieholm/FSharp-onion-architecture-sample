@@ -1,4 +1,4 @@
-# ADR002: Avoid custom equality on entities
+# ADR0002: Avoid custom equality on entities
 
 Status: Accepted and active.
 

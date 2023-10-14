@@ -14,6 +14,8 @@ make up the core.
 Where F# shines is in the core and `IntegrationTest.fs`. The shell is similar in
 nature to many C# applications.
 
+<img src="./docs/onion-architecture.png" width="550px" />
+
 The application has the following features:
 
 - REST API adhering to the [Zalando API
@@ -27,9 +29,8 @@ supporting role-based security.
 - Integration tests with the ability to fake any dependency.
 - Database migrations and initial data seeding.
 - ASP.NET health checks for memory and database.
-- [Architecture Decision
-  Records](https://cognitect.com/blog/2011/11/15/documenting-architecture-decisions)
-  under `docs/architecuture`.
+- Architecture decision
+  decords under `docs/architecture-decision-records`.
 
 The Scrum domain was chosen because it offers sufficient complexity and everyone
 is familiar with it, though most aspects of the application is illustrated with
@@ -43,11 +44,12 @@ That said, not every project requires an implementation of every concept from
 clean architecture and domain driven design. Those should be scaled up or down
 based on actual business complexity.
 
-## Building and testing
+## Getting started
 
 Running the tests or the web app creates the SQLite databases in the Git root as
 `scrum_web.sqlite` and `scrum_test.sqlite`.
 
+    $ dotnet tool restore
     $ dotnet build
     $ dotnet test
     $ dotnet run --project src/Scrum
@@ -94,4 +96,6 @@ curl https://localhost:5000/health --insecure | jq
 
 - [Implementing Domain-Driven Design by Vaughn Vernon](https://www.amazon.com/Implementing-Domain-Driven-Design-Vaughn-Vernon/dp/0321834577).
 - [Domain Modeling Made Functional: Tackle Software Complexity with Domain-Driven Design and F# by Scott Wlaschin](https://www.amazon.com/Domain-Modeling-Made-Functional-Domain-Driven/dp/1680502549).
-- [Jason Taylor's C# Clean Architecture Solution Template](https://github.com/jasontaylordev/CleanArchitecture).
+- [Jason Taylor's C# Clean Architecture Solution Template](https://github.com/jasontaylrdev/CleanArchitecture).
+- [Uncle Bob: Architecture the Lost Years](https://www.youtube.com/watch?v=WpkDN78P884).
+- [.NET Microservices: Architecture for Containerized .NET Applications](https://docs.microsoft.com/en-us/dotnet/architecture/microservices), specifically the chapter on [Tackling Business Complexity in a Microservice with DDD and CQRS Patterns](https://docs.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns).
