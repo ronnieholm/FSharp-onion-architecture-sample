@@ -720,7 +720,7 @@ module HealthCheck =
 
 open HealthCheck
 
-module Filters =
+module Filter =
     type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
         inherit ExceptionFilterAttribute()
 
@@ -743,7 +743,7 @@ module Filters =
                 context.HttpContext.Response.StatusCode <- code
                 context.Result <- JsonResult(ProblemDetail.create code message)
 
-open Filters
+open Filter
 
 type Startup(configuration: IConfiguration) =
     // This method gets called by the runtime. Use this method to add services
