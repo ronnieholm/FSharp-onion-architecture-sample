@@ -45,12 +45,7 @@ module Validation =
 
 open Validation
 
-module Shared =
-    // Even though core is presentation agnostic, we can be inspired by the
-    // Zalando API guidelines
-    // (https://opensource.zalando.com/restful-api-guidelines/#137), which
-    // states that querystring parameters for paging must be named limit and
-    // cursor.
+module Shared =    
     module Paging =
         type Limit = private Limit of int
 
@@ -81,16 +76,12 @@ module StoryAggregate =
         type TaskTitle = private TaskTitle of string
 
         module TaskTitle =
-            // If we defined operators >=> as Result.bind and <!> as
-            // Result.map, a short, point-free form would become:
-            // let create = String.notNullOrWhitespace >=> String.maxLength 100 <!> TaskTitle
-            // While short, it's harder to understand.
-            let create (v: string) : Result<TaskTitle, string> =
+            let create (v: string) : Result<TaskTitle, string> =               
                 v
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 100)
                 |> Result.map TaskTitle
-
+            
             let value (TaskTitle v) : string = v
 
         type TaskDescription = private TaskDescription of string
@@ -138,7 +129,7 @@ module StoryAggregate =
             |> Result.bind (String.maxLength 100)
             |> Result.map StoryTitle
 
-        let value (StoryTitle v) = v
+        let value (StoryTitle v) : string = v
 
     type StoryDescription = StoryDescription of string
 

@@ -12,10 +12,9 @@
 - Split runDecorator into a pipeline of functions (https://github.com/ronnieholm/Playground/tree/master/CSDecoratorPattern)
 - Add github build action (https://github.com/Zaid-Ajaj/pulumi-converter-bicep/blob/master/.github/workflows/test.yml)
 - Add estimate fields
-- Equivalent of EF mapping now in repository toDomain functions
-- Switch to >=> and <%> for validation
 - Consider removing select type annotations where type is obvious from context
 - Apply maximum limit from appsettings
 - Log user object together with request
 - Add WebExceptionFilter for unhalted exceptions
- 
+- Include fscheck tests (https://github.com/jet/equinox/blob/master/tests/Equinox.CosmosStore.Integration/AccessStrategies.fs)
+- SQL exist vs count: https://blog.devops.dev/the-difference-between-exists-and-count-0-in-sql-7f941c43255f

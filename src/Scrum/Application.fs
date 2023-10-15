@@ -142,6 +142,8 @@ module Seedwork =
 open Seedwork
 
 module SharedModels =
+    // Per Zalando API guidelines:
+    // https://opensource.zalando.com/restful-api-guidelines/#137)
     type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
 open SharedModels

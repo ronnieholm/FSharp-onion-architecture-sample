@@ -13,7 +13,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "docs", "docs", "{86A36D7C-0
 		TODO.md = TODO.md
 	EndProjectSection
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Scrum.Tests", "src\Scrum.Tests\Scrum.Tests.fsproj", "{3BEF83BF-F8C2-4FBC-918D-572B66F41E7B}"
+Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "Scrum.Tests", "tests\Scrum.Tests\Scrum.Tests.fsproj", "{FEE72511-A4C9-4C19-A8F5-47BA9550140A}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,16 +25,15 @@ Global
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{2DF0FF5A-4C1F-4921-84B4-EA65CCC09BE5} = {E7882B78-6A9C-43FC-A2BE-75A741CDBD88}
-		{3BEF83BF-F8C2-4FBC-918D-572B66F41E7B} = {E7882B78-6A9C-43FC-A2BE-75A741CDBD88}
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{2DF0FF5A-4C1F-4921-84B4-EA65CCC09BE5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{2DF0FF5A-4C1F-4921-84B4-EA65CCC09BE5}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2DF0FF5A-4C1F-4921-84B4-EA65CCC09BE5}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2DF0FF5A-4C1F-4921-84B4-EA65CCC09BE5}.Release|Any CPU.Build.0 = Release|Any CPU
-		{3BEF83BF-F8C2-4FBC-918D-572B66F41E7B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{3BEF83BF-F8C2-4FBC-918D-572B66F41E7B}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{3BEF83BF-F8C2-4FBC-918D-572B66F41E7B}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{3BEF83BF-F8C2-4FBC-918D-572B66F41E7B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FEE72511-A4C9-4C19-A8F5-47BA9550140A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FEE72511-A4C9-4C19-A8F5-47BA9550140A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FEE72511-A4C9-4C19-A8F5-47BA9550140A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FEE72511-A4C9-4C19-A8F5-47BA9550140A}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -8,8 +8,6 @@
 -- pragma foreign_keys = ON
 -- Or foreign key cascade delete has no effect.
 
--- Every script, except for the initial one, must be idempotent.
-
 create table stories
 (
     id          text primary key,
@@ -20,7 +18,6 @@ create table stories
     constraint stories_created_at_unique unique (created_at)
 ) strict;
 
--- For paging.
 create index stories_created_at_asc on stories (created_at asc);
 
 create table tasks
@@ -35,9 +32,7 @@ create table tasks
     constraint tasks_created_at_unique unique (created_at)
 ) strict;
 
--- For including entities with aggregate. 
 create index tasks_id_asc_story_id_asc_index on tasks (id asc, story_id asc);
--- For paging.
 create index tasks_created_at_asc on stories (created_at asc);
 
 create table domain_events
@@ -52,6 +47,4 @@ create table domain_events
 ) strict;
 
 create index domain_events_aggregate_id_asc_created_at_asc_index on domain_events (aggregate_id asc, created_at asc);
-
--- For paging.
 create index domain_events_created_at_asc on stories (created_at asc);
