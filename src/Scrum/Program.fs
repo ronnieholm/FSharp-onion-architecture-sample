@@ -8,6 +8,7 @@ open System.Diagnostics
 open System.IO
 open System.IO.Compression
 open System.IdentityModel.Tokens.Jwt
+open System.Net
 open System.Reflection
 open System.Security.Claims
 open System.Security.Cryptography
@@ -21,6 +22,7 @@ open Microsoft.AspNetCore.Builder
 open Microsoft.AspNetCore.Http
 open Microsoft.AspNetCore.Authentication.JwtBearer
 open Microsoft.AspNetCore.Mvc.Controllers
+open Microsoft.AspNetCore.Mvc.Filters
 open Microsoft.Extensions.Configuration
 open Microsoft.Extensions.Diagnostics.HealthChecks
 open Microsoft.Extensions.Hosting
@@ -103,10 +105,14 @@ module Seedwork =
     module ProblemDetail =
         let create status detail : ProblemDetail = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
+        let inferContentType (acceptHeaders: StringValues) : string =
+            let ok =
+                acceptHeaders.ToArray()
+                |> Array.exists (fun v -> v = "application/problem+json")
+            if ok then "application/problem+json" else "application/json"
+
         let toJsonResult (accept: StringValues) (error: ProblemDetail) : ActionResult =
-            let h = accept.ToArray() |> Array.exists (fun v -> v = "application/problem+json")
-            JsonResult(error, StatusCode = error.Status, ContentType = (if h then "application/problem+json" else "application/json"))
-            :> ActionResult
+            JsonResult(error, StatusCode = error.Status, ContentType = inferContentType accept) :> ActionResult
 
         let createJsonResult (accept: StringValues) (status: int) (detail: string) : ActionResult =
             create status detail |> toJsonResult accept
@@ -127,9 +133,6 @@ module Seedwork =
             (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
             |> JsonSerializer.Serialize
             |> createJsonResult accept StatusCodes.Status400BadRequest
-
-        let fromUncaughtException (accept: StringValues) : ActionResult =
-            createJsonResult accept StatusCodes.Status500InternalServerError "Internal server error"
 
 module Configuration =
     type JwtAuthenticationSettings() =
@@ -380,15 +383,6 @@ module Controller =
         let env = new AppEnv(connectionString, userIdentityService) :> IAppEnv
 
         member _.Env = env
-
-        [<NonAction>]
-        member x.HandleExceptionAsync (e: exn) (acceptHeaders: StringValues) (ct: CancellationToken) : Task<ActionResult> =
-            // TODO Move to global web exception handler
-            task {
-                x.Env.Logger.LogException(e)
-                do! x.Env.RollbackAsync(ct)
-                return ProblemDetail.fromUncaughtException acceptHeaders
-            }
 
         [<NonAction>]
         member x.UnexpectedQueryStringParameters(expectedParameters: string list) : string list =
@@ -726,6 +720,31 @@ module HealthCheck =
 
 open HealthCheck
 
+module Filters =
+    type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
+        inherit ExceptionFilterAttribute()
+
+        override _.OnException(context: ExceptionContext) : unit =
+            if hostEnvironment.IsDevelopment() then
+                ()
+            else
+                let traceId = context.HttpContext.TraceIdentifier
+                let activityId = Activity.Current.Id
+                let code, message =
+                    match context.Exception with
+                    // If needed, adjust HTTP status code and message based on
+                    // exception type.
+                    | :? InfrastructureException as _
+                    | :? WebException as _
+                    | _ -> HttpStatusCode.InternalServerError, $"Internal Server Error (ActivityId: {activityId}, TraceId: {traceId})"
+
+                let code = LanguagePrimitives.EnumToValue code
+                context.HttpContext.Response.ContentType <- ProblemDetail.inferContentType context.HttpContext.Request.Headers.Accept
+                context.HttpContext.Response.StatusCode <- code
+                context.Result <- JsonResult(ProblemDetail.create code message)
+
+open Filters
+
 type Startup(configuration: IConfiguration) =
     // This method gets called by the runtime. Use this method to add services
     // to the container. For more information on how to configure your
@@ -775,7 +794,9 @@ type Startup(configuration: IConfiguration) =
         services.AddHttpContextAccessor() |> ignore
 
         services
-            .AddMvc(fun options -> options.EnableEndpointRouting <- false)
+            .AddMvc(fun options ->
+                options.EnableEndpointRouting <- false
+                options.Filters.Add(typeof<WebExceptionFilterAttribute>) |> ignore)
             .ConfigureApplicationPartManager(fun pm -> pm.FeatureProviders.Add(ControllerWithinModule()))
             .AddJsonOptions(fun options ->
                 let o = options.JsonSerializerOptions

@@ -61,34 +61,34 @@ configuration.
 ```bash
 # Authentication (supported roles: member and/or admin)
 ## Post
-curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request post | jq
-curl https://localhost:5000/authentication/renew-token --insecure --request post -H "Authorization: Bearer <token>" | jq
-curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>" | jq
+curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request post
+curl https://localhost:5000/authentication/renew-token --insecure --request post -H "Authorization: Bearer <token>"
+curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>"
 
 # Stories
 ## Post
-curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title", "description": "description"}' | jq
-curl https://localhost:5000/stories/<storyId>/tasks --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}' | jq
+curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title", "description": "description"}'
+curl https://localhost:5000/stories/<storyId>/tasks --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
 
 ## Put
-curl https://localhost:5000/stories/<storyId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}' | jq
-curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}' | jq
+curl https://localhost:5000/stories/<storyId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
+curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
 
 ## Delete
-curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request delete -H 'Authorization: Bearer <token>' | jq
-curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>' | jq
+curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request delete -H 'Authorization: Bearer <token>'
+curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>'
 
 ## Get
-curl https://localhost:5000/stories/<storyId> --insecure -H 'Authorization: Bearer <token>' | jq
-curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>' | jq
+curl https://localhost:5000/stories/<storyId> --insecure -H 'Authorization: Bearer <token>'
+curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>'
 
 # PersistedDomainEvents
 ## Get
-curl https://localhost:5000/persisted-domain-events/<aggregateId> --insecure -H 'Authorization: Bearer <token>' | jq
+curl https://localhost:5000/persisted-domain-events/<aggregateId> --insecure -H 'Authorization: Bearer <token>'
 
 # Health
 ## Get
-curl https://localhost:5000/health --insecure | jq
+curl https://localhost:5000/health --insecure
 ```
 
 ## See also

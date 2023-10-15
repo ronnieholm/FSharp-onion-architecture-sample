@@ -21,9 +21,9 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 open Scrum.Application.Seedwork
 
 module Seedwork =
-    exception IntegrationException of string
+    exception InfrastructureException of string
 
-    let panic (s: string) : 't = raise (IntegrationException(s))
+    let panic (s: string) : 't = raise (InfrastructureException(s))
 
     module Json =
         type SnakeCaseLowerNamingPolicy() =
@@ -260,7 +260,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 use cmdLast = new SQLiteCommand(sqlLast, connection)
                 cmdLast.Parameters.AddWithValue("@cursor", cursor) |> ignore
                 let! last = cmdLast.ExecuteScalarAsync(ct)
-                let lastTicks = last :?> int64
+                // ExecuteScalarAsync returns null on zero rows returned.
+                let lastTicks = if last = null then 0L else last :?> int64
 
                 let sqlStories =
                     """
@@ -278,19 +279,22 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 let! stories = toDomainAsync ct reader
                 let stories = stories |> List.sortBy (fun s -> s.Aggregate.CreatedAt)
 
-                let lastInPageTicks = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
-                let cursor =
-                    if lastInPageTicks = lastTicks then
-                        None
-                    else
-                        lastInPageTicks
-                        |> string
-                        |> Encoding.UTF8.GetBytes
-                        |> Convert.ToBase64String
-                        |> Cursor.create
-                        |> panicOnError "base64"
-                        |> Some
-                return { Cursor = cursor; Items = stories }
+                if stories.Length = 0 then
+                    return { Cursor = None; Items = [] }
+                else
+                    let lastInPageTicks = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
+                    let cursor =
+                        if lastInPageTicks = lastTicks then
+                            None
+                        else
+                            lastInPageTicks
+                            |> string
+                            |> Encoding.UTF8.GetBytes
+                            |> Convert.ToBase64String
+                            |> Cursor.create
+                            |> panicOnError "base64"
+                            |> Some
+                    return { Cursor = cursor; Items = stories }
             }
 
         // Compared to event sourcing, we immediately apply events to the store.
