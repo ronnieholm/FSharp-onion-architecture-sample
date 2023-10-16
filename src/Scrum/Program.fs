@@ -670,6 +670,26 @@ module Controller =
                         | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
             }
 
+    [<Authorize; Route("[controller]")>]
+    type TestsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+        inherit ScrumController(configuration, httpContext)
+
+        [<HttpGet("introspect")>]
+        member x.Introspect() =
+            // API gateways and other proxies between the client and the
+            // service tag on extra information to the request. This endpoint
+            // allows a client to see what the request looked like from the
+            // server's point of view.
+            x.Request.Headers |> Seq.map (fun h -> KeyValuePair(h.Key, h.Value.ToString()))
+
+        [<HttpGet("current-time")>]
+        member _.GetCurrentTime() : DateTime =
+            // Useful for establishing baseline performance numbers and testing
+            // rate limits. Because this action doesn't perform significant
+            // work, it provides an upper bound for requests/second given a
+            // response time distribution.
+            DateTime.UtcNow
+
 module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
         let mb = 1024 * 2024
