@@ -124,8 +124,8 @@ module Seedwork =
                 |> Int64.Parse
             | None -> 0
 
-        let offsetToCursor (localOffset: int64) (globalOffset: int64) : Cursor option =
-            if localOffset = globalOffset then
+        let offsetToCursor (globalOffset: int64) (localOffset: int64) : Cursor option =
+            if globalOffset = localOffset then
                 None
             else
                 localOffset
