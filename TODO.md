@@ -1,6 +1,5 @@
 # TODO
 
-- Create pagable get-domain-event.
 - Log user object together with request
 - Make logs appear in the console.
 - Add k6 load script

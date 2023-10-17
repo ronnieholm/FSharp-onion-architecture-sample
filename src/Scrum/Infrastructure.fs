@@ -153,8 +153,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             (Option.ofDBNull r["t_description"]
              |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
             (parseCreatedAt r["t_created_at"])
-            (parseUpdatedAt r["t_updated_at"]))   
-    
+            (parseUpdatedAt r["t_updated_at"]))
+
     let storyToDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
@@ -192,7 +192,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 let story, _ =
                     // TODO: What to do if we have additional fields beyond basic story details?
                     //       For any entity, we should probably not any "create" function to
-                    //       restore it. But how to check invariants otherwise?  
+                    //       restore it. But how to check invariants otherwise?
                     (StoryAggregate.captureBasicStoryDetails
                         storyId
                         (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
@@ -247,12 +247,12 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 // For queries involving multiple tables, ADO.NET requires aliasing
                 // fields for those to be extractable through the reader.
                 let sql =
-                    """
+                    "
                     select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                            t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                     from stories s
                     left join tasks t on s.id = t.story_id
-                    where s.id = @id"""
+                    where s.id = @id"
                 use cmd = new SQLiteCommand(sql, connection)
                 cmd.Parameters.AddWithValue("@id", StoryId.value id |> string) |> ignore
 
@@ -276,20 +276,19 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             task {
                 let sqlLast = "select created_at from stories order by created_at desc limit 1"
                 use cmdLast = new SQLiteCommand(sqlLast, connection)
-                cmdLast.Parameters.AddWithValue("@cursor", cursor) |> ignore
                 let! last = cmdLast.ExecuteScalarAsync(ct)
                 // ExecuteScalarAsync returns null on zero rows returned.
                 let lastTicks = if last = null then 0L else last :?> int64
 
                 let sqlStories =
-                    """
+                    "
                     select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                            t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                     from stories s
                     left join tasks t on s.id = t.story_id
                     where s.created_at > @cursor
                     order by s.created_at
-                    limit @limit"""
+                    limit @limit"
                 use cmd = new SQLiteCommand(sqlStories, connection)
                 let cursor = cursorToOffset cursor
                 cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
@@ -402,13 +401,31 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
     let connection = transaction.Connection
 
     interface IDomainEventRepository with
-        member _.GetByAggregateIdAsync (ct: CancellationToken) (aggregateId: Guid) : Task<PersistedDomainEvent list> =
-            let sql =
-                "select id, aggregate_id, aggregate_type, event_type, event_payload, created_at from domain_events where aggregate_id = @aggregateId order by created_at"
-            use cmd = new SQLiteCommand(sql, connection, transaction)
-            cmd.Parameters.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
-
+        member _.GetByAggregateIdAsync
+            (ct: CancellationToken)
+            (aggregateId: Guid)
+            (limit: Limit)
+            (cursor: Cursor option)
+            : Task<Paged<PersistedDomainEvent>> =
             task {
+                let sqlLast =
+                    "select created_at from domain_events order by created_at desc limit 1"
+                use cmdLast = new SQLiteCommand(sqlLast, connection)
+                let! last = cmdLast.ExecuteScalarAsync(ct)
+                let lastTicks = if last = null then 0L else last :?> int64
+
+                let sql =
+                    "select id, aggregate_id, aggregate_type, event_type, event_payload, created_at
+                     from domain_events
+                     where aggregate_id = @aggregateId
+                     and created_at > @cursor
+                     order by created_at
+                     limit @limit"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let cursor = cursorToOffset cursor
+                cmd.Parameters.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
+                cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
+                cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
                 let! r = cmd.ExecuteReaderAsync(ct)
                 let mutable keepGoing = true
                 let events = ResizeArray<PersistedDomainEvent>()
@@ -426,7 +443,12 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                         events.Add(e)
                     | false -> keepGoing <- false
 
-                return events |> Seq.toList
+                if events.Count = 0 then
+                    return { Cursor = None; Items = [] }
+                else
+                    let lastInPageTicks = events[events.Count - 1].CreatedAt.Ticks
+                    let cursor = offsetToCursor lastTicks lastInPageTicks
+                    return { Cursor = cursor; Items = events |> Seq.toList }
             }
 
 type Logger() =

@@ -239,13 +239,13 @@ module Service =
 
     type DatabaseMigrator(logger: IScrumLogger, connectionString: string) =
         let createMigrationsSql =
-            """
+            "
             create table migrations(
                 name text primary key,
                 hash text not null,
                 sql text not null,
                 created_at integer not null
-            ) strict;"""
+            ) strict;"
 
         let getAvailableScripts () : AvailableScript array =
             let hasher = SHA1.Create()
@@ -657,17 +657,21 @@ module Controller =
         inherit ScrumController(configuration, httpContext)
 
         [<HttpGet("{id}")>]
-        member x.GetPersistedDomainEvents(id: Guid, ct: CancellationToken) : Task<ActionResult> =
+        member x.GetPersistedDomainEvents(limit: int, cursor: string, id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let accept = x.Request.Headers.Accept
-                let! result = GetByAggregateIdQuery.runAsync x.Env ct { Id = id }
-                return
-                    match result with
-                    | Ok s -> OkObjectResult(s) :> ActionResult
-                    | Error e ->
-                        match e with
-                        | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
+                if List.length unexpected > 0 then
+                    return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
+                else
+                    let! result = GetByAggregateIdQuery.runAsync x.Env ct { Id = id; Limit = limit; Cursor = cursor |> Option.ofObj }
+                    return
+                        match result with
+                        | Ok s -> OkObjectResult(s) :> ActionResult
+                        | Error e ->
+                            match e with
+                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
+                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
             }
 
     [<Authorize; Route("[controller]")>]

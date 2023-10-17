@@ -408,33 +408,47 @@ type DomainEventRequestTests() =
             let storyFns = env |> setupStoryAggregateRequests
 
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = storyFns.CaptureBasicStoryDetails storyCmd
+            let! result = storyFns.CaptureBasicStoryDetails storyCmd
+            test <@ result = Ok storyCmd.Id @>
+            for i = 1 to 13 do
+                let taskCmd =
+                    { A.addBasicTaskDetailsToStoryCommand () with
+                        StoryId = storyCmd.Id
+                        Title = $"Title {i}" }
+                let! result = storyFns.AddBasicTaskDetailsToStory taskCmd
+                test <@ result = Ok taskCmd.TaskId @>
+
             do! storyFns.Commit()
 
             // This could be another user making a request.
             use env = defaultAppEnv ()
-            let storyFns = env |> setupStoryAggregateRequests
             let domainFns = env |> setupDomainEventRequests
 
-            let taskCmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = storyCmd.Id }
-            let! _ = storyFns.AddBasicTaskDetailsToStory taskCmd
-            let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
-
-            match result with
-            | Ok r ->
-                Assert.Equal(2, r.Length)
-                Assert.Equal(storyCmd.Id, r[0].AggregateId)
-                Assert.Equal("Story", r[0].AggregateType)
-                Assert.Equal(nameof BasicStoryDetailsCaptured, r[0].EventType)
-
-                Assert.Equal(storyCmd.Id, r[1].AggregateId)
-                Assert.Equal("Story", r[1].AggregateType)
-                Assert.Equal(nameof BasicTaskDetailsAddedToStory, r[1].EventType)
-
-                Assert.True(r[0].CreatedAt < r[1].CreatedAt)
-            | Error e -> Assert.Fail($"%A{e}")
-
-            do! storyFns.Commit()
+            let! page1 = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id; Limit = 5; Cursor = None }
+            match page1 with
+            | Ok page1 ->
+                Assert.Equal(5, page1.Items.Length)
+                let! page2 = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor }
+                match page2 with
+                | Ok page2 ->
+                    Assert.Equal(5, page2.Items.Length)
+                    let! page3 = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor }
+                    match page3 with
+                    | Ok page3 ->
+                        Assert.Equal(4, page3.Items.Length)
+                        let events = List.concat [ page1.Items; page2.Items; page3.Items ]
+                        Assert.Equal(14, events |> List.map (fun e -> e.CreatedAt) |> List.distinct |> List.length)
+                        Assert.Equal(storyCmd.Id, (events |> List.map (fun e -> e.AggregateId) |> List.distinct |> List.exactlyOne))
+                        Assert.Equal(
+                            "Story",
+                            (events
+                             |> List.map (fun e -> e.AggregateType)
+                             |> List.distinct
+                             |> List.exactlyOne)
+                        )
+                    | Error _ -> Assert.Fail("Expected page 3")
+                | Error _ -> Assert.Fail("Expected page 2")
+            | Error _ -> Assert.Fail("Expected page 1")
         }
 
     [<Fact>]
@@ -448,6 +462,6 @@ type DomainEventRequestTests() =
             let! _ = storyFns.CaptureBasicStoryDetails storyCmd
             let taskCmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = storyCmd.Id }
             let! _ = storyFns.AddBasicTaskDetailsToStory taskCmd
-            let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id }
+            let! result = domainFns.GetByAggregateIdQuery { Id = storyCmd.Id; Limit = 5; Cursor = None }
             test <@ result = Error(GetByAggregateIdQuery.AuthorizationError("Missing role 'admin'")) @>
         }

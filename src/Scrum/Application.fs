@@ -5,6 +5,7 @@ open System.Diagnostics
 open System.Threading
 open FsToolkit.ErrorHandling
 open Scrum.Domain
+open Scrum.Domain.Shared.Paging
 open Scrum.Domain.StoryAggregate
 open Scrum.Domain.StoryAggregate.TaskEntity
 
@@ -97,7 +98,8 @@ module Seedwork =
     // domain, persisted domain events aren't. After an event is processed, it's
     // no longer needed. We persist domain events for troubleshooting only.
     type IDomainEventRepository =
-        abstract GetByAggregateIdAsync: CancellationToken -> Guid -> System.Threading.Tasks.Task<PersistedDomainEvent list>
+        abstract GetByAggregateIdAsync:
+            CancellationToken -> Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
 
     [<Interface>]
     type IDomainEventRepositoryFactory =
@@ -509,14 +511,14 @@ module StoryAggregateRequest =
     // a release backlog, or a sprint backlog, but we don't support organizing
     // stories into a backlog. For a backlog, it would likely only contain
     // StoryIds. Then either the client would lookup storyIds one by one or
-    // submit a batch request for StoryIds, returned as pages.  
+    // submit a batch request for StoryIds.
     //
     // In the same vain, GetStoryTasksPagedQuery wouldn't make much business
     // sense. Tasks are cheap to include with stories, so best keep number of
     // queries to a minimum.
     type GetStoriesPagedQuery = { Limit: int; Cursor: string option }
 
-    module GetStoriesPagedQuery =        
+    module GetStoriesPagedQuery =
         type GetStoriesPagedValidatedQuery = { Limit: Limit; Cursor: Cursor option }
 
         let validate (q: GetStoriesPagedQuery) : Validation<GetStoriesPagedValidatedQuery, ValidationError> =
@@ -553,16 +555,20 @@ module StoryAggregateRequest =
             runWithDecoratorAsync env.Logger (nameof GetStoriesPagedQuery) qry aux
 
 module DomainEventRequest =
-    type GetByAggregateIdQuery = { Id: Guid }
+    type GetByAggregateIdQuery = { Id: Guid; Limit: int; Cursor: string option }
 
     module GetByAggregateIdQuery =
-        type GetByAggregateIdValidatedQuery = { Id: Guid }
+        type GetByAggregateIdValidatedQuery = { Id: Guid; Limit: Limit; Cursor: Cursor option }
 
         let validate (q: GetByAggregateIdQuery) : Validation<GetByAggregateIdValidatedQuery, ValidationError> =
             validation {
-                let validatedId = if q.Id = Guid.Empty then Error "Should be non-empty" else Ok q.Id
-                let! id = validatedId |> ValidationError.mapError (nameof q.Id)
-                return { Id = id }
+                let! id = Validation.Guid.notEmpty q.Id |> ValidationError.mapError (nameof q.Id)
+                and! limit = Limit.create q.Limit |> ValidationError.mapError (nameof q.Limit)
+                and! cursor =
+                    match q.Cursor with
+                    | Some c -> Cursor.create c |> ValidationError.mapError (nameof q.Cursor) |> Result.map Some
+                    | None -> Ok None
+                return { Id = id; Limit = limit; Cursor = cursor }
             }
 
         type PersistedDomainEventDto =
@@ -590,13 +596,15 @@ module DomainEventRequest =
             (env: IAppEnv)
             (ct: CancellationToken)
             (qry: GetByAggregateIdQuery)
-            : TaskResult<PersistedDomainEventDto list, GetStoryEventsByIdError> =
+            : TaskResult<PagedDto<PersistedDomainEventDto>, GetStoryEventsByIdError> =
             let aux () =
                 taskResult {
                     do! isInRole env.Identity Admin |> Result.mapError AuthorizationError
                     let! qry = validate qry |> Result.mapError ValidationErrors
-                    let! events = env.DomainEvents.GetByAggregateIdAsync ct qry.Id
-                    return events |> List.map PersistedDomainEventDto.from
+                    let! events = env.DomainEvents.GetByAggregateIdAsync ct qry.Id qry.Limit qry.Cursor
+                    return
+                        { PagedDto.Cursor = events.Cursor |> Option.map Cursor.value
+                          Items = events.Items |> List.map PersistedDomainEventDto.from }
                 }
 
             runWithDecoratorAsync env.Logger (nameof GetByAggregateIdQuery) qry aux
