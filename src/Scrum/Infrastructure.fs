@@ -116,6 +116,26 @@ module Seedwork =
                 return aggregateId
             }
 
+        let cursorToOffset (cursor: Cursor option) : int64 =
+            match cursor with
+            | Some c ->
+                Convert.FromBase64String(Cursor.value c)
+                |> Encoding.UTF8.GetString
+                |> Int64.Parse
+            | None -> 0
+
+        let offsetToCursor (localOffset: int64) (globalOffset: int64) : Cursor option =
+            if localOffset = globalOffset then
+                None
+            else
+                localOffset
+                |> string
+                |> Encoding.UTF8.GetBytes
+                |> Convert.ToBase64String
+                |> Cursor.create
+                |> panicOnError "base64"
+                |> Some
+
 open Seedwork
 open Seedwork.Repository
 
@@ -248,14 +268,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
 
         member _.GetStoriesPagedAsync (ct: CancellationToken) (limit: Limit) (cursor: Cursor option) : Task<Paged<Story>> =
             task {
-                let cursor =
-                    match cursor with
-                    | Some c ->
-                        Convert.FromBase64String(Cursor.value c)
-                        |> Encoding.UTF8.GetString
-                        |> Int64.Parse
-                    | None -> 0
-
                 let sqlLast = "select created_at from stories order by created_at desc limit 1"
                 use cmdLast = new SQLiteCommand(sqlLast, connection)
                 cmdLast.Parameters.AddWithValue("@cursor", cursor) |> ignore
@@ -273,6 +285,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                     order by s.created_at
                     limit @limit"""
                 use cmd = new SQLiteCommand(sqlStories, connection)
+                let cursor = cursorToOffset cursor
                 cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
                 cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
                 let! reader = cmd.ExecuteReaderAsync(ct)
@@ -283,18 +296,41 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                     return { Cursor = None; Items = [] }
                 else
                     let lastInPageTicks = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
-                    let cursor =
-                        if lastInPageTicks = lastTicks then
-                            None
-                        else
-                            lastInPageTicks
-                            |> string
-                            |> Encoding.UTF8.GetBytes
-                            |> Convert.ToBase64String
-                            |> Cursor.create
-                            |> panicOnError "base64"
-                            |> Some
+                    let cursor = offsetToCursor lastTicks lastInPageTicks
                     return { Cursor = cursor; Items = stories }
+            }
+
+        member x.GetStoryTasksPagedAsync (ct: CancellationToken) (id: StoryId) (limit: Limit) (cursor: Cursor option) : Task<Paged<Task>> =
+            task {
+                let sqlLast =
+                    "select created_at from tasks where story_id = @storyId order by created_at desc limit 1"
+                let cmdLast = new SQLiteCommand(sqlLast, connection)
+                cmdLast.Parameters.AddWithValue("@storyId", StoryId.value id) |> ignore
+                let! last = cmdLast.ExecuteScalarAsync(ct)
+                let lastTicks = if last = null then 0L else last :?> int64
+
+                let sqlTasks =
+                    """
+                    select t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
+                    from tasks t 
+                    where t.created_at > @cursor
+                    order by t.created_at
+                    limit @limit"""
+                use cmd = new SQLiteCommand(sqlTasks, connection)
+                let cursor = cursorToOffset cursor
+                cmd.Parameters.AddWithValue("@storyId", StoryId.value id) |> ignore
+                cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
+                cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
+                let! reader = cmd.ExecuteReaderAsync(ct)
+                let tasks: Task list = []
+                let tasks = tasks |> List.sortBy (fun s -> s.Entity.CreatedAt)
+
+                if tasks.Length = 0 then
+                    return { Cursor = None; Items = [] }
+                else
+                    let lastInPageTicks = tasks[tasks.Length - 1].Entity.CreatedAt.Ticks
+                    let cursor = offsetToCursor lastTicks lastInPageTicks
+                    return { Cursor = cursor; Items = tasks }
             }
 
         // Compared to event sourcing, we immediately apply events to the store.

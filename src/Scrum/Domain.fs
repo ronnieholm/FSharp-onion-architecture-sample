@@ -315,6 +315,7 @@ module StoryAggregate =
         abstract ExistAsync: CancellationToken -> StoryId -> Task<bool>
         abstract GetByIdAsync: CancellationToken -> StoryId -> Task<Story option>
         abstract GetStoriesPagedAsync: CancellationToken -> Limit -> Cursor option -> Task<Paged<Story>>
+        abstract GetStoryTasksPagedAsync: CancellationToken -> StoryId -> Limit -> Cursor option -> Task<Paged<Task>>
         abstract ApplyEventAsync: CancellationToken -> StoryDomainEvent -> Task<unit>
 
 module DomainService =
