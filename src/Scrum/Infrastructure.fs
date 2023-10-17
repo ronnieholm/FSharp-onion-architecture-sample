@@ -146,45 +146,48 @@ type SystemClock() =
 type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
     let connection = transaction.Connection
 
-    let toDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
+    let taskToDomain (storyIdToTask: Dictionary<StoryId, Dictionary<TaskId, Task>>) (r: DbDataReader) : unit =
+        let parseTaskInner id =
+            (TaskEntity.create
+                id
+                (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+                (Option.ofDBNull r["t_description"]
+                 |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
+                (parseCreatedAt r["t_created_at"])
+                (parseUpdatedAt r["t_updated_at"]))
+
+        let taskId = r["t_id"]
+        let storyId = r["t_story_id"]
+        if taskId <> DBNull.Value then
+            let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
+            let storyId = storyId |> string |> Guid |> StoryId.create |> panicOnError "t_story_id"
+            let ok, tasks = storyIdToTask.TryGetValue(storyId)
+            if not ok then
+                let tasks = Dictionary<TaskId, Task>()
+                let task = parseTaskInner taskId
+                tasks.Add(taskId, task)
+                storyIdToTask.Add(storyId, tasks)
+            else
+                let ok, _ = tasks.TryGetValue(taskId)
+                if not ok then
+                    let task = parseTaskInner taskId
+                    tasks.Add(taskId, task)        
+    
+    let storyToDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
-        // for details on the flat table to tree deserialization algorithm.
-        let idTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
-        let toDomainTask (r: DbDataReader) (storyId: StoryId) : unit =
-            let parseTaskInner id =
-                (TaskEntity.create
-                    id
-                    (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
-                    (Option.ofDBNull r["t_description"]
-                     |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
-                    (parseCreatedAt r["t_created_at"])
-                    (parseUpdatedAt r["t_updated_at"]))
-
-            let taskId = r["t_id"]
-            if taskId <> DBNull.Value then
-                let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
-                let ok, tasks = idTasks.TryGetValue(storyId)
-                if not ok then
-                    let tasks = Dictionary<TaskId, Task>()
-                    let task = parseTaskInner taskId
-                    tasks.Add(taskId, task)
-                    idTasks.Add(storyId, tasks)
-                else
-                    let ok, _ = tasks.TryGetValue(taskId)
-                    if not ok then
-                        let task = parseTaskInner taskId
-                        tasks.Add(taskId, task)
-
+        // for details on the flat table to tree deserialization algorithm.        
+        
         // Dictionary doesn't maintain insertion order, so when an SQL query
         // contains an "order by" clause, the dictionary will mess up ordering.
         // The caller of toDomainAsync therefore must perform a second sort. An
         // alternative would be to switch to a combination of Dictionary and
         // ResizeArray (for storing read order).
-        let idStories = Dictionary<StoryId, Story>()
+        let storyIdToTask = Dictionary<StoryId, Dictionary<TaskId, Task>>()
+        let storyIdStories = Dictionary<StoryId, Story>()
         let toDomain (r: DbDataReader) : unit =
             let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
-            let ok, _ = idStories.TryGetValue(storyId)
+            let ok, _ = storyIdStories.TryGetValue(storyId)
             if not ok then
                 let story, _ =
                     (StoryAggregate.captureBasicStoryDetails
@@ -197,8 +200,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         (parseUpdatedAt r["s_updated_at"]))
                     |> panicOnError "story"
 
-                idStories.Add(storyId, story)
-            toDomainTask r storyId
+                storyIdStories.Add(storyId, story)
+            taskToDomain storyIdToTask r
 
         task {
             // F# 8, to be released late Nov 14, 2023, will add while!
@@ -212,13 +215,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 | false -> keepGoing <- false
 
             let stories =
-                idStories.Values
+                storyIdStories.Values
                 |> Seq.toList
                 |> List.map (fun story ->
-                    let ok, tasks = idTasks.TryGetValue(story.Aggregate.Id)
+                    let ok, tasks = storyIdToTask.TryGetValue(story.Aggregate.Id)
                     { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
 
-            // TODO: PERF: Return ResizeArray from the function.
+            // TODO: PERF: maintain original order in a ResizeArray.
             return stories
         }
 
@@ -257,7 +260,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 // ExecuteReaderAsync to illustrate how to work with a
                 // client/server database.
                 let! reader = cmd.ExecuteReaderAsync(ct)
-                let! stories = toDomainAsync ct reader
+                let! stories = storyToDomainAsync ct reader
                 return
                     (let count = stories |> List.length
                      match count with
@@ -289,7 +292,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
                 cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
                 let! reader = cmd.ExecuteReaderAsync(ct)
-                let! stories = toDomainAsync ct reader
+                let! stories = storyToDomainAsync ct reader
                 let stories = stories |> List.sortBy (fun s -> s.Aggregate.CreatedAt)
 
                 if stories.Length = 0 then
