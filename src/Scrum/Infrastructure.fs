@@ -109,7 +109,7 @@ module Seedwork =
                 assert (count = 1)
             }
 
-        let executeNonQuery (aggregateId: Guid) (cmd: SQLiteCommand) (ct: CancellationToken) : Task<Guid> =
+        let applyEventExecuteNonQuery (aggregateId: Guid) (cmd: SQLiteCommand) (ct: CancellationToken) : Task<Guid> =
             task {
                 let! count = cmd.ExecuteNonQueryAsync(ct)
                 assert (count = 1)
@@ -327,7 +327,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
-                        executeNonQuery storyId cmd ct
+                        applyEventExecuteNonQuery storyId cmd ct
                     | BasicStoryDetailsRevised e ->
                         let sql =
                             "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
@@ -339,13 +339,13 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         |> ignore
                         p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", storyId |> string) |> ignore
-                        executeNonQuery storyId cmd ct
+                        applyEventExecuteNonQuery storyId cmd ct
                     | StoryRemoved e ->
                         let sql = "delete from stories where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
-                        executeNonQuery storyId cmd ct
+                        applyEventExecuteNonQuery storyId cmd ct
                     | BasicTaskDetailsAddedToStory e ->
                         let sql =
                             "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
@@ -358,7 +358,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                         |> ignore
                         p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
-                        executeNonQuery storyId cmd ct
+                        applyEventExecuteNonQuery storyId cmd ct
                     | BasicTaskDetailsRevised e ->
                         let sql =
                             "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
@@ -371,7 +371,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
-                        executeNonQuery storyId cmd ct
+                        applyEventExecuteNonQuery storyId cmd ct
                     | TaskRemoved e ->
                         let sql = "delete from tasks where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -379,7 +379,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         let storyId = e.StoryId |> StoryId.value
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
-                        executeNonQuery storyId cmd ct
+                        applyEventExecuteNonQuery storyId cmd ct
 
                 // We don't serialize an event to JSON because F# discriminated
                 // unions aren't supported by System.Text.Json
