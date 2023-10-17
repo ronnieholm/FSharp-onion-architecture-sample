@@ -133,7 +133,7 @@ module Seedwork =
                 |> Int64.Parse
             | None -> 0
 
-        let offsetToCursor (globalOffset: int64) (localOffset: int64) : Cursor option =
+        let offsetsToCursor (globalOffset: int64) (localOffset: int64) : Cursor option =
             if globalOffset = localOffset then
                 None
             else
@@ -155,19 +155,19 @@ type SystemClock() =
 type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
     let connection = transaction.Connection
 
-    let parseTaskFields (r: DbDataReader) =
-        (TaskEntity.create
-            (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
-            (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
-            (Option.ofDBNull r["t_description"]
-             |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
-            (parseCreatedAt r["t_created_at"])
-            (parseUpdatedAt r["t_updated_at"]))
-
     let storyToDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
         // for details on the flat table to tree deserialization algorithm.
+        let parseTaskFields (r: DbDataReader) : Task =
+            (TaskEntity.create
+                (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
+                (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+                (Option.ofDBNull r["t_description"]
+                 |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
+                (parseCreatedAt r["t_created_at"])
+                (parseUpdatedAt r["t_updated_at"]))
+
         let storyIdToTask = Dictionary<StoryId, Dictionary<TaskId, Task>>()
         let taskToDomain () : unit =
             let taskId = r["t_id"]
@@ -305,7 +305,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 else
                     let pageEndOffset = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
                     let! globalEndOffset = getLargestCreatedAtAsync "stories" connection ct
-                    let cursor = offsetToCursor globalEndOffset pageEndOffset
+                    let cursor = offsetsToCursor globalEndOffset pageEndOffset
                     return { Cursor = cursor; Items = stories }
             }
 
@@ -446,7 +446,7 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                 else
                     let pageEndOffset = events[events.Count - 1].CreatedAt.Ticks
                     let! globalEndOffset = getLargestCreatedAtAsync "domain_events" connection ct
-                    let cursor = offsetToCursor globalEndOffset pageEndOffset
+                    let cursor = offsetsToCursor globalEndOffset pageEndOffset
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }
 
