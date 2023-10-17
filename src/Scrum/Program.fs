@@ -652,26 +652,6 @@ module Controller =
                             | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
             }
 
-        [<HttpGet("{storyId}/tasks")>]
-        member x.GetStoryTasksPaged(storyId: Guid, limit: int, cursor: string, ct: CancellationToken) = //: Task<ActionResult> =
-            task {
-                let accept = x.Request.Headers.Accept
-                let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
-                if List.length unexpected > 0 then
-                    return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
-                else
-                    let! result = GetStoryTasksPagedQuery.runAsync x.Env ct { StoryId = storyId; Limit = limit; Cursor = cursor |> Option.ofObj }
-                    return                    
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetStoryTasksPagedQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                            | GetStoryTasksPagedQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                            | GetStoryTasksPagedQuery.StoryNotFound id ->
-                                ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-            }
-
     [<Authorize; Route("persisted-domain-events")>]
     type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
         inherit ScrumController(configuration, httpContext)

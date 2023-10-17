@@ -504,9 +504,13 @@ module StoryAggregateRequest =
 
     open Shared.Paging
 
+    // Query included to illustrate paging. In practice, we wouldn't query
+    // every story unless we're exporting every story. Instead, queries would
+    // be for stories in a product backlog, a release backlog, or a sprint
+    // backlog, but we don't support organizing stories into a backlog.    
     type GetStoriesPagedQuery = { Limit: int; Cursor: string option }
 
-    module GetStoriesPagedQuery =
+    module GetStoriesPagedQuery =        
         type GetStoriesPagedValidatedQuery = { Limit: Limit; Cursor: Cursor option }
 
         let validate (q: GetStoriesPagedQuery) : Validation<GetStoriesPagedValidatedQuery, ValidationError> =
@@ -541,47 +545,6 @@ module StoryAggregateRequest =
                 }
 
             runWithDecoratorAsync env.Logger (nameof GetStoriesPagedQuery) qry aux
-
-    type GetStoryTasksPagedQuery = { StoryId: Guid; Limit: int; Cursor: string option }
-
-    module GetStoryTasksPagedQuery =
-        type GetStoryTasksPagedValidatedQuery = { StoryId: StoryId; Limit: Limit; Cursor: Cursor option }
-
-        let validate (q: GetStoryTasksPagedQuery) : Validation<GetStoryTasksPagedValidatedQuery, ValidationError> =
-            validation {
-                let! storyId = StoryId.create q.StoryId |> ValidationError.mapError (nameof q.StoryId)
-                and! limit = Limit.create q.Limit |> ValidationError.mapError (nameof q.Limit)
-                and! cursor =
-                    match q.Cursor with
-                    | Some c -> Cursor.create c |> ValidationError.mapError (nameof q.Cursor) |> Result.map Some
-                    | None -> Ok None
-                return { StoryId = storyId; Limit = limit; Cursor = cursor }
-            }
-
-        type GetStoryTasksPagedError =
-            | AuthorizationError of string
-            | ValidationErrors of ValidationError list
-            | StoryNotFound of Guid
-
-        let runAsync
-            (env: IAppEnv)
-            (ct: CancellationToken)
-            (qry: GetStoryTasksPagedQuery)
-            : TaskResult<PagedDto<TaskDto>, GetStoryTasksPagedError> =
-            let aux () =
-                taskResult {
-                    do! isInRole env.Identity Member |> Result.mapError AuthorizationError
-                    let! qry = validate qry |> Result.mapError ValidationErrors
-                    do!
-                        env.Stories.ExistAsync ct qry.StoryId
-                        |> TaskResult.requireFalse (StoryNotFound(StoryId.value qry.StoryId))
-                    let! tasks = env.Stories.GetStoryTasksPagedAsync ct qry.StoryId qry.Limit qry.Cursor
-                    return
-                        { PagedDto.Cursor = tasks.Cursor |> Option.map Cursor.value
-                          Items = tasks.Items |> List.map TaskDto.from }
-                }
-
-            runWithDecoratorAsync env.Logger (nameof GetStoryTasksPagedQuery) qry aux
 
 module DomainEventRequest =
     type GetByAggregateIdQuery = { Id: Guid }

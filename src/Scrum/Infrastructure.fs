@@ -146,50 +146,53 @@ type SystemClock() =
 type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
     let connection = transaction.Connection
 
-    let taskToDomain (storyIdToTask: Dictionary<StoryId, Dictionary<TaskId, Task>>) (r: DbDataReader) : unit =
-        let parseTaskInner id =
-            (TaskEntity.create
-                id
-                (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
-                (Option.ofDBNull r["t_description"]
-                 |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
-                (parseCreatedAt r["t_created_at"])
-                (parseUpdatedAt r["t_updated_at"]))
-
-        let taskId = r["t_id"]
-        let storyId = r["t_story_id"]
-        if taskId <> DBNull.Value then
-            let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
-            let storyId = storyId |> string |> Guid |> StoryId.create |> panicOnError "t_story_id"
-            let ok, tasks = storyIdToTask.TryGetValue(storyId)
-            if not ok then
-                let tasks = Dictionary<TaskId, Task>()
-                let task = parseTaskInner taskId
-                tasks.Add(taskId, task)
-                storyIdToTask.Add(storyId, tasks)
-            else
-                let ok, _ = tasks.TryGetValue(taskId)
-                if not ok then
-                    let task = parseTaskInner taskId
-                    tasks.Add(taskId, task)        
+    let parseTaskFields (r: DbDataReader) =
+        (TaskEntity.create
+            (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
+            (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+            (Option.ofDBNull r["t_description"]
+             |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
+            (parseCreatedAt r["t_created_at"])
+            (parseUpdatedAt r["t_updated_at"]))   
     
     let storyToDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
-        // for details on the flat table to tree deserialization algorithm.        
-        
+        // for details on the flat table to tree deserialization algorithm.
+        let storyIdToTask = Dictionary<StoryId, Dictionary<TaskId, Task>>()
+        let taskToDomain () : unit =
+            let taskId = r["t_id"]
+            let storyId = r["t_story_id"]
+            if taskId <> DBNull.Value then
+                let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
+                let storyId =
+                    storyId |> string |> Guid |> StoryId.create |> panicOnError "t_story_id"
+                let ok, tasks = storyIdToTask.TryGetValue(storyId)
+                if not ok then
+                    let tasks = Dictionary<TaskId, Task>()
+                    let task = parseTaskFields r
+                    tasks.Add(taskId, task)
+                    storyIdToTask.Add(storyId, tasks)
+                else
+                    let ok, _ = tasks.TryGetValue(taskId)
+                    if not ok then
+                        let task = parseTaskFields r
+                        tasks.Add(taskId, task)
+
         // Dictionary doesn't maintain insertion order, so when an SQL query
         // contains an "order by" clause, the dictionary will mess up ordering.
         // The caller of toDomainAsync therefore must perform a second sort. An
         // alternative would be to switch to a combination of Dictionary and
         // ResizeArray (for storing read order).
-        let storyIdToTask = Dictionary<StoryId, Dictionary<TaskId, Task>>()
         let storyIdStories = Dictionary<StoryId, Story>()
         let toDomain (r: DbDataReader) : unit =
             let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
             let ok, _ = storyIdStories.TryGetValue(storyId)
             if not ok then
                 let story, _ =
+                    // TODO: What to do if we have additional fields beyond basic story details?
+                    //       For any entity, we should probably not any "create" function to
+                    //       restore it. But how to check invariants otherwise?  
                     (StoryAggregate.captureBasicStoryDetails
                         storyId
                         (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
@@ -201,7 +204,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                     |> panicOnError "story"
 
                 storyIdStories.Add(storyId, story)
-            taskToDomain storyIdToTask r
+            taskToDomain ()
 
         task {
             // F# 8, to be released late Nov 14, 2023, will add while!
@@ -301,39 +304,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                     let lastInPageTicks = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
                     let cursor = offsetToCursor lastTicks lastInPageTicks
                     return { Cursor = cursor; Items = stories }
-            }
-
-        member x.GetStoryTasksPagedAsync (ct: CancellationToken) (id: StoryId) (limit: Limit) (cursor: Cursor option) : Task<Paged<Task>> =
-            task {
-                let sqlLast =
-                    "select created_at from tasks where story_id = @storyId order by created_at desc limit 1"
-                let cmdLast = new SQLiteCommand(sqlLast, connection)
-                cmdLast.Parameters.AddWithValue("@storyId", StoryId.value id) |> ignore
-                let! last = cmdLast.ExecuteScalarAsync(ct)
-                let lastTicks = if last = null then 0L else last :?> int64
-
-                let sqlTasks =
-                    """
-                    select t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
-                    from tasks t 
-                    where t.created_at > @cursor
-                    order by t.created_at
-                    limit @limit"""
-                use cmd = new SQLiteCommand(sqlTasks, connection)
-                let cursor = cursorToOffset cursor
-                cmd.Parameters.AddWithValue("@storyId", StoryId.value id) |> ignore
-                cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
-                cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
-                let! reader = cmd.ExecuteReaderAsync(ct)
-                let tasks: Task list = []
-                let tasks = tasks |> List.sortBy (fun s -> s.Entity.CreatedAt)
-
-                if tasks.Length = 0 then
-                    return { Cursor = None; Items = [] }
-                else
-                    let lastInPageTicks = tasks[tasks.Length - 1].Entity.CreatedAt.Ticks
-                    let cursor = offsetToCursor lastTicks lastInPageTicks
-                    return { Cursor = cursor; Items = tasks }
             }
 
         // Compared to event sourcing, we immediately apply events to the store.
