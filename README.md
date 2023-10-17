@@ -84,7 +84,7 @@ curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure -
 
 # PersistedDomainEvents
 ## Get
-curl https://localhost:5000/persisted-domain-events/<aggregateId> --insecure -H 'Authorization: Bearer <token>'
+curl "https://localhost:5000/persisted-domain-events/<aggregateId>?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>'
 
 # Health
 ## Get

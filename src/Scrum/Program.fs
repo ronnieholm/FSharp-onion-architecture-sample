@@ -413,9 +413,9 @@ module Controller =
         [<HttpPost("issue-token")>]
         member x.IssueToken(userId: string, roles: string) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let unexpected = x.UnexpectedQueryStringParameters [ nameof userId; nameof roles ]
                 if List.length unexpected > 0 then
+                    let accept = x.Request.Headers.Accept
                     return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
                 else
                     // Get user from imaginary user store and pass to
@@ -429,13 +429,14 @@ module Controller =
         [<Authorize; HttpPost("renew-token")>]
         member _.RenewToken() : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let identity = x.Env.Identity.GetCurrent()
                 let token = idp.RenewToken identity
                 return
                     (match token with
                      | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
-                     | Error e -> ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
+                     | Error e ->
+                         let accept = x.Request.Headers.Accept
+                         ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
             }
 
         [<Authorize; HttpPost("introspect")>]
@@ -477,7 +478,6 @@ module Controller =
         [<HttpPost>]
         member x.CaptureBasicStoryDetails([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result =
                     CaptureBasicStoryDetailsCommand.runAsync
                         x.Env
@@ -490,6 +490,7 @@ module Controller =
                     match result with
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -500,7 +501,6 @@ module Controller =
         [<HttpPut("{id}")>]
         member x.ReviseBasicStoryDetails([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result =
                     ReviseBasicStoryDetailsCommand.runAsync
                         x.Env
@@ -513,6 +513,7 @@ module Controller =
                     match result with
                     | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -528,7 +529,6 @@ module Controller =
                 ct: CancellationToken
             ) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result =
                     AddBasicTaskDetailsToStoryCommand.runAsync
                         x.Env
@@ -542,6 +542,7 @@ module Controller =
                     match result with
                     | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -559,7 +560,6 @@ module Controller =
                 ct: CancellationToken
             ) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result =
                     ReviseBasicTaskDetailsCommand.runAsync
                         x.Env
@@ -573,6 +573,7 @@ module Controller =
                     match result with
                     | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -585,13 +586,13 @@ module Controller =
         [<HttpDelete("{storyId}/tasks/{taskId}")>]
         member x.RemoveTask(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result = RemoveTaskCommand.runAsync x.Env ct { StoryId = storyId; TaskId = taskId }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
                     | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | RemoveTaskCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | RemoveTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -604,13 +605,13 @@ module Controller =
         [<HttpDelete("{id}")>]
         member x.RemoveStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result = RemoveStoryCommand.runAsync x.Env ct { Id = id }
                 do! x.Env.CommitAsync(ct)
                 return
                     match result with
                     | Ok _ -> OkResult() :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | RemoveStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | RemoveStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -621,12 +622,12 @@ module Controller =
         [<HttpGet("{id}")>]
         member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let! result = GetStoryByIdQuery.runAsync x.Env ct { Id = id }
                 return
                     match result with
                     | Ok s -> OkObjectResult(s) :> ActionResult
                     | Error e ->
+                        let accept = x.Request.Headers.Accept
                         match e with
                         | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -637,8 +638,8 @@ module Controller =
         [<HttpGet>]
         member x.GetStoriesPaged(limit: int, cursor: string, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
+                let accept = x.Request.Headers.Accept
                 if List.length unexpected > 0 then
                     return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
                 else
@@ -646,7 +647,7 @@ module Controller =
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
+                        | Error e ->                            
                             match e with
                             | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                             | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
@@ -659,8 +660,8 @@ module Controller =
         [<HttpGet("{id}")>]
         member x.GetPersistedDomainEvents(limit: int, cursor: string, id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
-                let accept = x.Request.Headers.Accept
                 let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
+                let accept = x.Request.Headers.Accept
                 if List.length unexpected > 0 then
                     return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
                 else
