@@ -188,6 +188,22 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                         let task = parseTaskFields r
                         tasks.Add(taskId, task)
 
+        let parseStoryFields (r: DbDataReader) : Story =
+            // TODO: What to do if we have additional fields beyond basic story details?
+            //       For any entity, we should probably not any "create" function to
+            //       restore it. But how to check invariants otherwise?
+            let story, _ =
+                (StoryAggregate.captureBasicStoryDetails
+                    (r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id")
+                    (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
+                    (Option.ofDBNull r["s_description"]
+                     |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
+                    []
+                    (parseCreatedAt r["s_created_at"])
+                    (parseUpdatedAt r["s_updated_at"]))
+                |> panicOnError "story"
+            story
+
         // Dictionary doesn't maintain insertion order, so when an SQL query
         // contains an "order by" clause, the dictionary will mess up ordering.
         // The caller of toDomainAsync therefore must perform a second sort. An
@@ -198,20 +214,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
             let ok, _ = storyIdStories.TryGetValue(storyId)
             if not ok then
-                let story, _ =
-                    // TODO: What to do if we have additional fields beyond basic story details?
-                    //       For any entity, we should probably not any "create" function to
-                    //       restore it. But how to check invariants otherwise?
-                    (StoryAggregate.captureBasicStoryDetails
-                        storyId
-                        (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
-                        (Option.ofDBNull r["s_description"]
-                         |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
-                        []
-                        (parseCreatedAt r["s_created_at"])
-                        (parseUpdatedAt r["s_updated_at"]))
-                    |> panicOnError "story"
-
+                let story = parseStoryFields r
                 storyIdStories.Add(storyId, story)
             taskToDomain ()
 
