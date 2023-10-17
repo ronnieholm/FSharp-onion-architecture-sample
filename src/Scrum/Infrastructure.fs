@@ -116,6 +116,15 @@ module Seedwork =
                 return aggregateId
             }
 
+        let getLargestCreatedAtAsync (table: string) (connection: SQLiteConnection) (ct: CancellationToken) : Task<int64> =
+            task {
+                let sqlLast = $"select created_at from {table} order by created_at desc limit 1"
+                use cmdLast = new SQLiteCommand(sqlLast, connection)
+                let! last = cmdLast.ExecuteScalarAsync(ct)
+                // ExecuteScalarAsync returns null on zero rows returned.
+                return if last = null then 0L else last :?> int64
+            }
+
         let cursorToOffset (cursor: Cursor option) : int64 =
             match cursor with
             | Some c ->
@@ -274,12 +283,6 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
 
         member _.GetStoriesPagedAsync (ct: CancellationToken) (limit: Limit) (cursor: Cursor option) : Task<Paged<Story>> =
             task {
-                let sqlLast = "select created_at from stories order by created_at desc limit 1"
-                use cmdLast = new SQLiteCommand(sqlLast, connection)
-                let! last = cmdLast.ExecuteScalarAsync(ct)
-                // ExecuteScalarAsync returns null on zero rows returned.
-                let lastTicks = if last = null then 0L else last :?> int64
-
                 let sqlStories =
                     "
                     select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
@@ -300,8 +303,9 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 if stories.Length = 0 then
                     return { Cursor = None; Items = [] }
                 else
-                    let lastInPageTicks = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
-                    let cursor = offsetToCursor lastTicks lastInPageTicks
+                    let pageEndOffset = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
+                    let! globalEndOffset = getLargestCreatedAtAsync "stories" connection ct
+                    let cursor = offsetToCursor globalEndOffset pageEndOffset
                     return { Cursor = cursor; Items = stories }
             }
 
@@ -408,12 +412,6 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
             (cursor: Cursor option)
             : Task<Paged<PersistedDomainEvent>> =
             task {
-                let sqlLast =
-                    "select created_at from domain_events order by created_at desc limit 1"
-                use cmdLast = new SQLiteCommand(sqlLast, connection)
-                let! last = cmdLast.ExecuteScalarAsync(ct)
-                let lastTicks = if last = null then 0L else last :?> int64
-
                 let sql =
                     "select id, aggregate_id, aggregate_type, event_type, event_payload, created_at
                      from domain_events
@@ -446,8 +444,9 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                 if events.Count = 0 then
                     return { Cursor = None; Items = [] }
                 else
-                    let lastInPageTicks = events[events.Count - 1].CreatedAt.Ticks
-                    let cursor = offsetToCursor lastTicks lastInPageTicks
+                    let pageEndOffset = events[events.Count - 1].CreatedAt.Ticks
+                    let! globalEndOffset = getLargestCreatedAtAsync "domain_events" connection ct
+                    let cursor = offsetToCursor globalEndOffset pageEndOffset
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }
 
