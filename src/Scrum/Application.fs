@@ -507,7 +507,10 @@ module StoryAggregateRequest =
     // Query included to illustrate paging. In practice, we wouldn't query
     // every story unless we're exporting every story. Instead, queries would
     // be for stories in a product backlog, a release backlog, or a sprint
-    // backlog, but we don't support organizing stories into a backlog.    
+    // backlog, but we don't support organizing stories into a backlog. In the
+    // same vain, GetStoryTasksPagedQuery would make much business sense. Tasks
+    // are cheap to include with stories, so best keep number of queries to a
+    // minimum. 
     type GetStoriesPagedQuery = { Limit: int; Cursor: string option }
 
     module GetStoriesPagedQuery =        
