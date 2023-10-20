@@ -5,6 +5,7 @@ open System.Collections.Generic
 open System.ComponentModel.DataAnnotations
 open System.Data.SQLite
 open System.Diagnostics
+open System.Globalization
 open System.IO
 open System.IO.Compression
 open System.IdentityModel.Tokens.Jwt
@@ -29,6 +30,7 @@ open Microsoft.Extensions.Hosting
 open Microsoft.AspNetCore.Hosting
 open Microsoft.Extensions.DependencyInjection
 open Microsoft.AspNetCore.Mvc
+open Microsoft.Extensions.Logging
 open Microsoft.Extensions.Options
 open Microsoft.Extensions.Primitives
 open Microsoft.IdentityModel.JsonWebTokens
@@ -375,12 +377,13 @@ module Service =
 open Service
 
 module Controller =
-    type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
+    type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
         inherit ControllerBase()
 
         let connectionString = configuration.GetConnectionString("Scrum")
         let userIdentityService = UserIdentity(httpContext.HttpContext)
-        let env = new AppEnv(connectionString, userIdentityService) :> IAppEnv
+        let logger = ScrumLogger(loggerFactory.CreateLogger())
+        let env = new AppEnv(connectionString, userIdentityService, logger) :> IAppEnv
 
         member _.Env = env
 
@@ -404,9 +407,13 @@ module Controller =
     // Loosely modeled after the corresponding OAuth2 endpoint.
     [<Route("[controller]")>]
     type AuthenticationController
-        (configuration: IConfiguration, httpContext: IHttpContextAccessor, jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>) as x
-        =
-        inherit ScrumController(configuration, httpContext)
+        (
+            configuration: IConfiguration,
+            httpContext: IHttpContextAccessor,
+            jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>,
+            loggerFactory: ILoggerFactory
+        ) as x =
+        inherit ScrumController(configuration, httpContext, loggerFactory)
 
         let idp = IdentityProvider(x.Env.Clock, jwtAuthenticationSettings.Value)
 
@@ -472,8 +479,8 @@ module Controller =
     type StoryTaskUpdateDto = { title: string; description: string }
 
     [<Authorize; Route("[controller]")>]
-    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
+    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
+        inherit ScrumController(configuration, httpContext, loggerFactory)
 
         [<HttpPost>]
         member x.CaptureBasicStoryDetails([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
@@ -647,15 +654,15 @@ module Controller =
                     return
                         match result with
                         | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->                            
+                        | Error e ->
                             match e with
                             | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                             | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
             }
 
     [<Authorize; Route("persisted-domain-events")>]
-    type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
+    type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
+        inherit ScrumController(configuration, httpContext, loggerFactory)
 
         [<HttpGet("{id}")>]
         member x.GetPersistedDomainEvents(limit: int, cursor: string, id: Guid, ct: CancellationToken) : Task<ActionResult> =
@@ -676,8 +683,8 @@ module Controller =
             }
 
     [<Authorize; Route("[controller]")>]
-    type TestsController(configuration: IConfiguration, httpContext: IHttpContextAccessor) =
-        inherit ScrumController(configuration, httpContext)
+    type TestsController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
+        inherit ScrumController(configuration, httpContext, loggerFactory)
 
         [<HttpGet("introspect")>]
         member x.Introspect() =
@@ -834,7 +841,10 @@ type Startup(configuration: IConfiguration) =
                 o.WriteIndented <- true)
         |> ignore
 
-        DatabaseMigrator(Logger(), configuration.GetConnectionString("Scrum")).Apply()
+        let serviceProvider = services.BuildServiceProvider()
+        let logger = serviceProvider.GetService<ILogger<_>>()
+        let scrumLogger = ScrumLogger(logger)
+        DatabaseMigrator(scrumLogger, configuration.GetConnectionString("Scrum")).Apply()
 
         services
             .AddHealthChecks()
@@ -923,6 +933,19 @@ type Startup(configuration: IConfiguration) =
         app.UseMvcWithDefaultRoute() |> ignore
 
 module Program =
+    // Avoid the application using the host's (unexpected) culture. This can
+    // make parsing unexpectedly go wrong.
+    CultureInfo.DefaultThreadCurrentCulture <- CultureInfo.InvariantCulture
+    CultureInfo.DefaultThreadCurrentUICulture <- CultureInfo.InvariantCulture
+
+    // Top-level handler for unobserved task exceptions
+    // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
+    TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
+        e.SetObserved()
+        e.Exception.Handle(fun e ->
+            printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
+            true))
+
     let createHostBuilder args : IHostBuilder =
         Host
             .CreateDefaultBuilder(args)
@@ -930,13 +953,6 @@ module Program =
 
     [<EntryPoint>]
     let main args =
-        // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
-        TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
-            e.SetObserved()
-            e.Exception.Handle(fun e ->
-                printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
-                true))
-
         let host = createHostBuilder(args).Build()
         host.Run()
         0

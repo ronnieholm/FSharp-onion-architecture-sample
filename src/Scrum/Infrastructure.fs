@@ -453,12 +453,7 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }
 
-type Logger() =
-    let logger =
-        use factory = new LoggerFactory()
-        let logger = factory.CreateLogger<Logger>()
-        logger
-
+type ScrumLogger(logger: ILogger<_>) =
     static let jsonSerializationOptions =
         let o =
             JsonSerializerOptions(PropertyNamingPolicy = Json.SnakeCaseLowerNamingPolicy(), WriteIndented = true)
@@ -481,7 +476,7 @@ type AppEnv
     (
         connectionString: string,
         identity: IScrumIdentity,
-        ?logger: IScrumLogger,
+        logger: IScrumLogger,
         ?clock: IClock,
         ?stories: IStoryRepository,
         ?domainEvents: IDomainEventRepository
@@ -499,7 +494,6 @@ type AppEnv
             connection
 
     let transaction = lazy connection.Value.BeginTransaction()
-    let logger = lazy (logger |> Option.defaultValue (Logger()))
     let clock = lazy (clock |> Option.defaultValue (SystemClock()))
 
     let stories =
@@ -542,7 +536,7 @@ type AppEnv
             }
 
         member _.Identity = identity
-        member _.Logger = logger.Value
+        member _.Logger = logger
         member _.Clock = clock.Value
         member _.Stories = stories.Value
         member _.DomainEvents = domainEvents.Value
