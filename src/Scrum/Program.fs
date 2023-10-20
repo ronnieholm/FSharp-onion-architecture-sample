@@ -844,7 +844,8 @@ type Startup(configuration: IConfiguration) =
         let serviceProvider = services.BuildServiceProvider()
         let logger = serviceProvider.GetService<ILogger<_>>()
         let scrumLogger = ScrumLogger(logger)
-        DatabaseMigrator(scrumLogger, configuration.GetConnectionString("Scrum")).Apply()
+        DatabaseMigrator(scrumLogger, configuration.GetConnectionString("Scrum"))
+            .Apply()
 
         services
             .AddHealthChecks()
@@ -946,13 +947,12 @@ module Program =
             printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
             true))
 
-    let createHostBuilder args : IHostBuilder =
-        Host
-            .CreateDefaultBuilder(args)
-            .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
-
     [<EntryPoint>]
     let main args =
-        let host = createHostBuilder(args).Build()
+        let host =
+            Host
+                .CreateDefaultBuilder(args)
+                .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
+                .Build()
         host.Run()
         0
