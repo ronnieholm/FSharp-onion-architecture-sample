@@ -381,9 +381,9 @@ module Controller =
         inherit ControllerBase()
 
         let connectionString = configuration.GetConnectionString("Scrum")
-        let userIdentityService = UserIdentity(httpContext.HttpContext)
+        let identity = UserIdentity(httpContext.HttpContext)
         let logger = ScrumLogger(loggerFactory.CreateLogger())
-        let env = new AppEnv(connectionString, userIdentityService, logger) :> IAppEnv
+        let env = new AppEnv(connectionString, identity, logger) :> IAppEnv
 
         member _.Env = env
 
