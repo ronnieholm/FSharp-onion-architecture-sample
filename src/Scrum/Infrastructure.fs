@@ -454,7 +454,7 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }
 
-type ScrumLogger(logger: ILogger<_>, identity: IScrumIdentity) =
+type ScrumLogger(logger: ILogger<_>) =
     static let jsonSerializationOptions =
         let o =
             JsonSerializerOptions(PropertyNamingPolicy = Json.SnakeCaseLowerNamingPolicy(), WriteIndented = true)
@@ -463,14 +463,9 @@ type ScrumLogger(logger: ILogger<_>, identity: IScrumIdentity) =
         o
 
     interface IScrumLogger with
-        member _.LogRequest (useCase: string) (request: obj) : unit =
+        member _.LogRequest (identity: ScrumIdentity) (useCase: string) (request: obj) : unit =
             let requestJson = JsonSerializer.Serialize(request, jsonSerializationOptions)
-            logger.LogInformation(
-                "Use case: {useCase}, payload: {payload}, identity: {identity}",
-                useCase,
-                requestJson,
-                $"%A{identity.GetCurrent()}"
-            )
+            logger.LogInformation("Use case: {useCase}, payload: {payload}, identity: {identity}", useCase, requestJson, $"%A{identity}")
 
         member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit =
             logger.LogInformation("{useCase}: {duration}", useCase, duration)

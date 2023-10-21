@@ -76,7 +76,7 @@ module Fake =
 
     let nullLogger =
         { new IScrumLogger with
-            member _.LogRequestPayload _ _ = ()
+            member _.LogRequest _ _ _ = ()
             member _.LogRequestDuration _ _ = ()
             member _.LogException _ = ()
             member _.LogError _ = ()
@@ -177,13 +177,13 @@ type StoryAggregateRequestTests() =
                 let story =
                     { Id = storyCmd.Id
                       Title = storyCmd.Title
-                      Description = storyCmd.Description |> Option.defaultValue null
+                      Description = storyCmd.Description
                       CreatedAt = r.CreatedAt
                       UpdatedAt = None
                       Tasks =
                         [ { Id = taskCmd.TaskId
                             Title = taskCmd.Title
-                            Description = taskCmd.Description |> Option.defaultValue null
+                            Description = taskCmd.Description
                             CreatedAt = r.Tasks[0].CreatedAt
                             UpdatedAt = None } ] }
                 test <@ r = story @>

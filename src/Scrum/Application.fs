@@ -75,7 +75,7 @@ module Seedwork =
     // Could be ILogger but that interface is part of .NET.
     type IScrumLogger =
         // Application specific logging.
-        abstract LogRequest: string -> obj -> unit
+        abstract LogRequest: ScrumIdentity -> string -> obj -> unit
         abstract LogRequestDuration: string -> uint<ms> -> unit
         abstract LogException: exn -> unit
 
@@ -126,14 +126,14 @@ module Seedwork =
         let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
         result, elapsed
 
-    let runWithDecoratorAsync (logger: IScrumLogger) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
+    let runWithDecoratorAsync (env: IAppEnv) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
-                logger.LogRequest useCase cmd
+                env.Logger.LogRequest (env.Identity.GetCurrent()) useCase cmd
                 taskResult { return! fn () })
         // Don't log errors from evaluating fn as these are expected errors. We
         // don't want those to pollute the log with.
-        logger.LogRequestDuration useCase elapsed
+        env.Logger.LogRequestDuration useCase elapsed
         result
 
     let isInRole (identity: IScrumIdentity) (role: ScrumRole) : Result<unit, string> =
@@ -203,7 +203,7 @@ module StoryAggregateRequest =
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof CaptureBasicStoryDetailsCommand) cmd aux
+            runWithDecoratorAsync env (nameof CaptureBasicStoryDetailsCommand) cmd aux
 
     type ReviseBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
@@ -251,7 +251,7 @@ module StoryAggregateRequest =
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof ReviseBasicStoryDetailsCommand) cmd aux
+            runWithDecoratorAsync env (nameof ReviseBasicStoryDetailsCommand) cmd aux
 
     type RemoveStoryCommand = { Id: Guid }
 
@@ -282,7 +282,7 @@ module StoryAggregateRequest =
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof RemoveStoryCommand) cmd aux
+            runWithDecoratorAsync env (nameof RemoveStoryCommand) cmd aux
 
     type AddBasicTaskDetailsToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
@@ -338,7 +338,7 @@ module StoryAggregateRequest =
                     return TaskId.value task.Entity.Id
                 }
 
-            runWithDecoratorAsync env.Logger (nameof AddBasicTaskDetailsToStoryCommand) cmd aux
+            runWithDecoratorAsync env (nameof AddBasicTaskDetailsToStoryCommand) cmd aux
 
     type ReviseBasicTaskDetailsCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
@@ -396,7 +396,7 @@ module StoryAggregateRequest =
                     return TaskId.value cmd.TaskId
                 }
 
-            runWithDecoratorAsync env.Logger (nameof ReviseBasicTaskDetailsCommand) cmd aux
+            runWithDecoratorAsync env (nameof ReviseBasicTaskDetailsCommand) cmd aux
 
     type RemoveTaskCommand = { StoryId: Guid; TaskId: Guid }
 
@@ -435,7 +435,7 @@ module StoryAggregateRequest =
                     return TaskId.value cmd.TaskId
                 }
 
-            runWithDecoratorAsync env.Logger (nameof RemoveTaskCommand) cmd aux
+            runWithDecoratorAsync env (nameof RemoveTaskCommand) cmd aux
 
     type GetStoryByIdQuery = { Id: Guid }
 
@@ -496,7 +496,7 @@ module StoryAggregateRequest =
                     return StoryDto.from story
                 }
 
-            runWithDecoratorAsync env.Logger (nameof GetStoryByIdQuery) qry aux
+            runWithDecoratorAsync env (nameof GetStoryByIdQuery) qry aux
 
     open Shared.Paging
 
@@ -546,7 +546,7 @@ module StoryAggregateRequest =
                           Items = stories.Items |> List.map StoryDto.from }
                 }
 
-            runWithDecoratorAsync env.Logger (nameof GetStoriesPagedQuery) qry aux
+            runWithDecoratorAsync env (nameof GetStoriesPagedQuery) qry aux
 
 module DomainEventRequest =
     type GetByAggregateIdQuery = { Id: Guid; Limit: int; Cursor: string option }
@@ -601,7 +601,7 @@ module DomainEventRequest =
                           Items = events.Items |> List.map PersistedDomainEventDto.from }
                 }
 
-            runWithDecoratorAsync env.Logger (nameof GetByAggregateIdQuery) qry aux
+            runWithDecoratorAsync env (nameof GetByAggregateIdQuery) qry aux
 
 module ApplicationService =
     // Services shared across requests.
