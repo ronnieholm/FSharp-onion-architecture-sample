@@ -1,6 +1,5 @@
 # TODO
 
-- Log user object together with request (verify that we support structured logging)
 - Add k6 load script
 - Add estimate field
 - Apply code changes when .NET 8 releases on Nov 14, 2023: https://www.reddit.com/r/fsharp/comments/16ji5k2/comment/k0t2hji/ and https://www.youtube.com/watch?v=9172tKgSaKc.

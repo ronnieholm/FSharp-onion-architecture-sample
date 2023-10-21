@@ -454,7 +454,7 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }
 
-type ScrumLogger(logger: ILogger<_>) =
+type ScrumLogger(logger: ILogger<_>, identity: IScrumIdentity) =
     static let jsonSerializationOptions =
         let o =
             JsonSerializerOptions(PropertyNamingPolicy = Json.SnakeCaseLowerNamingPolicy(), WriteIndented = true)
@@ -463,12 +463,19 @@ type ScrumLogger(logger: ILogger<_>) =
         o
 
     interface IScrumLogger with
-        member _.LogRequestPayload (useCase: string) (request: obj) : unit =
-            let json = JsonSerializer.Serialize(request, jsonSerializationOptions)
-            logger.LogInformation($"%s{useCase}: %s{json}")
+        member _.LogRequest (useCase: string) (request: obj) : unit =
+            let requestJson = JsonSerializer.Serialize(request, jsonSerializationOptions)
+            logger.LogInformation(
+                "Use case: {useCase}, payload: {payload}, identity: {identity}",
+                useCase,
+                requestJson,
+                $"%A{identity.GetCurrent()}"
+            )
 
-        member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit = logger.LogInformation($"%s{useCase}: %d{duration}")
-        member _.LogException(e: exn) : unit = logger.LogDebug($"%A{e}")
+        member _.LogRequestDuration (useCase: string) (duration: uint<ms>) : unit =
+            logger.LogInformation("{useCase}: {duration}", useCase, duration)
+
+        member _.LogException(e: exn) : unit = logger.LogDebug("{exception}", $"%A{e}")
         member _.LogError(message: string) = logger.LogError(message)
         member _.LogInformation(message: string) = logger.LogInformation(message)
         member _.LogDebug(message: string) = logger.LogDebug(message)

@@ -158,6 +158,12 @@ module Service =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
 
+    // Used for system operations, such a database migrations.
+    type NullUserIdentity() =
+        interface IScrumIdentity with
+            member x.GetCurrent() : ScrumIdentity =
+                Anonymous
+    
     // Web specific implementation of IUserIdentity. It therefore belongs in
     // Program.fs rather than Infrastructure.fs.
     type UserIdentity(context: HttpContext) =
@@ -383,7 +389,7 @@ module Controller =
 
         let connectionString = configuration.GetConnectionString("Scrum")
         let identity = UserIdentity(httpContext.HttpContext)
-        let logger = ScrumLogger(loggerFactory.CreateLogger())
+        let logger = ScrumLogger(loggerFactory.CreateLogger(), identity)
         let env = new AppEnv(connectionString, identity, logger) :> IAppEnv
 
         member _.Env = env
@@ -844,7 +850,7 @@ type Startup(configuration: IConfiguration) =
 
         let serviceProvider = services.BuildServiceProvider()
         let logger = serviceProvider.GetService<ILogger<_>>()
-        let scrumLogger = ScrumLogger(logger)
+        let scrumLogger = ScrumLogger(logger, NullUserIdentity())
         DatabaseMigrator(scrumLogger, configuration.GetConnectionString("Scrum"))
             .Apply()
 

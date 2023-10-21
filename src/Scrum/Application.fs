@@ -75,7 +75,7 @@ module Seedwork =
     // Could be ILogger but that interface is part of .NET.
     type IScrumLogger =
         // Application specific logging.
-        abstract LogRequestPayload: string -> obj -> unit
+        abstract LogRequest: string -> obj -> unit
         abstract LogRequestDuration: string -> uint<ms> -> unit
         abstract LogException: exn -> unit
 
@@ -129,7 +129,7 @@ module Seedwork =
     let runWithDecoratorAsync (logger: IScrumLogger) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
-                logger.LogRequestPayload useCase cmd
+                logger.LogRequest useCase cmd
                 taskResult { return! fn () })
         // Don't log errors from evaluating fn as these are expected errors. We
         // don't want those to pollute the log with.
