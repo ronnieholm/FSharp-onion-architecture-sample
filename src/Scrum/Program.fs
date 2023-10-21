@@ -42,6 +42,7 @@ open Scrum.Application.Seedwork
 open Scrum.Application.StoryAggregateRequest
 open Scrum.Application.DomainEventRequest
 open Scrum.Infrastructure
+open Scrum.Infrastructure.Seedwork
 open Scrum.Infrastructure.Seedwork.Json
 
 module Seedwork =
@@ -77,7 +78,7 @@ module Seedwork =
         type ExceptionJsonConverter() =
             inherit JsonConverter<Exception>()
 
-            override _.Read(_, _, _) = raise (UnreachableException())
+            override _.Read(_, _, _) = unreachable "Never called"
 
             override x.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
                 writer.WriteStartObject()
@@ -501,8 +502,8 @@ module Controller =
                         match e with
                         | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
                         | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
-                        | CaptureBasicStoryDetailsCommand.DuplicateStory id -> raise (UnreachableException(string id))
-                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> raise (UnreachableException(String.Join(", ", ids)))
+                        | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
+                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))
             }
 
         [<HttpPut("{id}")>]
@@ -555,7 +556,7 @@ module Controller =
                         | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
                         | AddBasicTaskDetailsToStoryCommand.StoryNotFound id ->
                             ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> raise (UnreachableException(string id))
+                        | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
             }
 
         [<HttpPut("{storyId}/tasks/{taskId}")>]

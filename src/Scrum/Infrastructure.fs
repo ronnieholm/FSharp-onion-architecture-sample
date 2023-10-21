@@ -24,6 +24,7 @@ module Seedwork =
     exception InfrastructureException of string
 
     let panic (s: string) : 't = raise (InfrastructureException(s))
+    let unreachable (s: string) : 't = raise (UnreachableException(s))
 
     module Json =
         type SnakeCaseLowerNamingPolicy() =
@@ -40,7 +41,7 @@ module Seedwork =
         type DateTimeJsonConverter() =
             inherit JsonConverter<DateTime>()
 
-            override _.Read(_, _, _) = raise (UnreachableException())
+            override _.Read(_, _, _) = unreachable "Never called"
 
             override _.Write(writer, value, _) =
                 value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
@@ -49,7 +50,7 @@ module Seedwork =
         type EnumJsonConverter() =
             inherit JsonConverter<ValueType>()
 
-            override _.Read(_, _, _) = raise (UnreachableException())
+            override _.Read(_, _, _) = unreachable "Never called"
 
             override _.Write(writer, value, _) =
                 let t = value.GetType()

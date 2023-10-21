@@ -278,8 +278,7 @@ module StoryAggregate =
             let task = story.Tasks[idx]
             let tasks = story.Tasks |> List.removeAt idx
             let entity = { task.Entity with UpdatedAt = Some updatedAt }
-            let updatedTask =
-                { task with Entity = entity; Title = title; Description = description }
+            let updatedTask = { Entity = entity; Title = title; Description = description }
             let story = { story with Tasks = updatedTask :: tasks }
             Ok(
                 story,
