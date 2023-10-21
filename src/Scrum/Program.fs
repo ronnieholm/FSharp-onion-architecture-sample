@@ -101,12 +101,12 @@ module Seedwork =
                 writer.WriteString(nameof Type, value.GetType().FullName)
                 writer.WriteEndObject()
 
-    // RFC7807 problem detail format per
+    // RFC7807 problem details format per
     // https://opensource.zalando.com/restful-api-guidelines/#176.
-    type ProblemDetail = { Type: string; Title: string; Status: int; Detail: string }
+    type ProblemDetails = { Type: string; Title: string; Status: int; Detail: string }
 
-    module ProblemDetail =
-        let create status detail : ProblemDetail = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
+    module ProblemDetails =
+        let create status detail : ProblemDetails = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
         let inferContentType (acceptHeaders: StringValues) : string =
             let ok =
@@ -114,7 +114,7 @@ module Seedwork =
                 |> Array.exists (fun v -> v = "application/problem+json")
             if ok then "application/problem+json" else "application/json"
 
-        let toJsonResult (accept: StringValues) (error: ProblemDetail) : ActionResult =
+        let toJsonResult (accept: StringValues) (error: ProblemDetails) : ActionResult =
             JsonResult(error, StatusCode = error.Status, ContentType = inferContentType accept) :> ActionResult
 
         let createJsonResult (accept: StringValues) (status: int) (detail: string) : ActionResult =
@@ -424,7 +424,7 @@ module Controller =
                 let unexpected = x.UnexpectedQueryStringParameters [ nameof userId; nameof roles ]
                 if List.length unexpected > 0 then
                     let accept = x.Request.Headers.Accept
-                    return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
+                    return ProblemDetails.fromUnexpectedQueryStringParameters accept unexpected
                 else
                     // Get user from imaginary user store and pass to
                     // issueRegularToken to include information about the user as
@@ -444,7 +444,7 @@ module Controller =
                      | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
                      | Error e ->
                          let accept = x.Request.Headers.Accept
-                         ProblemDetail.createJsonResult accept StatusCodes.Status400BadRequest e)
+                         ProblemDetails.createJsonResult accept StatusCodes.Status400BadRequest e)
             }
 
         [<Authorize; HttpPost("introspect")>]
@@ -500,8 +500,8 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
                         | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))
             }
@@ -523,10 +523,10 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | ReviseBasicStoryDetailsCommand.StoryNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             }
 
         [<HttpPost("{storyId}/tasks")>]
@@ -552,10 +552,10 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | AddBasicTaskDetailsToStoryCommand.StoryNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                         | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
             }
 
@@ -583,12 +583,12 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | ReviseBasicTaskDetailsCommand.StoryNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                         | ReviseBasicTaskDetailsCommand.TaskNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
             }
 
         [<HttpDelete("{storyId}/tasks/{taskId}")>]
@@ -602,12 +602,12 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | RemoveTaskCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | RemoveTaskCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | RemoveTaskCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | RemoveTaskCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | RemoveTaskCommand.StoryNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
                         | RemoveTaskCommand.TaskNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
             }
 
         [<HttpDelete("{id}")>]
@@ -621,10 +621,10 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | RemoveStoryCommand.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | RemoveStoryCommand.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | RemoveStoryCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | RemoveStoryCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | RemoveStoryCommand.StoryNotFound _ ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             }
 
         [<HttpGet("{id}")>]
@@ -637,10 +637,10 @@ module Controller =
                     | Error e ->
                         let accept = x.Request.Headers.Accept
                         match e with
-                        | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                        | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                        | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                        | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | GetStoryByIdQuery.StoryNotFound id ->
-                            ProblemDetail.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
+                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
             }
 
         [<HttpGet>]
@@ -649,7 +649,7 @@ module Controller =
                 let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
                 let accept = x.Request.Headers.Accept
                 if List.length unexpected > 0 then
-                    return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
+                    return ProblemDetails.fromUnexpectedQueryStringParameters accept unexpected
                 else
                     let! result = GetStoriesPagedQuery.runAsync x.Env ct { Limit = limit; Cursor = cursor |> Option.ofObj }
                     return
@@ -657,8 +657,8 @@ module Controller =
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
-                            | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                            | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                            | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
             }
 
     [<Authorize; Route("persisted-domain-events")>]
@@ -671,7 +671,7 @@ module Controller =
                 let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
                 let accept = x.Request.Headers.Accept
                 if List.length unexpected > 0 then
-                    return ProblemDetail.fromUnexpectedQueryStringParameters accept unexpected
+                    return ProblemDetails.fromUnexpectedQueryStringParameters accept unexpected
                 else
                     let! result = GetByAggregateIdQuery.runAsync x.Env ct { Id = id; Limit = limit; Cursor = cursor |> Option.ofObj }
                     return
@@ -679,8 +679,8 @@ module Controller =
                         | Ok s -> OkObjectResult(s) :> ActionResult
                         | Error e ->
                             match e with
-                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetail.fromAuthorizationError accept ae
-                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetail.fromValidationErrors accept ve
+                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
+                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
             }
 
     [<Authorize; Route("[controller]")>]
@@ -772,9 +772,9 @@ module Filter =
                     | _ -> HttpStatusCode.InternalServerError, $"Internal Server Error (ActivityId: {activityId}, TraceId: {traceId})"
 
                 let code = LanguagePrimitives.EnumToValue code
-                context.HttpContext.Response.ContentType <- ProblemDetail.inferContentType context.HttpContext.Request.Headers.Accept
+                context.HttpContext.Response.ContentType <- ProblemDetails.inferContentType context.HttpContext.Request.Headers.Accept
                 context.HttpContext.Response.StatusCode <- code
-                context.Result <- JsonResult(ProblemDetail.create code message)
+                context.Result <- JsonResult(ProblemDetails.create code message)
 
 open Filter
 
