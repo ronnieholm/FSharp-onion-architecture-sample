@@ -442,7 +442,7 @@ module StoryAggregateRequest =
     type TaskDto =
         { Id: Guid
           Title: string
-          Description: string
+          Description: string option
           CreatedAt: DateTime
           UpdatedAt: DateTime option }
 
@@ -450,17 +450,14 @@ module StoryAggregateRequest =
         let from (task: Task) : TaskDto =
             { Id = task.Entity.Id |> TaskId.value
               Title = task.Title |> TaskTitle.value
-              Description =
-                match task.Description with
-                | Some d -> d |> TaskDescription.value
-                | None -> null
+              Description = task.Description |> Option.map TaskDescription.value
               CreatedAt = task.Entity.CreatedAt
               UpdatedAt = task.Entity.UpdatedAt }
 
     type StoryDto =
         { Id: Guid
           Title: string
-          Description: string
+          Description: string option
           CreatedAt: DateTime
           UpdatedAt: DateTime option
           Tasks: TaskDto list }
@@ -469,10 +466,7 @@ module StoryAggregateRequest =
         let from (story: Story) : StoryDto =
             { Id = story.Aggregate.Id |> StoryId.value
               Title = story.Title |> StoryTitle.value
-              Description =
-                story.Description
-                |> Option.map StoryDescription.value
-                |> Option.defaultValue null
+              Description = story.Description |> Option.map StoryDescription.value
               CreatedAt = story.Aggregate.CreatedAt
               UpdatedAt = story.Aggregate.UpdatedAt
               Tasks = story.Tasks |> List.map TaskDto.from }
