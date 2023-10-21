@@ -1,6 +1,5 @@
 # TODO
 
-- Add k6 load script
 - Include fscheck tests (https://github.com/jet/equinox/blob/master/tests/Equinox.CosmosStore.Integration/AccessStrategies.fs)
 - Add estimate field
 - Split runDecorator into a pipeline of functions (https://github.com/ronnieholm/Playground/tree/master/CSDecoratorPattern)

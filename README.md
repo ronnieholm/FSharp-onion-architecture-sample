@@ -29,6 +29,7 @@ supporting role-based security.
 - Integration tests with the ability to fake any dependency.
 - Database migrations and initial data seeding.
 - ASP.NET health checks for memory and database.
+- k6 load test with baseline under `tests/k6`.
 - Architecture decision records under `docs/architecture-decision-records`.
 
 The Scrum domain was chosen because it offers sufficient complexity and everyone
