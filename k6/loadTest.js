@@ -45,7 +45,7 @@ export function baseline() {
 }
 
 // Create a story before running this test.
-const id = '729e9f44-dc7f-42bd-bfbc-feda885b874a'
+const id = '729e9f44-dc7f-42bd-bfbc-feda885b874a';
 
 export function getStoryById() {
     const res = http.get(`${url}/stories/${id}`, {
