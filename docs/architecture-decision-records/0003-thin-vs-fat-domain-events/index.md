@@ -75,7 +75,9 @@ from a flat SQL result set to an object graph. In fact, we could provide an
 alternative implementation of the repository interface using SQLite as a
 document database and core wouldn't be able to tell the difference. Though
 complexity might start to creep back in as the aggregates evolve and dynamic
-queries would become more difficult, even with SQLite JSON query abilities.
+queries would become more difficult, even with SQLite JSON query abilities
+(while not trivial, and as an alternative to event sourcing, one could map new
+and updated aggregates from a JSON to a relational representation).
 
 ## Consequences
 
