@@ -9,4 +9,7 @@
 - Create F# script/console app to drive the application
 - Create Bash script to call every endpoint (https://github.com/minio/mc/blob/master/functional-tests.sh)
 - Add github build action (https://github.com/Zaid-Ajaj/pulumi-converter-bicep/blob/master/.github/workflows/test.yml)
-- Apply code changes when .NET 8 releases on Nov 14, 2023: https://www.reddit.com/r/fsharp/comments/16ji5k2/comment/k0t2hji/ and https://www.youtube.com/watch?v=9172tKgSaKc.
+- Apply code changes when .NET 9 releases on Nov 14, 2023: https://www.reddit.com/r/fsharp/comments/16ji5k2/comment/k0t2hji/ and https://www.youtube.com/watch?v=9172tKgSaKc.
+- Does SQLite handle transactions updating the same row?
+- Use given (class), then (method) pattern in tests?
+- Create assert helpers for comparing composite types?
