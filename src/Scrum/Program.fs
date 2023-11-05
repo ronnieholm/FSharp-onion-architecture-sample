@@ -115,7 +115,7 @@ module Seedwork =
             if ok then "application/problem+json" else "application/json"
 
         let toJsonResult (accept: StringValues) (error: ProblemDetails) : ActionResult =
-            JsonResult(error, StatusCode = error.Status, ContentType = inferContentType accept) :> ActionResult
+            JsonResult(error, StatusCode = error.Status, ContentType = inferContentType accept) :> _
 
         let createJsonResult (accept: StringValues) (status: int) (detail: string) : ActionResult =
             create status detail |> toJsonResult accept
@@ -441,7 +441,7 @@ module Controller =
                 let token = idp.RenewToken identity
                 return
                     (match token with
-                     | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> ActionResult
+                     | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> _
                      | Error e ->
                          let accept = x.Request.Headers.Accept
                          ProblemDetails.createJsonResult accept StatusCodes.Status400BadRequest e)
