@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <TargetFramework>net7.0</TargetFramework>
+    <!--<OtherFlags>$(OtherFlags) &#45;&#45;test:GraphBasedChecking</OtherFlags>-->
   </PropertyGroup>
 
   <ItemGroup>
