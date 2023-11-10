@@ -389,7 +389,7 @@ module StoryAggregateRequest =
                     let! story =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! story, event =
+                    let! _, event =
                         reviseBasicTaskDetails story cmd.TaskId cmd.Title cmd.Description (env.Clock.CurrentUtc())
                         |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
@@ -428,7 +428,7 @@ module StoryAggregateRequest =
                     let! story =
                         env.Stories.GetByIdAsync ct cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! story, event =
+                    let! _, event =
                         removeTask story cmd.TaskId (env.Clock.CurrentUtc())
                         |> Result.mapError fromDomainError
                     do! env.Stories.ApplyEventAsync ct event
@@ -497,8 +497,6 @@ module StoryAggregateRequest =
                 }
 
             runWithDecoratorAsync env (nameof GetStoryByIdQuery) qry aux
-
-    open Shared.Paging
 
     // Query included to illustrate paging. In practice, we wouldn't query
     // every story. Instead, queries would be for stories in a product backlog,

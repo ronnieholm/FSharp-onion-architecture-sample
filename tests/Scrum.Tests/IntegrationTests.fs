@@ -3,7 +3,6 @@
 open System
 open System.Threading
 open System.Data.SQLite
-open Scrum.Domain.StoryAggregate
 open Scrum.Web.Service
 open Swensen.Unquote
 open Xunit
