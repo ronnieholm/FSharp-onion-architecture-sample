@@ -284,7 +284,7 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
                 cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
                 let! reader = cmd.ExecuteReaderAsync(ct)
                 let! stories = storyToDomainAsync ct reader
-                let stories = stories |> List.sortBy (fun s -> s.Aggregate.CreatedAt)
+                let stories = stories |> List.sortBy _.Aggregate.CreatedAt
 
                 if stories.Length = 0 then
                     return { Cursor = None; Items = [] }

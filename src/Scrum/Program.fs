@@ -182,7 +182,7 @@ module Service =
                             let userIdClaim =
                                 claims
                                 |> Seq.filter (fun c -> c.Type = ScrumClaims.UserIdClaim)
-                                |> Seq.map (fun c -> c.Value)
+                                |> Seq.map _.Value
                                 |> Seq.exactlyOne
                             let rolesClaim =
                                 claims
@@ -256,7 +256,7 @@ module Service =
             let prefix = "Scrum.Sql."
 
             assembly.GetManifestResourceNames()
-            |> Array.filter (fun path -> path.StartsWith(prefix))
+            |> Array.filter _.StartsWith(prefix)
             |> Array.map (fun path ->
                 let sql =
                     use stream = assembly.GetManifestResourceStream(path)
@@ -269,12 +269,12 @@ module Service =
 
                 let hash =
                     hasher.ComputeHash(Encoding.UTF8.GetBytes(sql))
-                    |> Array.map (fun b -> b.ToString("x2"))
+                    |> Array.map _.ToString("x2")
                     |> String.Concat
 
                 let name = path.Replace(prefix, "").Replace(".sql", "")
                 { Name = name; Hash = hash; Sql = sql })
-            |> Array.sortBy (fun m -> m.Name)
+            |> Array.sortBy _.Name
 
         let getAppliedMigrations (connection: SQLiteConnection) : AppliedMigration array =
             let sql =
@@ -393,7 +393,7 @@ module Controller =
             // Per design APIs conservatively:
             // https://opensource.zalando.com/restful-api-guidelines/#109
             x.Request.Query
-            |> Seq.map (fun q -> q.Key)
+            |> Seq.map _.Key
             |> Seq.toList
             |> List.except expectedParameters
 

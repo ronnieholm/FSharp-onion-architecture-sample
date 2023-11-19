@@ -384,7 +384,7 @@ type StoryAggregateRequestTests() =
                         Assert.Equal(4, page3.Items.Length)
                         let unique =
                             List.concat [ page1.Items; page2.Items; page3.Items ]
-                            |> List.map (fun s -> s.Title)
+                            |> List.map _.Title
                             |> List.distinct
                             |> List.length
                         Assert.Equal(14, unique)
@@ -436,12 +436,12 @@ type DomainEventRequestTests() =
                     | Ok page3 ->
                         Assert.Equal(4, page3.Items.Length)
                         let events = List.concat [ page1.Items; page2.Items; page3.Items ]
-                        Assert.Equal(14, events |> List.map (fun e -> e.CreatedAt) |> List.distinct |> List.length)
-                        Assert.Equal(storyCmd.Id, (events |> List.map (fun e -> e.AggregateId) |> List.distinct |> List.exactlyOne))
+                        Assert.Equal(14, events |> List.map _.CreatedAt |> List.distinct |> List.length)
+                        Assert.Equal(storyCmd.Id, (events |> List.map _.AggregateId |> List.distinct |> List.exactlyOne))
                         Assert.Equal(
                             "Story",
                             (events
-                             |> List.map (fun e -> e.AggregateType)
+                             |> List.map _.AggregateType
                              |> List.distinct
                              |> List.exactlyOne)
                         )

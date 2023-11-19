@@ -196,7 +196,7 @@ module StoryAggregate =
         : Result<Story * StoryDomainEvent, CaptureBasicStoryDetailsError> =
         let duplicates =
             tasks
-            |> List.groupBy (fun t -> t.Entity.Id)
+            |> List.groupBy _.Entity.Id
             |> List.filter (fun (_, tasks) -> List.length tasks > 1)
             |> List.map fst
         if List.length duplicates > 0 then
