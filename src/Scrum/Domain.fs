@@ -5,16 +5,8 @@ open System.Threading
 open System.Threading.Tasks
 
 module Seedwork =
-    // Strictly speaking, an AggregateRoot is an Entity. If the root holds at
-    // least the same information as an entity, th relationship could be
-    // modeled as:
-    // type AggregateRoot<'id> = { Entity: Entity<'id> }
-    // However, current F# makes updating this model cumbersome. In the next
-    // version of F#, released Nov 14, 2023, the "Nested record field
-    // copy-and-update" makes it less cumbersome.
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
-
     type DomainEvent = { OccurredAt: DateTime }
 
 // Constraint validation on primitive types for reuse across value object

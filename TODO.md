@@ -13,6 +13,6 @@
 - Does SQLite handle transactions updating the same row or is it last write wins?
 - Use given (class), then (method) pattern in tests?
 - Create assert helpers for comparing composite types?
-- Add OpenTelemetry
+- Add OpenTelemetry (https://www.youtube.com/watch?v=tctadmNTHfU)
 - Experiment with https://devblogs.microsoft.com/dotnet/a-new-fsharp-compiler-feature-graphbased-typechecking/
 - Use in SQLiteRepository for joins: https://learn.microsoft.com/en-us/dotnet/api/system.collections.objectmodel.keyedcollection-2?view=net-7.0&redirectedfrom=MSDN

@@ -130,7 +130,7 @@ module Seedwork =
         type ValidationErrorDto = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
-            JsonSerializerOptions(PropertyNamingPolicy = SnakeCaseLowerNamingPolicy())
+            JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
         let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
             (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
@@ -834,7 +834,7 @@ type Startup(configuration: IConfiguration) =
             .AddJsonOptions(fun options ->
                 let o = options.JsonSerializerOptions
                 // Per https://opensource.zalando.com/restful-api-guidelines/#118.
-                o.PropertyNamingPolicy <- SnakeCaseLowerNamingPolicy()
+                o.PropertyNamingPolicy <- JsonNamingPolicy.SnakeCaseLower
                 // Per https://opensource.zalando.com/restful-api-guidelines/#169.
                 o.Converters.Add(DateTimeJsonConverter())
                 // Per https://opensource.zalando.com/restful-api-guidelines/#240.
@@ -903,7 +903,7 @@ type Startup(configuration: IConfiguration) =
 
         let healthCheckOptions =
             let jsonOptions =
-                JsonSerializerOptions(PropertyNamingPolicy = SnakeCaseLowerNamingPolicy(), WriteIndented = true)
+                JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true)
             jsonOptions.Converters.Add(Json.ExceptionJsonConverter())
             HealthCheckOptions(
                 ResponseWriter =

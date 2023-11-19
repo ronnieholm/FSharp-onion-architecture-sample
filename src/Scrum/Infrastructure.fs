@@ -27,17 +27,6 @@ module Seedwork =
     let unreachable (s: string) : 't = raise (UnreachableException(s))
 
     module Json =
-        type SnakeCaseLowerNamingPolicy() =
-            inherit JsonNamingPolicy()
-
-            // SnakeCaseLower will be part of .NET 8 which releases on Nov 14,
-            // 2023. After upgrading to .NET 8, remove this custom policy.
-            override _.ConvertName(name: string) : string =
-                (name
-                 |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
-                 |> String.Concat)
-                    .ToLower()
-
         type DateTimeJsonConverter() =
             inherit JsonConverter<DateTime>()
 
@@ -220,15 +209,8 @@ type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
             taskToDomain ()
 
         task {
-            // F# 8, to be released late Nov 14, 2023, will add while!
-            // support. Following the release, clean up this code:
-            // https://devblogs.microsoft.com/dotnet/simplifying-fsharp-computations-with-the-new-while-keyword
-            // while! reader.ReadAsync(ct) do parseStory reader
-            let mutable keepGoing = true
-            while keepGoing do
-                match! r.ReadAsync(ct) with
-                | true -> toDomain r
-                | false -> keepGoing <- false
+            while! r.ReadAsync(ct) do
+               toDomain r
 
             let stories =
                 storyIdStories.Values
@@ -432,18 +414,15 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                 let mutable keepGoing = true
                 let events = ResizeArray<PersistedDomainEvent>()
 
-                while keepGoing do
-                    match! r.ReadAsync(ct) with
-                    | true ->
-                        let e =
-                            { Id = r["id"] |> string |> Guid
-                              AggregateId = r["aggregate_id"] |> string |> Guid
-                              AggregateType = r["aggregate_type"] |> string
-                              EventType = r["event_type"] |> string
-                              EventPayload = r["event_payload"] |> string
-                              CreatedAt = parseCreatedAt r["created_at"] }
-                        events.Add(e)
-                    | false -> keepGoing <- false
+                while! r.ReadAsync(ct) do
+                    let e =
+                        { Id = r["id"] |> string |> Guid
+                          AggregateId = r["aggregate_id"] |> string |> Guid
+                          AggregateType = r["aggregate_type"] |> string
+                          EventType = r["event_type"] |> string
+                          EventPayload = r["event_payload"] |> string
+                          CreatedAt = parseCreatedAt r["created_at"] }
+                    events.Add(e)
 
                 if events.Count = 0 then
                     return { Cursor = None; Items = [] }
@@ -457,7 +436,7 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
 type ScrumLogger(logger: ILogger<_>) =
     static let jsonSerializationOptions =
         let o =
-            JsonSerializerOptions(PropertyNamingPolicy = Json.SnakeCaseLowerNamingPolicy(), WriteIndented = true)
+            JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true)
         o.Converters.Add(Json.DateTimeJsonConverter())
         o.Converters.Add(Json.EnumJsonConverter())
         o
