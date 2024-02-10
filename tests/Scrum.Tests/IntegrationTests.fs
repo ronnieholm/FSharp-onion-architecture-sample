@@ -33,7 +33,7 @@ module A =
 module Database =
     // SQLite driver creates the database at the path if the file doesn't
     // already exist. The default directory is
-    // src/Scrum.Tests/bin/Debug/net7.0/scrum_test.sqlite whereas we want the
+    // tests/Scrum.Tests/bin/Debug/net8.0/scrum_test.sqlite whereas we want the
     // database at the root of the Git repository.
     let connectionString = "URI=file:../../../../../scrum_test.sqlite"
 

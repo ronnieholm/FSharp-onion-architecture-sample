@@ -174,7 +174,7 @@ module Service =
                     if isNull claimsPrincipal then
                         Anonymous
                     else
-                        let claimsIdentity = context.User.Identity :?> ClaimsIdentity
+                        let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
                         let claims = claimsIdentity.Claims
                         if Seq.isEmpty claims then
                             Anonymous
@@ -493,17 +493,19 @@ module Controller =
                         { Id = Guid.NewGuid()
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                    | Ok id ->
+                        task { do! x.Env.CommitAsync(ct) } |> ignore
+                        CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
+                        task { do! x.Env.RollbackAsync(ct) } |> ignore
                         let accept = x.Request.Headers.Accept
                         match e with
                         | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
                         | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
                         | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
-                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))
+                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))                
             }
 
         [<HttpPut("{id}")>]
@@ -515,12 +517,14 @@ module Controller =
                         ct
                         { Id = id
                           Title = request.title
-                          Description = request.description |> Option.ofObj }
-                do! x.Env.CommitAsync(ct)
+                          Description = request.description |> Option.ofObj }                
                 return
                     match result with
-                    | Ok id -> CreatedResult($"/stories/{id}", id) :> ActionResult
+                    | Ok id ->
+                        task { do! x.Env.CommitAsync(ct) } |> ignore
+                        CreatedResult($"/stories/{id}", id) :> ActionResult
                     | Error e ->
+                        task { do! x.Env.RollbackAsync(ct) } |> ignore
                         let accept = x.Request.Headers.Accept
                         match e with
                         | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
@@ -545,11 +549,13 @@ module Controller =
                           StoryId = storyId
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok taskId -> CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
+                    | Ok taskId -> 
+                        task { do! x.Env.CommitAsync(ct) } |> ignore
+                        CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
                     | Error e ->
+                        task { do! x.Env.RollbackAsync(ct) } |> ignore
                         let accept = x.Request.Headers.Accept
                         match e with
                         | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
@@ -576,11 +582,13 @@ module Controller =
                           TaskId = taskId
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok _ -> OkResult() :> ActionResult
+                    | Ok _ -> 
+                        task { do! x.Env.CommitAsync(ct) } |> ignore
+                        OkResult() :> ActionResult
                     | Error e ->
+                        task { do! x.Env.RollbackAsync(ct) } |> ignore
                         let accept = x.Request.Headers.Accept
                         match e with
                         | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
@@ -595,11 +603,13 @@ module Controller =
         member x.RemoveTask(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let! result = RemoveTaskCommand.runAsync x.Env ct { StoryId = storyId; TaskId = taskId }
-                do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok _ -> OkResult() :> ActionResult
+                    | Ok _ -> 
+                        task { do! x.Env.CommitAsync(ct) } |> ignore
+                        OkResult() :> ActionResult
                     | Error e ->
+                        task { do! x.Env.RollbackAsync(ct) } |> ignore
                         let accept = x.Request.Headers.Accept
                         match e with
                         | RemoveTaskCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
@@ -614,11 +624,13 @@ module Controller =
         member x.RemoveStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
                 let! result = RemoveStoryCommand.runAsync x.Env ct { Id = id }
-                do! x.Env.CommitAsync(ct)
                 return
                     match result with
-                    | Ok _ -> OkResult() :> ActionResult
+                    | Ok _ -> 
+                        task { do! x.Env.CommitAsync(ct) } |> ignore
+                        OkResult() :> ActionResult
                     | Error e ->
+                        task { do! x.Env.RollbackAsync(ct) } |> ignore
                         let accept = x.Request.Headers.Accept
                         match e with
                         | RemoveStoryCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
