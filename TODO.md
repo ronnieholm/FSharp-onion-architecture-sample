@@ -16,3 +16,4 @@
 - Add OpenTelemetry (https://www.youtube.com/watch?v=tctadmNTHfU)
 - Experiment with https://devblogs.microsoft.com/dotnet/a-new-fsharp-compiler-feature-graphbased-typechecking/
 - Use in SQLiteRepository for joins: https://learn.microsoft.com/en-us/dotnet/api/system.collections.objectmodel.keyedcollection-2?view=net-7.0&redirectedfrom=MSDN
+- Consider creating a separate Env type for each handler to pass in every dependency into every handler.
