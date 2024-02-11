@@ -1,4 +1,4 @@
-# Scrum clean architecture sample
+# F# Scrum onion architecture sample
 
 *Got a comment or a question? Don't hesitate to drop me an email or open an issue.*
 
@@ -36,12 +36,12 @@ The Scrum domain was chosen because it offers sufficient complexity and everyone
 is familiar with it, though most aspects of the application is illustrated with
 stories and tasks only.
 
-With only stories and tasks, clean architecture may seem to introduce a
+With only stories and tasks, onion architecture may seem to introduce a
 disproportional amount of complexity. A larger domain and integrations with
-external services is where clean architecture starts to pays off.
+external services is where onion architecture starts to pays off.
 
 That said, not every project requires an implementation of every concept from
-clean architecture and domain driven design. Those should be scaled up or down
+onion architecture and domain driven design. Those should be scaled up or down
 based on actual business complexity.
 
 ## Getting started
