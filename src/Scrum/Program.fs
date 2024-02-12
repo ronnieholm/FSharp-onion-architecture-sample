@@ -790,23 +790,33 @@ module Filter =
 
 open Filter
 
-type Startup(configuration: IConfiguration) =
-    // This method gets called by the runtime. Use this method to add services
-    // to the container. For more information on how to configure your
-    // application, visit https://go.microsoft.com/fwlink/?LinkID=398940
-    member _.ConfigureServices(services: IServiceCollection) : unit =
-        services
+module Program =
+    // Avoid the application using the host's (unexpected) culture. This can
+    // make parsing unexpectedly go wrong.
+    CultureInfo.DefaultThreadCurrentCulture <- CultureInfo.InvariantCulture
+    CultureInfo.DefaultThreadCurrentUICulture <- CultureInfo.InvariantCulture
+
+    // Top-level handler for unobserved task exceptions
+    // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
+    TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
+        e.SetObserved()
+        e.Exception.Handle(fun e ->
+            printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
+            true))   
+    
+    let runWebApp (args: string[]) =
+        let builder = WebApplication.CreateBuilder(args)
+        builder.Services
             .AddOptions<JwtAuthenticationSettings>()
             .BindConfiguration(JwtAuthenticationSettings.JwtAuthentication)
             .ValidateDataAnnotations()
             .ValidateOnStart()
         |> ignore
 
-        let serviceProvider = services.BuildServiceProvider()
+        let serviceProvider = builder.Services.BuildServiceProvider()
         let jwtAuthenticationSettings =
             serviceProvider.GetService<IOptions<JwtAuthenticationSettings>>().Value
-
-        services
+        builder.Services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(fun options ->
                 options.TokenValidationParameters <-
@@ -832,13 +842,12 @@ type Startup(configuration: IConfiguration) =
                     ))
         |> ignore
 
-        services.AddCors(fun options ->
+        builder.Services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
         |> ignore
 
-        services.AddHttpContextAccessor() |> ignore
-
-        services
+        builder.Services.AddHttpContextAccessor() |> ignore
+        builder.Services
             .AddMvc(fun options ->
                 options.EnableEndpointRouting <- false
                 options.Filters.Add(typeof<WebExceptionFilterAttribute>) |> ignore)
@@ -852,28 +861,28 @@ type Startup(configuration: IConfiguration) =
                 // Per https://opensource.zalando.com/restful-api-guidelines/#240.
                 o.Converters.Add(EnumJsonConverter())
                 o.WriteIndented <- true)
-        |> ignore
+        |> ignore        
 
-        let serviceProvider = services.BuildServiceProvider()
         let logger = serviceProvider.GetService<ILogger<_>>()
         let scrumLogger = ScrumLogger(logger)
-        DatabaseMigrator(scrumLogger, configuration.GetConnectionString("Scrum"))
+        let connectionString = builder.Configuration.GetConnectionString("Scrum")
+        DatabaseMigrator(scrumLogger, connectionString)
             .Apply()
 
-        services
+        builder.Services
             .AddHealthChecks()
             .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
             .AddTypeActivatedCheck<SQLiteHealthCheck>(
                 "Database",
                 HealthStatus.Degraded,
                 Seq.empty,
-                args = [| configuration.GetConnectionString("Scrum") |]
+                args = [| connectionString |]
             )
         |> ignore
 
-        services.AddControllers() |> ignore
-        services.AddResponseCaching() |> ignore
-        services.AddEndpointsApiExplorer() |> ignore
+        builder.Services.AddControllers() |> ignore
+        builder.Services.AddResponseCaching() |> ignore
+        builder.Services.AddEndpointsApiExplorer() |> ignore
 
         // Azure hosting under a Linux means the application is running a
         // container. Inside the container, the application is run using the
@@ -881,7 +890,7 @@ type Startup(configuration: IConfiguration) =
         // have build-in compression support, so we add in application level
         // compression:
         // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
-        services
+        builder.Services
             .AddResponseCompression(fun options ->
                 options.EnableForHttps <- true
                 options.Providers.Add<GzipCompressionProvider>())
@@ -890,11 +899,9 @@ type Startup(configuration: IConfiguration) =
             .Configure<BrotliCompressionProviderOptions>(fun (options: BrotliCompressionProviderOptions) ->
                 options.Level <- CompressionLevel.SmallestSize)
         |> ignore
-
-    // This method gets called by the runtime. Use this method to configure the
-    // HTTP request pipeline.
-    member _.Configure (app: IApplicationBuilder) (env: IWebHostEnvironment) : unit =
-        if env.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
+        
+        let app = builder.Build()
+        if builder.Environment.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
 
         app.UseHttpsRedirection() |> ignore
         app.UseCors() |> ignore
@@ -944,28 +951,10 @@ type Startup(configuration: IConfiguration) =
         app.UseRouting() |> ignore
         app.UseAuthentication() |> ignore
         app.UseAuthorization() |> ignore
-        app.UseMvcWithDefaultRoute() |> ignore
-
-module Program =
-    // Avoid the application using the host's (unexpected) culture. This can
-    // make parsing unexpectedly go wrong.
-    CultureInfo.DefaultThreadCurrentCulture <- CultureInfo.InvariantCulture
-    CultureInfo.DefaultThreadCurrentUICulture <- CultureInfo.InvariantCulture
-
-    // Top-level handler for unobserved task exceptions
-    // https://social.msdn.microsoft.com/Forums/vstudio/en-US/bcb2b3fa-9fcd-4a90-9f9c-9ef24332451e/how-to-handle-exceptions-with-taskschedulerunobservedtaskexception?forum=parallelextensions
-    TaskScheduler.UnobservedTaskException.Add(fun (e: UnobservedTaskExceptionEventArgs) ->
-        e.SetObserved()
-        e.Exception.Handle(fun e ->
-            printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
-            true))
-
+        app.UseMvcWithDefaultRoute() |> ignore        
+        app.Run()
+        
     [<EntryPoint>]
     let main args =
-        let host =
-            Host
-                .CreateDefaultBuilder(args)
-                .ConfigureWebHostDefaults(fun builder -> builder.UseStartup<Startup>() |> ignore)
-                .Build()
-        host.Run()
+        runWebApp args
         0
