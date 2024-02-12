@@ -1,10 +1,8 @@
 module Scrum.Domain
 
-open System
-open System.Threading
-open System.Threading.Tasks
-
 module Seedwork =
+    open System
+    
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type DomainEvent = { OccurredAt: DateTime }
@@ -12,6 +10,8 @@ module Seedwork =
 // Constraint validation on primitive types for reuse across value object
 // creations.
 module Validation =
+    open System
+    
     module Guid =
         let notEmpty (v: Guid) : Result<Guid, string> = if v = Guid.Empty then Error "Should be non-empty" else Ok v
 
@@ -56,6 +56,9 @@ module Shared =
 open Shared.Paging
 
 module StoryAggregate =
+    open System
+    open System.Threading
+    open System.Threading.Tasks   
     open Seedwork
 
     module TaskEntity =

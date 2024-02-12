@@ -1,26 +1,16 @@
 ﻿namespace Scrum.Infrastructure
 
-open System
-open System.Data.Common
-open System.Diagnostics
-open System.Text
-open System.Text.Json
-open System.Text.Json.Serialization
-open System.Threading
-open System.Threading.Tasks
-open System.Collections.Generic
-open System.Data.SQLite
-open Microsoft.AspNetCore.Http
-open Microsoft.Extensions.Logging
-open FsToolkit.ErrorHandling
-open Scrum.Domain
-open Scrum.Domain.Seedwork
-open Scrum.Domain.Shared.Paging
-open Scrum.Domain.StoryAggregate
-open Scrum.Domain.StoryAggregate.TaskEntity
-open Scrum.Application.Seedwork
-
 module Seedwork =
+    open System
+    open System.Diagnostics
+    open System.Text
+    open System.Text.Json.Serialization
+    open System.Threading
+    open System.Threading.Tasks
+    open System.Data.SQLite
+    open FsToolkit.ErrorHandling
+    open Scrum.Domain.Shared.Paging
+        
     exception InfrastructureException of string
 
     let panic (s: string) : 't = raise (InfrastructureException(s))
@@ -135,6 +125,21 @@ module Seedwork =
                 |> panicOnError "base64"
                 |> Some
 
+open System
+open System.Data.Common
+open System.Text.Json
+open System.Threading
+open System.Threading.Tasks
+open System.Collections.Generic
+open System.Data.SQLite
+open Microsoft.Extensions.Logging
+open FsToolkit.ErrorHandling
+open Scrum.Domain
+open Scrum.Domain.Seedwork
+open Scrum.Domain.Shared.Paging
+open Scrum.Domain.StoryAggregate
+open Scrum.Domain.StoryAggregate.TaskEntity
+open Scrum.Application.Seedwork
 open Seedwork
 open Seedwork.Repository
 

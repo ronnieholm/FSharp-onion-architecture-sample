@@ -1,51 +1,17 @@
 ﻿namespace Scrum.Web
 
-open System
-open System.Collections.Generic
-open System.ComponentModel.DataAnnotations
-open System.Data.SQLite
-open System.Diagnostics
-open System.Globalization
-open System.IO
-open System.IO.Compression
-open System.IdentityModel.Tokens.Jwt
-open System.Net
-open System.Reflection
-open System.Security.Claims
-open System.Security.Cryptography
-open System.Text
-open System.Text.Json
-open System.Text.Json.Serialization
-open System.Threading
-open System.Threading.Tasks
-open Microsoft.AspNetCore.Authorization
-open Microsoft.AspNetCore.Builder
-open Microsoft.AspNetCore.Http
-open Microsoft.AspNetCore.Authentication.JwtBearer
-open Microsoft.AspNetCore.Mvc.Controllers
-open Microsoft.AspNetCore.Mvc.Filters
-open Microsoft.Extensions.Configuration
-open Microsoft.Extensions.Diagnostics.HealthChecks
-open Microsoft.Extensions.Hosting
-open Microsoft.AspNetCore.Hosting
-open Microsoft.Extensions.DependencyInjection
-open Microsoft.AspNetCore.Mvc
-open Microsoft.Extensions.Logging
-open Microsoft.Extensions.Options
-open Microsoft.Extensions.Primitives
-open Microsoft.IdentityModel.JsonWebTokens
-open Microsoft.IdentityModel.Tokens
-open Microsoft.Net.Http.Headers
-open Microsoft.AspNetCore.Diagnostics.HealthChecks
-open Microsoft.AspNetCore.ResponseCompression
-open Scrum.Application.Seedwork
-open Scrum.Application.StoryAggregateRequest
-open Scrum.Application.DomainEventRequest
-open Scrum.Infrastructure
-open Scrum.Infrastructure.Seedwork
-open Scrum.Infrastructure.Seedwork.Json
-
 module Seedwork =
+    open System
+    open System.Reflection
+    open System.Text.Json
+    open System.Text.Json.Serialization
+    open Microsoft.AspNetCore.Http
+    open Microsoft.AspNetCore.Mvc.Controllers
+    open Microsoft.AspNetCore.Mvc
+    open Microsoft.Extensions.Primitives
+    open Scrum.Application.Seedwork
+    open Scrum.Infrastructure.Seedwork
+    
     exception WebException of string
 
     let panic (s: string) : 't = raise (WebException(s))
@@ -138,6 +104,9 @@ module Seedwork =
             |> createJsonResult accept StatusCodes.Status400BadRequest
 
 module Configuration =
+    open System
+    open System.ComponentModel.DataAnnotations
+    
     type JwtAuthenticationSettings() =
         static member JwtAuthentication: string = nameof JwtAuthenticationSettings.JwtAuthentication
         [<Required>]
@@ -149,10 +118,23 @@ module Configuration =
         [<Range(60, 86400)>]
         member val ExpirationInSeconds: uint = 0ul with get, set
 
-open Configuration
-open Seedwork
-
 module Service =
+    open System
+    open System.Data.SQLite
+    open System.IO
+    open System.IdentityModel.Tokens.Jwt
+    open System.Reflection
+    open System.Security.Claims
+    open System.Security.Cryptography
+    open System.Text
+    open Microsoft.AspNetCore.Http
+    open Microsoft.IdentityModel.JsonWebTokens
+    open Microsoft.IdentityModel.Tokens
+    open Scrum.Application.Seedwork
+    open Scrum.Infrastructure.Seedwork
+    open Configuration
+    open Seedwork    
+    
     // Names of claims shared between services.
     module ScrumClaims =
         let UserIdClaim = "userId"
@@ -378,6 +360,25 @@ module Service =
 open Service
 
 module Controller =
+    open System
+    open System.Collections.Generic
+    open System.Security.Claims
+    open System.Threading
+    open System.Threading.Tasks
+    open Microsoft.AspNetCore.Authorization
+    open Microsoft.AspNetCore.Http
+    open Microsoft.Extensions.Configuration
+    open Microsoft.AspNetCore.Mvc
+    open Microsoft.Extensions.Logging
+    open Microsoft.Extensions.Options
+    open Scrum.Application.Seedwork
+    open Scrum.Application.StoryAggregateRequest
+    open Scrum.Application.DomainEventRequest
+    open Scrum.Infrastructure
+    open Scrum.Infrastructure.Seedwork
+    open Configuration
+    open Seedwork    
+    
     type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
         inherit ControllerBase()
 
@@ -716,6 +717,13 @@ module Controller =
             DateTime.UtcNow
 
 module HealthCheck =
+    open System
+    open System.Collections.Generic
+    open System.Data.SQLite
+    open System.Threading.Tasks
+    open Microsoft.Extensions.Diagnostics.HealthChecks
+    open Scrum.Application.Seedwork
+    
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
         let mb = 1024 * 2024
         interface IHealthCheck with
@@ -763,9 +771,16 @@ module HealthCheck =
                         return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
                 }
 
-open HealthCheck
 
 module Filter =
+    open System.Diagnostics
+    open System.Net
+    open Microsoft.AspNetCore.Mvc.Filters
+    open Microsoft.Extensions.Hosting
+    open Microsoft.AspNetCore.Mvc
+    open Scrum.Infrastructure.Seedwork
+    open Seedwork   
+    
     type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
         inherit ExceptionFilterAttribute()
 
@@ -788,9 +803,35 @@ module Filter =
                 context.HttpContext.Response.StatusCode <- code
                 context.Result <- JsonResult(ProblemDetails.create code message)
 
-open Filter
 
 module Program =
+    open System
+    open System.Globalization
+    open System.IO.Compression
+    open System.Text
+    open System.Text.Json
+    open System.Threading.Tasks
+    open Microsoft.AspNetCore.Builder
+    open Microsoft.AspNetCore.Http
+    open Microsoft.AspNetCore.Authentication.JwtBearer
+    open Microsoft.Extensions.Configuration
+    open Microsoft.Extensions.Hosting
+    open Microsoft.Extensions.DependencyInjection
+    open Microsoft.Extensions.Logging
+    open Microsoft.Extensions.Options
+    open Microsoft.Extensions.Primitives
+    open Microsoft.IdentityModel.Tokens
+    open Microsoft.Net.Http.Headers
+    open Microsoft.AspNetCore.Diagnostics.HealthChecks
+    open Microsoft.Extensions.Diagnostics.HealthChecks
+    open Microsoft.AspNetCore.ResponseCompression
+    open Scrum.Infrastructure
+    open Scrum.Infrastructure.Seedwork.Json
+    open Configuration
+    open Seedwork    
+    open HealthCheck
+    open Filter
+    
     // Avoid the application using the host's (unexpected) culture. This can
     // make parsing unexpectedly go wrong.
     CultureInfo.DefaultThreadCurrentCulture <- CultureInfo.InvariantCulture
