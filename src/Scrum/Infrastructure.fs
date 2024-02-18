@@ -147,6 +147,114 @@ type SystemClock() =
     interface IClock with
         member _.CurrentUtc() = DateTime.UtcNow
 
+module SqliteStoryRepository2 =
+    let existAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (id: StoryId) : Task<bool> =
+        task {
+            let connection = transaction.Connection
+            let sql = "select count(*) from stories where id = @id"
+            use cmd = new SQLiteCommand(sql, connection, transaction)
+            cmd.Parameters.AddWithValue("@id", id |> StoryId.value |> string) |> ignore
+            let! count = cmd.ExecuteScalarAsync(ct)
+            return
+                (match count :?> int64 with
+                 | 0L -> false
+                 | 1L -> true
+                 | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
+        }
+        
+    // Compared to event sourcing, we immediately apply events to the store.
+    // We don't have to worry about the shape of events evolving over time;
+    // only to keep the store up to date.
+    let applyEventAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (now: DateTime) (event: StoryDomainEvent) : Task<unit> =
+        let connection = transaction.Connection
+        task {
+            let! aggregateId =
+                match event with
+                | BasicStoryDetailsCaptured e ->
+                    let sql =
+                        "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
+                    use cmd = new SQLiteCommand(sql, connection, transaction)
+                    let p = cmd.Parameters
+                    let storyId = e.StoryId |> StoryId.value
+                    p.AddWithValue("@id", storyId |> string) |> ignore
+                    p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
+                    p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
+                    |> ignore
+                    p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                    applyEventExecuteNonQuery storyId cmd ct
+                | BasicStoryDetailsRevised e ->
+                    let sql =
+                        "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
+                    use cmd = new SQLiteCommand(sql, connection, transaction)
+                    let p = cmd.Parameters
+                    let storyId = e.StoryId |> StoryId.value
+                    p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
+                    p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
+                    |> ignore
+                    p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                    p.AddWithValue("@id", storyId |> string) |> ignore
+                    applyEventExecuteNonQuery storyId cmd ct
+                | StoryRemoved e ->
+                    let sql = "delete from stories where id = @id"
+                    use cmd = new SQLiteCommand(sql, connection, transaction)
+                    let storyId = e.StoryId |> StoryId.value
+                    cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
+                    applyEventExecuteNonQuery storyId cmd ct
+                | BasicTaskDetailsAddedToStory e ->
+                    let sql =
+                        "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
+                    use cmd = new SQLiteCommand(sql, connection, transaction)
+                    let p = cmd.Parameters
+                    let storyId = e.StoryId |> StoryId.value
+                    p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
+                    p.AddWithValue("@storyId", storyId |> string) |> ignore
+                    p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
+                    p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
+                    |> ignore
+                    p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                    applyEventExecuteNonQuery storyId cmd ct
+                | BasicTaskDetailsRevised e ->
+                    let sql =
+                        "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
+                    use cmd = new SQLiteCommand(sql, connection, transaction)
+                    let p = cmd.Parameters
+                    let storyId = e.StoryId |> StoryId.value
+                    p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
+                    p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
+                    |> ignore
+                    p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                    p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
+                    p.AddWithValue("@storyId", storyId |> string) |> ignore
+                    applyEventExecuteNonQuery storyId cmd ct
+                | TaskRemoved e ->
+                    let sql = "delete from tasks where id = @id and story_id = @storyId"
+                    use cmd = new SQLiteCommand(sql, connection, transaction)
+                    let p = cmd.Parameters
+                    let storyId = e.StoryId |> StoryId.value
+                    p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
+                    p.AddWithValue("@storyId", storyId |> string) |> ignore
+                    applyEventExecuteNonQuery storyId cmd ct
+                    
+            // We don't serialize an event to JSON because F# discriminated
+            // unions aren't supported by System.Text.Json
+            // (https://github.com/dotnet/runtime/issues/55744). Instead of
+            // a custom converter, or taking a dependency on
+            // https://github.com/Tarmil/FSharp.SystemTextJson), we use the
+            // F# type printer. This wouldn't work in a pure event sourced
+            // system where we'd read back the event for processing, but the
+            // printer suffices for persisting domain event for
+            // troubleshooting.
+            do!
+                persistDomainEventAsync
+                    transaction
+                    ct
+                    (nameof Story)
+                    aggregateId
+                    (event.GetType().Name)
+                    $"%A{event}"
+                    now
+        }                        
+
 type SqliteStoryRepository(transaction: SQLiteTransaction, clock: IClock) =
     let connection = transaction.Connection
 
@@ -437,6 +545,30 @@ type SqliteDomainEventRepository(transaction: SQLiteTransaction) =
                     let cursor = offsetsToCursor globalEndOffset pageEndOffset
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }
+
+module ScrumLogger2 =
+    let jsonSerializationOptions =
+        let o =
+            JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true)
+        o.Converters.Add(Json.DateTimeJsonConverter())
+        o.Converters.Add(Json.EnumJsonConverter())
+        o        
+                
+    let log (logger: ILogger<_>) (message: LogMessage) =
+        match message with
+        | Request (identity, useCase, request) ->
+            let requestJson = JsonSerializer.Serialize(request, jsonSerializationOptions)
+            logger.LogInformation("Use case: {useCase}, payload: {payload}, identity: {identity}", useCase, requestJson, $"%A{identity}")               
+        | RequestDuration (useCase, duration) ->
+            logger.LogInformation("{useCase}: {duration}", useCase, duration)
+        | Exception e ->
+            logger.LogDebug("{exception}", $"%A{e}")
+        | Error2 message ->
+            logger.LogError(message)
+        | Information2 message ->
+            logger.LogInformation(message)
+        | Debug2 message ->
+            logger.LogDebug(message)
 
 type ScrumLogger(logger: ILogger<_>) =
     static let jsonSerializationOptions =

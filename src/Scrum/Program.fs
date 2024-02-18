@@ -390,7 +390,6 @@ open Service
 module Controller =
     open System
     open System.Collections.Generic
-    open System.Security.Claims
     open System.Threading
     open System.Threading.Tasks
     open Microsoft.AspNetCore.Authorization
@@ -398,7 +397,6 @@ module Controller =
     open Microsoft.Extensions.Configuration
     open Microsoft.AspNetCore.Mvc
     open Microsoft.Extensions.Logging
-    open Microsoft.Extensions.Options
     open Scrum.Application.Seedwork
     open Scrum.Application.StoryAggregateRequest
     open Scrum.Application.DomainEventRequest
@@ -436,31 +434,6 @@ module Controller =
     [<Authorize; Route("[controller]")>]
     type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
         inherit ScrumController(configuration, httpContext, loggerFactory)
-
-        [<HttpPost>]
-        member x.CaptureBasicStoryDetails([<FromBody>] request: StoryCreateDto, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let! result =
-                    CaptureBasicStoryDetailsCommand.runAsync
-                        x.Env
-                        ct
-                        { Id = Guid.NewGuid()
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
-                return
-                    match result with
-                    | Ok id ->
-                        task { do! x.Env.CommitAsync(ct) } |> ignore
-                        CreatedResult($"/stories/{id}", id) :> ActionResult
-                    | Error e ->
-                        task { do! x.Env.RollbackAsync(ct) } |> ignore
-                        let accept = x.Request.Headers.Accept
-                        match e with
-                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-                        | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
-                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))                
-            }
 
         [<HttpPut("{id}")>]
         member x.ReviseBasicStoryDetails([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
@@ -760,11 +733,29 @@ module Routes (* Handlers *) =
     open System
     open System.Security.Claims
     open System.Collections.Generic
+    open System.Data.SQLite
+    open System.Text.Json
     open Microsoft.AspNetCore.Http
     open Microsoft.Extensions.Options
+    open Microsoft.Extensions.Logging
+    open Microsoft.Extensions.Configuration
     open Giraffe    
-    open Seedwork
     open FsToolkit.ErrorHandling
+    open Seedwork
+    open Scrum.Application.Seedwork
+    open Scrum.Application.StoryAggregateRequest
+    open Scrum.Infrastructure.Seedwork
+    
+    let errorMessageSerializationOptions =
+        JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)    
+    
+    let fromValidationErrors (errors: ValidationError list): ProblemDetails =
+        (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
+        |> JsonSerializer.Serialize
+        |> ProblemDetails.create 400        
+    
+    let fromAuthorizationError (message: string): ProblemDetails =
+        ProblemDetails.create 401 message
     
     let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) (expectedParameters: string list): Result<unit, ProblemDetails> =
         // Per design APIs conservatively:
@@ -787,6 +778,7 @@ module Routes (* Handlers *) =
             else setStatusCode 401 earlyReturn ctx    
     
     let issueTokenHandler : HttpHandler =
+        // TODO: Fail is token is provided and/or user isn't anonymous
         fun (next : HttpFunc) (ctx : HttpContext) ->
             let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
             let settings = settings.Value
@@ -818,7 +810,7 @@ module Routes (* Handlers *) =
                 ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                 json e next ctx         
     
-    let renewHandler : HttpHandler =
+    let renewTokenHandler : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
             let settings = settings.Value            
@@ -834,7 +826,7 @@ module Routes (* Handlers *) =
                 ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                 json e next ctx                                   
         
-    let introspectHandler : HttpHandler =
+    let introspectTokenHandler : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let claimsPrincipal = ctx.User
             let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
@@ -861,18 +853,83 @@ module Routes (* Handlers *) =
 
             json map next ctx
            
+    let currentUtc () = DateTime.UtcNow
+           
+    let getConnection (connectionString: string): SQLiteConnection =
+        let connection = new SQLiteConnection(connectionString)
+        connection.Open()
+        use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
+        cmd.ExecuteNonQuery() |> ignore
+        connection        
+
+    type StoryCreateDto = { title: string; description: string }
+               
+    let captureBasicStoryDetailsHandler : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            // TODO: verify no query string args passed
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")
+            
+            let log = Scrum.Infrastructure.ScrumLogger2.log logger           
+            let identity = UserIdentity2.getCurrentIdentity ctx
+            
+            task {
+                use connection = getConnection connectionString
+                use transaction = connection.BeginTransaction()
+                let storyExist = Scrum.Infrastructure.SqliteStoryRepository2.existAsync transaction ctx.RequestAborted
+                let storyApplyEvent = Scrum.Infrastructure.SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+
+                let! request = ctx.BindJsonAsync<StoryCreateDto>()
+                let! result =
+                    CaptureBasicStoryDetailsCommand.runAsync2
+                        log
+                        currentUtc
+                        storyExist
+                        storyApplyEvent
+                        identity
+                        { Id = Guid.NewGuid()
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                        
+                match result with
+                | Ok id ->
+                    do! transaction.CommitAsync ctx.RequestAborted
+                    ctx.SetStatusCode 201
+                    ctx.SetHttpHeader("location", $"/stories/{id}")
+                    return! json {| StoryId = id |} next ctx
+                | Error e ->
+                    do! transaction.RollbackAsync ctx.RequestAborted
+                    let problem =
+                        match e with
+                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
+                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
+                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))
+                    ctx.SetStatusCode problem.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json problem next ctx
+            }
+
     let webApp =
         choose [
-            GET >=> choose [
-                route "/ping"   >=> text "pong"
-                route "/"       >=> htmlFile "/pages/index.html" ]    
-            
+            // Loosely modeled after the corresponding OAuth2 endpoints.           
             POST >=> choose [
-                // Loosely modeled after the corresponding OAuth2 endpoint.
                 route "/authentication/issue-token" >=> issueTokenHandler
-                route "/authentication/renew-token" >=> checkUserIsLoggedIn >=> renewHandler
-                route "/authentication/introspect" >=> checkUserIsLoggedIn >=> introspectHandler ]
-
+                route "/authentication/renew-token" >=> checkUserIsLoggedIn >=> renewTokenHandler
+                route "/authentication/introspect" >=> checkUserIsLoggedIn >=> introspectTokenHandler ]
+            
+            checkUserIsLoggedIn >=> choose [
+                POST >=> route "/stories" >=> captureBasicStoryDetailsHandler
+                // PUT >=> route "/stories2" >=> reviseBasicStoryDetailsHandler
+                // POST >=> route "/stories2/{storyId}/tasks" >=> addBasicTaskDetailsToStoryHandler
+                // PUT >=> route "/stories2/{storyId}/tasks/{taskId}" >=> reviseBasicTaskDetailsHandler
+                // DELETE >=> route "/stories2/{storyId}/tasks/{taskId}" >=> removeTaskHandler
+                // DELETE >=> route "/stories2/{storyId}" >=> removeStoryHandler
+                // GET >=> route "/stories2/{storyId}" >=> getByStoryIdHandler
+                // GET >=> route "/stories2" >=> getStoriesPagedHandler                                       
+            ]
+                        
             RequestErrors.NOT_FOUND "Not Found"
         ] 
 

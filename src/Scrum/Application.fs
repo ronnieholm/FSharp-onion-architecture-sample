@@ -69,6 +69,16 @@ module Seedwork =
     type IClockFactory =
         abstract Clock: IClock
 
+    type LogMessage =
+        // Application specific logging. 
+        | Request of ScrumIdentity * useCase: string * request: obj
+        | RequestDuration of useCase: string * duration: uint<ms>
+        | Exception of exn
+        // Delegates to .NET's ILogger.
+        | Error2 of string
+        | Information2 of string
+        | Debug2 of string    
+        
     [<Interface>]
     // Could be ILogger but that interface is part of .NET.
     type IScrumLogger =
@@ -134,8 +144,23 @@ module Seedwork =
         env.Logger.LogRequestDuration useCase elapsed
         result
 
+    let runWithDecoratorAsync2 (log: LogMessage -> unit) (identity: ScrumIdentity) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
+        let result, elapsed =
+            time (fun _ ->
+                log (Request(identity, useCase, cmd))
+                taskResult { return! fn () })
+        // Don't log errors from evaluating fn as these are expected errors. We
+        // don't want those to pollute the log with.
+        log (RequestDuration(useCase, elapsed))
+        result
+
     let isInRole (identity: IScrumIdentity) (role: ScrumRole) : Result<unit, string> =
         match identity.GetCurrent() with
+        | Anonymous -> Error("Anonymous user unsupported")
+        | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
+
+    let isInRole2 (identity: ScrumIdentity) (role: ScrumRole) : Result<unit, string> =
+        match identity with
         | Anonymous -> Error("Anonymous user unsupported")
         | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
 
@@ -210,6 +235,34 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env (nameof CaptureBasicStoryDetailsCommand) cmd aux
 
+        let runAsync2
+            (log: LogMessage -> unit)
+            (currentUtc: unit -> DateTime)
+            (storyExist: StoryId -> System.Threading.Tasks.Task<bool>)
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)            
+            (identity: ScrumIdentity)
+            (cmd: CaptureBasicStoryDetailsCommand)
+            : TaskResult<Guid, CaptureBasicStoryDetailsError> =
+            let aux () =
+                taskResult {
+                    do! isInRole2 identity Member |> Result.mapError AuthorizationError
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    do!
+                        storyExist cmd.Id
+                        |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
+                    let! story, event =
+                        StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (currentUtc()) None
+                        |> Result.mapError fromDomainError
+                    do! storyApplyEvent (currentUtc()) event
+                    // Example of publishing the StoryBasicDetailsCaptured domain event to
+                    // another aggregate:
+                    // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
+                    // Integration events may be generated here and persisted.
+                    return StoryId.value story.Aggregate.Id
+                }
+
+            runWithDecoratorAsync2 log identity (nameof CaptureBasicStoryDetailsCommand) cmd aux    
+    
     type ReviseBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
     module ReviseBasicStoryDetailsCommand =
