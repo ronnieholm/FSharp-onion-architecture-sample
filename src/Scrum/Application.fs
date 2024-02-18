@@ -7,7 +7,7 @@ module Seedwork =
     open FsToolkit.ErrorHandling
     open Scrum.Domain.Shared.Paging
     open Scrum.Domain.StoryAggregate
-       
+
     // Contrary to outer layer's Seedwork, core doesn't define a boundary
     // exception. Core communicates errors as values.
 
@@ -146,7 +146,6 @@ module SharedModels =
     // https://opensource.zalando.com/restful-api-guidelines/#137)
     type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
-
 module StoryAggregateRequest =
     open System
     open System.Threading
@@ -154,9 +153,9 @@ module StoryAggregateRequest =
     open Scrum.Domain
     open Scrum.Domain.Shared.Paging
     open Scrum.Domain.StoryAggregate
-    open Scrum.Domain.StoryAggregate.TaskEntity   
+    open Scrum.Domain.StoryAggregate.TaskEntity
     open SharedModels
-    
+
     type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
     module CaptureBasicStoryDetailsCommand =
@@ -559,7 +558,7 @@ module DomainEventRequest =
     open Scrum.Domain
     open Scrum.Domain.Shared.Paging
     open SharedModels
-        
+
     type GetByAggregateIdQuery = { Id: Guid; Limit: int; Cursor: string option }
 
     module GetByAggregateIdQuery =

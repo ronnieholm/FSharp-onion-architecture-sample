@@ -78,8 +78,8 @@ module Seedwork =
             let ok =
                 acceptHeaders.ToArray()
                 |> Array.exists (fun v -> v = "application/problem+json")
-            if ok then "application/problem+json" else "application/json"
-
+            if ok then "application/problem+json" else "application/json"  
+        
         let toJsonResult (accept: StringValues) (error: ProblemDetails) : ActionResult =
             JsonResult(error, StatusCode = error.Status, ContentType = inferContentType accept) :> _
 
@@ -118,6 +118,8 @@ module Configuration =
         [<Range(60, 86400)>]
         member val ExpirationInSeconds: uint = 0ul with get, set
 
+open Configuration
+
 module Service =
     open System
     open System.Data.SQLite
@@ -132,7 +134,6 @@ module Service =
     open Microsoft.IdentityModel.Tokens
     open Scrum.Application.Seedwork
     open Scrum.Infrastructure.Seedwork
-    open Configuration
     open Seedwork    
     
     // Names of claims shared between services.
@@ -140,6 +141,40 @@ module Service =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
 
+    // Web specific implementation of IUserIdentity. It therefore belongs in
+    // Program.fs rather than Infrastructure.fs.
+    module UserIdentity2 =
+        let getCurrentIdentity(context: HttpContext) : ScrumIdentity =
+            if isNull context then
+                Anonymous
+            else
+                let claimsPrincipal = context.User
+                if isNull claimsPrincipal then
+                    Anonymous
+                else
+                    let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
+                    let claims = claimsIdentity.Claims
+                    if Seq.isEmpty claims then
+                        Anonymous
+                    else
+                        let userIdClaim =
+                            claims
+                            |> Seq.filter (fun c -> c.Type = ScrumClaims.UserIdClaim)
+                            |> Seq.map _.Value
+                            |> Seq.exactlyOne
+                        let rolesClaim =
+                            claims
+                            |> Seq.filter (fun c -> c.Type = ClaimTypes.Role)
+                            |> Seq.map (fun c -> ScrumRole.fromString c.Value)
+                            |> List.ofSeq
+
+                        // With a proper identity provider, we'd likely have
+                        // kinds of authenticated identities, and we might
+                        // use a claim's value to determine which one.
+                        match List.length rolesClaim with
+                        | 0 -> Anonymous
+                        | _ -> Authenticated(userIdClaim, rolesClaim)    
+    
     // Web specific implementation of IUserIdentity. It therefore belongs in
     // Program.fs rather than Infrastructure.fs.
     type UserIdentity(context: HttpContext) =
@@ -179,18 +214,11 @@ module Service =
                             | 0 -> Anonymous
                             | _ -> Authenticated(userIdClaim, rolesClaim)
 
-    // IUserIdentity is defined in Application.fs because application code needs
-    // to consult the current identity as part of running use cases.
-    // IdentityProvider, on the other hand, is of no concern to the application
-    // layer and is host dependent. AppEnv doesn't support resolving
-    // IIdentityProvider. Therefore, we could've implemented it inside the
-    // Authentication controller, but decided to keep the controller lean and
-    // extract the logic into a separate service.
-    type IdentityProvider(clock: IClock, settings: JwtAuthenticationSettings) =
-        let sign (claims: Claim array) : string =
+    module IdentityProvider =
+        let sign (settings: JwtAuthenticationSettings) (now: DateTime) (claims: Claim array) : string =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
-            let validUntilUtc = clock.CurrentUtc().AddSeconds(int settings.ExpirationInSeconds)
+            let validUntilUtc = now.AddSeconds(int settings.ExpirationInSeconds)
             let token =
                 JwtSecurityToken(
                     settings.Issuer.ToString(),
@@ -199,12 +227,12 @@ module Service =
                     expires = validUntilUtc,
                     signingCredentials = credentials
                 )
-            JwtSecurityTokenHandler().WriteToken(token)
-
-        member _.IssueToken (userId: string) (roles: ScrumRole list) : string =
+            JwtSecurityTokenHandler().WriteToken(token)        
+        
+        let issueToken (settings: JwtAuthenticationSettings) (now: DateTime) (userId: string) (roles: ScrumRole list) : string =
             // With an actual user store, we'd validate user credentials here.
             // But for this application, userId may be any string and role must
-            // be either "member" or "admin"
+            // be either "member" or "admin".
             let roles =
                 roles
                 |> List.map (fun r -> Claim(ScrumClaims.RolesClaim, r.ToString()))
@@ -212,12 +240,12 @@ module Service =
             let rest =
                 [| Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
                    Claim(ScrumClaims.UserIdClaim, userId) |]
-            Array.concat [ roles; rest ] |> sign
+            Array.concat [ roles; rest ] |> sign settings now
 
-        member x.RenewToken(identity: ScrumIdentity) : Result<string, string> =
+        let renewToken (settings: JwtAuthenticationSettings) (now: DateTime) (identity: ScrumIdentity) : Result<string, string> =
             match identity with
             | Anonymous -> Error "User is anonymous"
-            | Authenticated(id, roles) -> Ok(x.IssueToken id roles)
+            | Authenticated(id, roles) -> Ok(issueToken settings now id roles)                    
 
     type AvailableScript = { Name: string; Hash: string; Sql: string }
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
@@ -376,7 +404,6 @@ module Controller =
     open Scrum.Application.DomainEventRequest
     open Scrum.Infrastructure
     open Scrum.Infrastructure.Seedwork
-    open Configuration
     open Seedwork    
     
     type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
@@ -400,80 +427,6 @@ module Controller =
 
         interface IDisposable with
             member x.Dispose() = x.Env.Dispose()
-
-    // As the token is supposed to be opaque, we can either promote information
-    // from inside the token to fields on the token or provide clients with an
-    // introspect endpoint. We chose the latter.
-    type AuthenticationResponse = { Token: string }
-
-    // Loosely modeled after the corresponding OAuth2 endpoint.
-    [<Route("[controller]")>]
-    type AuthenticationController
-        (
-            configuration: IConfiguration,
-            httpContext: IHttpContextAccessor,
-            jwtAuthenticationSettings: IOptions<JwtAuthenticationSettings>,
-            loggerFactory: ILoggerFactory
-        ) as x =
-        inherit ScrumController(configuration, httpContext, loggerFactory)
-
-        let idp = IdentityProvider(x.Env.Clock, jwtAuthenticationSettings.Value)
-
-        [<HttpPost("issue-token")>]
-        member x.IssueToken(userId: string, roles: string) : Task<ActionResult> =
-            task {
-                let unexpected = x.UnexpectedQueryStringParameters [ nameof userId; nameof roles ]
-                if List.length unexpected > 0 then
-                    let accept = x.Request.Headers.Accept
-                    return ProblemDetails.fromUnexpectedQueryStringParameters accept unexpected
-                else
-                    // Get user from imaginary user store and pass to
-                    // issueRegularToken to include information about the user as
-                    // claims in the token.
-                    let roles = roles.Split(',') |> Array.map ScrumRole.fromString |> Array.toList
-                    let token = idp.IssueToken userId roles
-                    return CreatedResult("/authentication/introspect", { Token = token })
-            }
-
-        [<Authorize; HttpPost("renew-token")>]
-        member _.RenewToken() : Task<ActionResult> =
-            task {
-                let identity = x.Env.Identity.GetCurrent()
-                let token = idp.RenewToken identity
-                return
-                    (match token with
-                     | Ok token -> CreatedResult("/authentication/introspect", { Token = token }) :> _
-                     | Error e ->
-                         let accept = x.Request.Headers.Accept
-                         ProblemDetails.createJsonResult accept StatusCodes.Status400BadRequest e)
-            }
-
-        [<Authorize; HttpPost("introspect")>]
-        member _.Introspect() : IDictionary<string, obj> =
-            let claimsPrincipal = x.HttpContext.User
-            let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
-            let map = Dictionary<string, obj>()
-
-            for c in claimsIdentity.Claims do
-                // Special case non-string value or it becomes a string in
-                // string in the JSON rendering of the claim.
-                if c.Type = "exp" then
-                    map.Add("exp", Int32.Parse(c.Value) :> obj)
-                elif c.Type = ClaimTypes.Role then
-                    // For reasons unknown, ASP.NET maps our Scrum RoleClaim
-                    // from the bearer token to ClaimTypes.Role. The claim's
-                    // type JSON rendered would become
-                    // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
-                    let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
-                    if ok then
-                        let values = values :?> ResizeArray<string>
-                        values.Add(c.Value)
-                    else
-                        map.Add(ScrumClaims.RolesClaim, [ c.Value ] |> ResizeArray)
-                else
-                    map.Add(c.Type, c.Value)
-
-            map
 
     type StoryCreateDto = { title: string; description: string }
     type StoryUpdateDto = { title: string; description: string }
@@ -803,6 +756,125 @@ module Filter =
                 context.HttpContext.Response.StatusCode <- code
                 context.Result <- JsonResult(ProblemDetails.create code message)
 
+module Routes (* Handlers *) =
+    open System
+    open System.Security.Claims
+    open System.Collections.Generic
+    open Microsoft.AspNetCore.Http
+    open Microsoft.Extensions.Options
+    open Giraffe    
+    open Seedwork
+    open FsToolkit.ErrorHandling
+    
+    let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) (expectedParameters: string list): Result<unit, ProblemDetails> =
+        // Per design APIs conservatively:
+        // https://opensource.zalando.com/restful-api-guidelines/#109
+        let unexpected =
+            query
+            |> Seq.map _.Key
+            |> Seq.toList
+            |> List.except expectedParameters
+        if List.isEmpty unexpected then
+            Ok ()
+        else
+            let unexpected = String.Join(", ", unexpected |> List.toSeq)
+            Error (ProblemDetails.create 400 $"Unexpected query string parameters: %s{unexpected}")
+   
+    let checkUserIsLoggedIn : HttpHandler =
+        fun (next : HttpFunc) (ctx : HttpContext) ->
+            if isNotNull ctx.User && ctx.User.Identity.IsAuthenticated
+            then next ctx
+            else setStatusCode 401 earlyReturn ctx    
+    
+    let issueTokenHandler : HttpHandler =
+        fun (next : HttpFunc) (ctx : HttpContext) ->
+            let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
+            let settings = settings.Value
+            let response =
+                result {                   
+                    let! userId =
+                        ctx.GetQueryStringValue "userId"
+                        |> Result.mapError (fun e -> ProblemDetails.create 400 "Missing query string parameter 'userId'")
+                    let! roles =
+                        ctx.GetQueryStringValue "roles"
+                        |> Result.map (fun r -> r.Split(',') |> Array.map ScrumRole.fromString |> Array.toList)
+                        |> Result.mapError (fun e -> ProblemDetails.create 400 "Missing query string parameter 'roles'")
+                    let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof userId; nameof roles ] 
+                    let token = IdentityProvider.issueToken settings DateTime.UtcNow userId roles
+                    
+                    // As the token is opaque, we can either promote information from inside the
+                    // token to fields on the response object or provide clients with an introspect
+                    // endpoint. We chose the latter while still wrapping the token in a response.
+                    return {| Token = token |}
+                }
+
+            match response with
+            | Ok r ->
+                ctx.SetStatusCode 201
+                ctx.SetHttpHeader("location", "/authentication/introspect")
+                json r next ctx
+            | Error e ->
+                ctx.SetStatusCode 400
+                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                json e next ctx         
+    
+    let renewHandler : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
+            let settings = settings.Value            
+            let identity = UserIdentity2.getCurrentIdentity ctx
+            let result = IdentityProvider.renewToken settings DateTime.UtcNow identity
+            match result with
+            | Ok token ->
+                ctx.SetStatusCode 201
+                ctx.SetHttpHeader("location", "/authentication/introspect")
+                json {| Token = token |} next ctx
+            | Error e ->
+                ctx.SetStatusCode 400
+                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                json e next ctx                                   
+        
+    let introspectHandler : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let claimsPrincipal = ctx.User
+            let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
+            let map = Dictionary<string, obj>()
+
+            for c in claimsIdentity.Claims do
+                // Special case non-string value or it becomes a string in
+                // string in the JSON rendering of the claim.
+                if c.Type = "exp" then
+                    map.Add("exp", Int32.Parse(c.Value) :> obj)
+                elif c.Type = ClaimTypes.Role then
+                    // For reasons unknown, ASP.NET maps our Scrum RoleClaim
+                    // from the bearer token to ClaimTypes.Role. The claim's
+                    // type JSON rendered would become
+                    // http://schemas.microsoft.com/ws/2008/06/identity/claims/role.
+                    let ok, values = map.TryGetValue(ScrumClaims.RolesClaim)
+                    if ok then
+                        let values = values :?> ResizeArray<string>
+                        values.Add(c.Value)
+                    else
+                        map.Add(ScrumClaims.RolesClaim, [ c.Value ] |> ResizeArray)
+                else
+                    map.Add(c.Type, c.Value)
+
+            json map next ctx
+           
+    let webApp =
+        choose [
+            GET >=> choose [
+                route "/ping"   >=> text "pong"
+                route "/"       >=> htmlFile "/pages/index.html" ]    
+            
+            POST >=> choose [
+                // Loosely modeled after the corresponding OAuth2 endpoint.
+                route "/authentication/issue-token" >=> issueTokenHandler
+                route "/authentication/renew-token" >=> checkUserIsLoggedIn >=> renewHandler
+                route "/authentication/introspect" >=> checkUserIsLoggedIn >=> introspectHandler ]
+
+            RequestErrors.NOT_FOUND "Not Found"
+        ] 
 
 module Program =
     open System
@@ -825,9 +897,9 @@ module Program =
     open Microsoft.AspNetCore.Diagnostics.HealthChecks
     open Microsoft.Extensions.Diagnostics.HealthChecks
     open Microsoft.AspNetCore.ResponseCompression
+    open Giraffe
     open Scrum.Infrastructure
     open Scrum.Infrastructure.Seedwork.Json
-    open Configuration
     open Seedwork    
     open HealthCheck
     open Filter
@@ -941,6 +1013,8 @@ module Program =
                 options.Level <- CompressionLevel.SmallestSize)
         |> ignore
         
+        builder.Services.AddGiraffe() |> ignore
+        
         let app = builder.Build()
         if builder.Environment.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
 
@@ -992,7 +1066,8 @@ module Program =
         app.UseRouting() |> ignore
         app.UseAuthentication() |> ignore
         app.UseAuthorization() |> ignore
-        app.UseMvcWithDefaultRoute() |> ignore        
+        app.UseMvcWithDefaultRoute() |> ignore
+        app.UseGiraffe Routes.webApp
         app.Run()
         
     [<EntryPoint>]
