@@ -148,6 +148,117 @@ type SystemClock() =
         member _.CurrentUtc() = DateTime.UtcNow
 
 module SqliteStoryRepository2 =
+    let storyToDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
+        // See
+        // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
+        // for details on the flat table to tree deserialization algorithm.
+        let parseTaskFields (r: DbDataReader) : Task =
+            (TaskEntity.create
+                (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
+                (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+                (Option.ofDBNull r["t_description"]
+                 |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
+                (parseCreatedAt r["t_created_at"])
+                (parseUpdatedAt r["t_updated_at"]))
+
+        let storyIdToTask = Dictionary<StoryId, Dictionary<TaskId, Task>>()
+        let taskToDomain () : unit =
+            let taskId = r["t_id"]
+            let storyId = r["t_story_id"]
+            if taskId <> DBNull.Value then
+                let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
+                let storyId =
+                    storyId |> string |> Guid |> StoryId.create |> panicOnError "t_story_id"
+                let ok, tasks = storyIdToTask.TryGetValue(storyId)
+                if not ok then
+                    let tasks = Dictionary<TaskId, Task>()
+                    let task = parseTaskFields r
+                    tasks.Add(taskId, task)
+                    storyIdToTask.Add(storyId, tasks)
+                else
+                    let ok, _ = tasks.TryGetValue(taskId)
+                    if not ok then
+                        let task = parseTaskFields r
+                        tasks.Add(taskId, task)
+
+        let parseStoryFields (r: DbDataReader) : Story =
+            // TODO: What to do if we have additional fields beyond basic story details?
+            //       For any entity, we should probably not any "create" function to
+            //       restore it. But how to check invariants otherwise?
+            let story, _ =
+                (StoryAggregate.captureBasicStoryDetails
+                    (r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id")
+                    (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
+                    (Option.ofDBNull r["s_description"]
+                     |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
+                    []
+                    (parseCreatedAt r["s_created_at"])
+                    (parseUpdatedAt r["s_updated_at"]))
+                |> panicOnError "story"
+            story
+
+        // Dictionary doesn't maintain insertion order, so when an SQL query
+        // contains an "order by" clause, the dictionary will mess up ordering.
+        // The caller of toDomainAsync therefore must perform a second sort. An
+        // alternative would be to switch to a combination of Dictionary and
+        // ResizeArray (for storing read order).
+        let storyIdStories = Dictionary<StoryId, Story>()
+        let toDomain (r: DbDataReader) : unit =
+            let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
+            let ok, _ = storyIdStories.TryGetValue(storyId)
+            if not ok then
+                let story = parseStoryFields r
+                storyIdStories.Add(storyId, story)
+            taskToDomain ()
+
+        task {
+            while! r.ReadAsync(ct) do
+               toDomain r
+
+            let stories =
+                storyIdStories.Values
+                |> Seq.toList
+                |> List.map (fun story ->
+                    let ok, tasks = storyIdToTask.TryGetValue(story.Aggregate.Id)
+                    { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
+
+            // TODO: PERF: maintain original order in a ResizeArray.
+            return stories
+        }    
+    
+    let getByIdAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (id: StoryId) : Task<Story option> =
+        task {
+            let connection = transaction.Connection
+            
+            // For queries involving multiple tables, ADO.NET requires aliasing
+            // fields for those to be extractable through the reader.
+            let sql =
+                "
+                select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
+                       t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
+                from stories s
+                left join tasks t on s.id = t.story_id
+                where s.id = @id"
+            use cmd = new SQLiteCommand(sql, connection)
+            cmd.Parameters.AddWithValue("@id", StoryId.value id |> string) |> ignore
+
+            // Note that ExecuteReader() returns SQLiteDataReader, but
+            // ExecuteReaderAsync(...) returns DbDataReader. Perhaps because
+            // querying async against SQLite, running in the same address
+            // space, makes little async sense. We stick with
+            // ExecuteReaderAsync to illustrate how to work with a
+            // client/server database.
+            let! reader = cmd.ExecuteReaderAsync(ct)
+            let! stories = storyToDomainAsync ct reader
+            return
+                (let count = stories |> List.length
+                 match count with
+                 | 0 -> None
+                 | 1 -> stories |> List.exactlyOne |> Some
+                 | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
+        }
+    
+    
     let existAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (id: StoryId) : Task<bool> =
         task {
             let connection = transaction.Connection

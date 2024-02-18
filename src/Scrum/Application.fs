@@ -70,15 +70,15 @@ module Seedwork =
         abstract Clock: IClock
 
     type LogMessage =
-        // Application specific logging. 
+         // Application specific logging.
         | Request of ScrumIdentity * useCase: string * request: obj
         | RequestDuration of useCase: string * duration: uint<ms>
         | Exception of exn
         // Delegates to .NET's ILogger.
         | Error2 of string
         | Information2 of string
-        | Debug2 of string    
-        
+        | Debug2 of string
+
     [<Interface>]
     // Could be ILogger but that interface is part of .NET.
     type IScrumLogger =
@@ -144,7 +144,13 @@ module Seedwork =
         env.Logger.LogRequestDuration useCase elapsed
         result
 
-    let runWithDecoratorAsync2 (log: LogMessage -> unit) (identity: ScrumIdentity) (useCase: string) (cmd: 't) (fn: unit -> TaskResult<'a, 'b>) : TaskResult<'a, 'b> =
+    let runWithDecoratorAsync2
+        (log: LogMessage -> unit)
+        (identity: ScrumIdentity)
+        (useCase: string)
+        (cmd: 't)
+        (fn: unit -> TaskResult<'a, 'b>)
+        : TaskResult<'a, 'b> =
         let result, elapsed =
             time (fun _ ->
                 log (Request(identity, useCase, cmd))
@@ -239,7 +245,7 @@ module StoryAggregateRequest =
             (log: LogMessage -> unit)
             (currentUtc: unit -> DateTime)
             (storyExist: StoryId -> System.Threading.Tasks.Task<bool>)
-            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)            
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
             (identity: ScrumIdentity)
             (cmd: CaptureBasicStoryDetailsCommand)
             : TaskResult<Guid, CaptureBasicStoryDetailsError> =
@@ -251,9 +257,9 @@ module StoryAggregateRequest =
                         storyExist cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let! story, event =
-                        StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (currentUtc()) None
+                        StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (currentUtc ()) None
                         |> Result.mapError fromDomainError
-                    do! storyApplyEvent (currentUtc()) event
+                    do! storyApplyEvent (currentUtc ()) event
                     // Example of publishing the StoryBasicDetailsCaptured domain event to
                     // another aggregate:
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
@@ -261,8 +267,8 @@ module StoryAggregateRequest =
                     return StoryId.value story.Aggregate.Id
                 }
 
-            runWithDecoratorAsync2 log identity (nameof CaptureBasicStoryDetailsCommand) cmd aux    
-    
+            runWithDecoratorAsync2 log identity (nameof CaptureBasicStoryDetailsCommand) cmd aux
+
     type ReviseBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
     module ReviseBasicStoryDetailsCommand =
@@ -304,12 +310,33 @@ module StoryAggregateRequest =
                         env.Stories.GetByIdAsync ct cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                     let story, event =
-                        StoryAggregate.reviseBasicStoryDetails story cmd.Title cmd.Description (env.Clock.CurrentUtc())
+                        reviseBasicStoryDetails story cmd.Title cmd.Description (env.Clock.CurrentUtc())
                     do! env.Stories.ApplyEventAsync ct event
                     return StoryId.value story.Aggregate.Id
                 }
 
             runWithDecoratorAsync env (nameof ReviseBasicStoryDetailsCommand) cmd aux
+
+        let runAsync2
+            (log: LogMessage -> unit)
+            (currentUtc: unit -> DateTime)
+            (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
+            (identity: ScrumIdentity)
+            (cmd: ReviseBasicStoryDetailsCommand)
+            : TaskResult<Guid, ReviseBasicStoryDetailsError> =
+            let aux () =
+                taskResult {
+                    do! isInRole2 identity Member |> Result.mapError AuthorizationError
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story = getStoryById cmd.Id |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
+                    let story, event =
+                        reviseBasicStoryDetails story cmd.Title cmd.Description (currentUtc ())
+                    do! storyApplyEvent (currentUtc ()) event
+                    return StoryId.value story.Aggregate.Id
+                }
+
+            runWithDecoratorAsync2 log identity (nameof CaptureBasicStoryDetailsCommand) cmd aux
 
     type RemoveStoryCommand = { Id: Guid }
 

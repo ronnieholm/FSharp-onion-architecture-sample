@@ -426,39 +426,12 @@ module Controller =
         interface IDisposable with
             member x.Dispose() = x.Env.Dispose()
 
-    type StoryCreateDto = { title: string; description: string }
-    type StoryUpdateDto = { title: string; description: string }
     type AddTaskToStoryDto = { title: string; description: string }
     type StoryTaskUpdateDto = { title: string; description: string }
 
     [<Authorize; Route("[controller]")>]
     type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
         inherit ScrumController(configuration, httpContext, loggerFactory)
-
-        [<HttpPut("{id}")>]
-        member x.ReviseBasicStoryDetails([<FromBody>] request: StoryUpdateDto, id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let! result =
-                    ReviseBasicStoryDetailsCommand.runAsync
-                        x.Env
-                        ct
-                        { Id = id
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }                
-                return
-                    match result with
-                    | Ok id ->
-                        task { do! x.Env.CommitAsync(ct) } |> ignore
-                        CreatedResult($"/stories/{id}", id) :> ActionResult
-                    | Error e ->
-                        task { do! x.Env.RollbackAsync(ct) } |> ignore
-                        let accept = x.Request.Headers.Accept
-                        match e with
-                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-                        | ReviseBasicStoryDetailsCommand.StoryNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-            }
 
         [<HttpPost("{storyId}/tasks")>]
         member x.AddBasicTaskDetailsToStory
@@ -744,6 +717,7 @@ module Routes (* Handlers *) =
     open Seedwork
     open Scrum.Application.Seedwork
     open Scrum.Application.StoryAggregateRequest
+    open Scrum.Infrastructure
     open Scrum.Infrastructure.Seedwork
     
     let errorMessageSerializationOptions =
@@ -771,7 +745,7 @@ module Routes (* Handlers *) =
             let unexpected = String.Join(", ", unexpected |> List.toSeq)
             Error (ProblemDetails.create 400 $"Unexpected query string parameters: %s{unexpected}")
    
-    let checkUserIsLoggedIn : HttpHandler =
+    let verifyUserIsAuthenticated : HttpHandler =
         fun (next : HttpFunc) (ctx : HttpContext) ->
             if isNotNull ctx.User && ctx.User.Identity.IsAuthenticated
             then next ctx
@@ -871,14 +845,14 @@ module Routes (* Handlers *) =
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")
             
-            let log = Scrum.Infrastructure.ScrumLogger2.log logger           
+            let log = ScrumLogger2.log logger           
             let identity = UserIdentity2.getCurrentIdentity ctx
             
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let storyExist = Scrum.Infrastructure.SqliteStoryRepository2.existAsync transaction ctx.RequestAborted
-                let storyApplyEvent = Scrum.Infrastructure.SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let storyExist = SqliteStoryRepository2.existAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
 
                 let! request = ctx.BindJsonAsync<StoryCreateDto>()
                 let! result =
@@ -894,12 +868,12 @@ module Routes (* Handlers *) =
                         
                 match result with
                 | Ok id ->
-                    do! transaction.CommitAsync ctx.RequestAborted
+                    do! transaction.CommitAsync(ctx.RequestAborted)
                     ctx.SetStatusCode 201
                     ctx.SetHttpHeader("location", $"/stories/{id}")
                     return! json {| StoryId = id |} next ctx
                 | Error e ->
-                    do! transaction.RollbackAsync ctx.RequestAborted
+                    do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
                         | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
@@ -911,17 +885,65 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }
 
+    type StoryUpdateDto = { title: string; description: string }
+
+    let reviseBasicStoryDetailsHandler (storyId: Guid) : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            // TODO: verify no query string args passed
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")
+            
+            let log = ScrumLogger2.log logger           
+            let identity = UserIdentity2.getCurrentIdentity ctx           
+                        
+            task {
+                use connection = getConnection connectionString
+                use transaction = connection.BeginTransaction()
+                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                
+                let! request = ctx.BindJsonAsync<StoryUpdateDto>()
+                let! result =
+                    ReviseBasicStoryDetailsCommand.runAsync2
+                        log
+                        currentUtc
+                        getStoryById
+                        storyApplyEvent
+                        identity
+                        { Id = storyId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                        
+                match result with
+                | Ok id ->
+                    do! transaction.CommitAsync(ctx.RequestAborted)
+                    ctx.SetStatusCode 201
+                    ctx.SetHttpHeader("location", $"/stories/{id}")
+                    return! json {| StoryId = id |} next ctx
+                | Error e ->
+                    do! transaction.RollbackAsync(ctx.RequestAborted)
+                    let problem =
+                        match e with
+                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
+                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | ReviseBasicStoryDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                    ctx.SetStatusCode problem.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json problem next ctx
+            }
+    
     let webApp =
         choose [
             // Loosely modeled after the corresponding OAuth2 endpoints.           
             POST >=> choose [
                 route "/authentication/issue-token" >=> issueTokenHandler
-                route "/authentication/renew-token" >=> checkUserIsLoggedIn >=> renewTokenHandler
-                route "/authentication/introspect" >=> checkUserIsLoggedIn >=> introspectTokenHandler ]
+                route "/authentication/renew-token" >=> verifyUserIsAuthenticated >=> renewTokenHandler
+                route "/authentication/introspect" >=> verifyUserIsAuthenticated >=> introspectTokenHandler ]
             
-            checkUserIsLoggedIn >=> choose [
+            verifyUserIsAuthenticated >=> choose [
                 POST >=> route "/stories" >=> captureBasicStoryDetailsHandler
-                // PUT >=> route "/stories2" >=> reviseBasicStoryDetailsHandler
+                PUT >=> routef "/stories/%O" reviseBasicStoryDetailsHandler
                 // POST >=> route "/stories2/{storyId}/tasks" >=> addBasicTaskDetailsToStoryHandler
                 // PUT >=> route "/stories2/{storyId}/tasks/{taskId}" >=> reviseBasicTaskDetailsHandler
                 // DELETE >=> route "/stories2/{storyId}/tasks/{taskId}" >=> removeTaskHandler
