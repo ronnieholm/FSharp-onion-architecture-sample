@@ -433,38 +433,6 @@ module Controller =
     type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
         inherit ScrumController(configuration, httpContext, loggerFactory)
 
-        [<HttpPost("{storyId}/tasks")>]
-        member x.AddBasicTaskDetailsToStory
-            (
-                [<FromBody>] request: AddTaskToStoryDto,
-                storyId: Guid,
-                ct: CancellationToken
-            ) : Task<ActionResult> =
-            task {
-                let! result =
-                    AddBasicTaskDetailsToStoryCommand.runAsync
-                        x.Env
-                        ct
-                        { TaskId = Guid.NewGuid()
-                          StoryId = storyId
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
-                return
-                    match result with
-                    | Ok taskId -> 
-                        task { do! x.Env.CommitAsync(ct) } |> ignore
-                        CreatedResult($"/stories/{storyId}/tasks/{taskId}", taskId) :> ActionResult
-                    | Error e ->
-                        task { do! x.Env.RollbackAsync(ct) } |> ignore
-                        let accept = x.Request.Headers.Accept
-                        match e with
-                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-                        | AddBasicTaskDetailsToStoryCommand.StoryNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
-            }
-
         [<HttpPut("{storyId}/tasks/{taskId}")>]
         member x.ReviseBasicTaskDetails
             (
@@ -896,7 +864,7 @@ module Routes (* Handlers *) =
             
             let log = ScrumLogger2.log logger           
             let identity = UserIdentity2.getCurrentIdentity ctx           
-                        
+
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
@@ -933,6 +901,55 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }
     
+    type AddTaskToStoryDto = { title: string; description: string }    
+    
+    let addBasicTaskDetailsToStoryHandler (storyId: Guid) : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")
+            
+            let log = ScrumLogger2.log logger           
+            let identity = UserIdentity2.getCurrentIdentity ctx           
+            
+            task {
+                use connection = getConnection connectionString
+                use transaction = connection.BeginTransaction()
+                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                
+                let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
+                let! result =
+                    AddBasicTaskDetailsToStoryCommand.runAsync2
+                        log
+                        currentUtc
+                        getStoryById
+                        storyApplyEvent
+                        identity
+                        { TaskId = Guid.NewGuid()
+                          StoryId = storyId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                        
+                match result with
+                | Ok taskId ->
+                    do! transaction.CommitAsync(ctx.RequestAborted)
+                    ctx.SetStatusCode 201
+                    ctx.SetHttpHeader("location", $"/stories/{storyId}/tasks/{taskId}")
+                    return! json {| TaskId = id |} next ctx
+                | Error e ->
+                    do! transaction.RollbackAsync(ctx.RequestAborted)
+                    let problem =
+                        match e with
+                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> fromAuthorizationError ae
+                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | AddBasicTaskDetailsToStoryCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                        | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
+                    ctx.SetStatusCode problem.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json problem next ctx
+            }
+    
     let webApp =
         choose [
             // Loosely modeled after the corresponding OAuth2 endpoints.           
@@ -944,7 +961,7 @@ module Routes (* Handlers *) =
             verifyUserIsAuthenticated >=> choose [
                 POST >=> route "/stories" >=> captureBasicStoryDetailsHandler
                 PUT >=> routef "/stories/%O" reviseBasicStoryDetailsHandler
-                // POST >=> route "/stories2/{storyId}/tasks" >=> addBasicTaskDetailsToStoryHandler
+                POST >=> routef "/stories2/%O/tasks" addBasicTaskDetailsToStoryHandler
                 // PUT >=> route "/stories2/{storyId}/tasks/{taskId}" >=> reviseBasicTaskDetailsHandler
                 // DELETE >=> route "/stories2/{storyId}/tasks/{taskId}" >=> removeTaskHandler
                 // DELETE >=> route "/stories2/{storyId}" >=> removeStoryHandler

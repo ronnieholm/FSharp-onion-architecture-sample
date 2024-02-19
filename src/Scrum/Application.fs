@@ -425,6 +425,31 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env (nameof AddBasicTaskDetailsToStoryCommand) cmd aux
 
+         let runAsync2
+            (log: LogMessage -> unit)
+            (currentUtc: unit -> DateTime)
+            (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
+            (identity: ScrumIdentity)
+            (cmd: AddBasicTaskDetailsToStoryCommand)
+            : TaskResult<Guid, AddBasicTaskDetailsToStoryError> =
+            let aux () =
+                taskResult {
+                    do! isInRole2 identity Member |> Result.mapError AuthorizationError
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        getStoryById cmd.StoryId
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                    let task = create cmd.TaskId cmd.Title cmd.Description (currentUtc()) None
+                    let! _, event =
+                        addBasicTaskDetailsToStory story task (currentUtc())
+                        |> Result.mapError fromDomainError
+                    do! storyApplyEvent (currentUtc ()) event
+                    return TaskId.value task.Entity.Id
+                }
+
+            runWithDecoratorAsync2 log identity (nameof AddBasicTaskDetailsToStoryCommand) cmd aux    
+    
     type ReviseBasicTaskDetailsCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
     module ReviseBasicTaskDetailsCommand =
