@@ -433,61 +433,6 @@ module Controller =
     type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
         inherit ScrumController(configuration, httpContext, loggerFactory)
 
-        [<HttpPut("{storyId}/tasks/{taskId}")>]
-        member x.ReviseBasicTaskDetails
-            (
-                [<FromBody>] request: StoryTaskUpdateDto,
-                storyId: Guid,
-                taskId: Guid,
-                ct: CancellationToken
-            ) : Task<ActionResult> =
-            task {
-                let! result =
-                    ReviseBasicTaskDetailsCommand.runAsync
-                        x.Env
-                        ct
-                        { StoryId = storyId
-                          TaskId = taskId
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
-                return
-                    match result with
-                    | Ok _ -> 
-                        task { do! x.Env.CommitAsync(ct) } |> ignore
-                        OkResult() :> ActionResult
-                    | Error e ->
-                        task { do! x.Env.RollbackAsync(ct) } |> ignore
-                        let accept = x.Request.Headers.Accept
-                        match e with
-                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-                        | ReviseBasicTaskDetailsCommand.StoryNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | ReviseBasicTaskDetailsCommand.TaskNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
-            }
-
-        [<HttpDelete("{storyId}/tasks/{taskId}")>]
-        member x.RemoveTask(storyId: Guid, taskId: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let! result = RemoveTaskCommand.runAsync x.Env ct { StoryId = storyId; TaskId = taskId }
-                return
-                    match result with
-                    | Ok _ -> 
-                        task { do! x.Env.CommitAsync(ct) } |> ignore
-                        OkResult() :> ActionResult
-                    | Error e ->
-                        task { do! x.Env.RollbackAsync(ct) } |> ignore
-                        let accept = x.Request.Headers.Accept
-                        match e with
-                        | RemoveTaskCommand.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                        | RemoveTaskCommand.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-                        | RemoveTaskCommand.StoryNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-                        | RemoveTaskCommand.TaskNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Task not found: '{string id}'"
-            }
-
         [<HttpDelete("{id}")>]
         member x.RemoveStory(id: Guid, ct: CancellationToken) : Task<ActionResult> =
             task {
@@ -860,8 +805,7 @@ module Routes (* Handlers *) =
             // TODO: verify no query string args passed
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            
+            let connectionString = configuration.GetConnectionString("Scrum")            
             let log = ScrumLogger2.log logger           
             let identity = UserIdentity2.getCurrentIdentity ctx           
 
@@ -907,8 +851,7 @@ module Routes (* Handlers *) =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            
+            let connectionString = configuration.GetConnectionString("Scrum")            
             let log = ScrumLogger2.log logger           
             let identity = UserIdentity2.getCurrentIdentity ctx           
             
@@ -949,6 +892,93 @@ module Routes (* Handlers *) =
                     ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                     return! json problem next ctx
             }
+            
+    let reviseBasicTaskDetailsHandler (storyId: Guid, taskId: Guid) : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")            
+            let log = ScrumLogger2.log logger           
+            let identity = UserIdentity2.getCurrentIdentity ctx           
+            
+            task {
+                use connection = getConnection connectionString
+                use transaction = connection.BeginTransaction()
+                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                
+                let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
+                let! result =
+                    ReviseBasicTaskDetailsCommand.runAsync2
+                        log
+                        currentUtc
+                        getStoryById
+                        storyApplyEvent
+                        identity
+                        { StoryId = storyId
+                          TaskId = taskId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                        
+                match result with
+                | Ok taskId ->
+                    do! transaction.CommitAsync(ctx.RequestAborted)
+                    ctx.SetStatusCode 201
+                    ctx.SetHttpHeader("location", $"/stories/{storyId}/tasks/{taskId}")
+                    return! json {| TaskId = id |} next ctx
+                | Error e ->
+                    do! transaction.RollbackAsync(ctx.RequestAborted)
+                    let problem =
+                        match e with
+                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
+                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | ReviseBasicTaskDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                        | ReviseBasicTaskDetailsCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
+                    ctx.SetStatusCode problem.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json problem next ctx
+            }
+            
+    let removeTaskHandler (storyId: Guid, taskId: Guid) : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")            
+            let log = ScrumLogger2.log logger           
+            let identity = UserIdentity2.getCurrentIdentity ctx           
+            
+            task {
+                use connection = getConnection connectionString
+                use transaction = connection.BeginTransaction()
+                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                
+                let! result =
+                    RemoveTaskCommand.runAsync2 
+                        log
+                        currentUtc
+                        getStoryById
+                        storyApplyEvent
+                        identity
+                        { StoryId = storyId; TaskId = taskId }
+
+                match result with
+                | Ok _ ->
+                    do! transaction.CommitAsync(ctx.RequestAborted)
+                    ctx.SetStatusCode 200
+                    return! json {||} next ctx
+                | Error e ->
+                    do! transaction.RollbackAsync(ctx.RequestAborted)
+                    let problem =
+                        match e with
+                        | RemoveTaskCommand.AuthorizationError ae -> fromAuthorizationError ae
+                        | RemoveTaskCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | RemoveTaskCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                        | RemoveTaskCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
+                    ctx.SetStatusCode problem.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json problem next ctx
+            }
     
     let webApp =
         choose [
@@ -962,8 +992,8 @@ module Routes (* Handlers *) =
                 POST >=> route "/stories" >=> captureBasicStoryDetailsHandler
                 PUT >=> routef "/stories/%O" reviseBasicStoryDetailsHandler
                 POST >=> routef "/stories2/%O/tasks" addBasicTaskDetailsToStoryHandler
-                // PUT >=> route "/stories2/{storyId}/tasks/{taskId}" >=> reviseBasicTaskDetailsHandler
-                // DELETE >=> route "/stories2/{storyId}/tasks/{taskId}" >=> removeTaskHandler
+                PUT >=> routef "/stories2/%O/tasks/%O" reviseBasicTaskDetailsHandler
+                DELETE >=> routef "/stories2/%O/tasks/%O" removeTaskHandler
                 // DELETE >=> route "/stories2/{storyId}" >=> removeStoryHandler
                 // GET >=> route "/stories2/{storyId}" >=> getByStoryIdHandler
                 // GET >=> route "/stories2" >=> getStoriesPagedHandler                                       

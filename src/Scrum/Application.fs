@@ -425,7 +425,7 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env (nameof AddBasicTaskDetailsToStoryCommand) cmd aux
 
-         let runAsync2
+        let runAsync2
             (log: LogMessage -> unit)
             (currentUtc: unit -> DateTime)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
@@ -508,6 +508,30 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env (nameof ReviseBasicTaskDetailsCommand) cmd aux
 
+        let runAsync2
+            (log: LogMessage -> unit)
+            (currentUtc: unit -> DateTime)
+            (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
+            (identity: ScrumIdentity)
+            (cmd: ReviseBasicTaskDetailsCommand)
+            : TaskResult<Guid, ReviseBasicTaskDetailsError> =
+            let aux () =
+                taskResult {
+                    do! isInRole2 identity Member |> Result.mapError AuthorizationError
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        getStoryById cmd.StoryId
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                    let! _, event =
+                        reviseBasicTaskDetails story cmd.TaskId cmd.Title cmd.Description (currentUtc())
+                        |> Result.mapError fromDomainError
+                    do! storyApplyEvent (currentUtc ()) event
+                    return TaskId.value cmd.TaskId
+                }
+
+            runWithDecoratorAsync2 log identity (nameof ReviseBasicTaskDetailsCommand) cmd aux    
+    
     type RemoveTaskCommand = { StoryId: Guid; TaskId: Guid }
 
     module RemoveTaskCommand =
@@ -547,6 +571,29 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env (nameof RemoveTaskCommand) cmd aux
 
+        let runAsync2
+            (log: LogMessage -> unit)
+            (currentUtc: unit -> DateTime)
+            (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
+            (identity: ScrumIdentity)        
+            (cmd: RemoveTaskCommand) : TaskResult<Guid, RemoveTaskError> =
+            let aux () =
+                taskResult {
+                    do! isInRole2 identity Member |> Result.mapError AuthorizationError
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        getStoryById cmd.StoryId
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
+                    let! _, event =
+                        removeTask story cmd.TaskId (currentUtc())
+                        |> Result.mapError fromDomainError
+                    do! storyApplyEvent (currentUtc ()) event
+                    return TaskId.value cmd.TaskId
+                }
+
+            runWithDecoratorAsync2 log identity (nameof RemoveTaskCommand) cmd aux    
+    
     type GetStoryByIdQuery = { Id: Guid }
 
     type TaskDto =
