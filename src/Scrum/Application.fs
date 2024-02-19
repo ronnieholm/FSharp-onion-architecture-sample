@@ -369,6 +369,27 @@ module StoryAggregateRequest =
 
             runWithDecoratorAsync env (nameof RemoveStoryCommand) cmd aux
 
+        let runAsync2
+            (log: LogMessage -> unit)
+            (currentUtc: unit -> DateTime)
+            (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
+            (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
+            (identity: ScrumIdentity)        
+            (cmd: RemoveStoryCommand) : TaskResult<Guid, RemoveStoryError> =
+            let aux () =
+                taskResult {
+                    do! isInRole2 identity Member |> Result.mapError AuthorizationError
+                    let! cmd = validate cmd |> Result.mapError ValidationErrors
+                    let! story =
+                        getStoryById cmd.Id
+                        |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
+                    let event = StoryAggregate.removeStory story (currentUtc ())
+                    do! storyApplyEvent (currentUtc ()) event
+                    return StoryId.value story.Aggregate.Id
+                }
+
+            runWithDecoratorAsync2 log identity (nameof RemoveStoryCommand) cmd aux    
+    
     type AddBasicTaskDetailsToStoryCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }
 
     module AddBasicTaskDetailsToStoryCommand =
