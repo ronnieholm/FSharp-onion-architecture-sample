@@ -2,11 +2,9 @@
 
 module Seedwork =
     open System
-    open System.Reflection
     open System.Text.Json
     open System.Text.Json.Serialization
     open Microsoft.AspNetCore.Http
-    open Microsoft.AspNetCore.Mvc.Controllers
     open Microsoft.AspNetCore.Mvc
     open Microsoft.Extensions.Primitives
     open Scrum.Application.Seedwork
@@ -15,17 +13,6 @@ module Seedwork =
     exception WebException of string
 
     let panic (s: string) : 't = raise (WebException(s))
-
-    // By default only a public top-level type ending in Controller is
-    // considered one. It means controllers inside a module aren't found. As a
-    // module compiles to a class with nested classes for controllers, we can
-    // find controllers that way.
-    type ControllerWithinModule() =
-        inherit ControllerFeatureProvider()
-
-        override _.IsController(typeInfo: TypeInfo) : bool =
-            base.IsController(typeInfo)
-            || typeInfo.FullName.StartsWith("Scrum.Web.Controller")
 
     module ScrumRole =
         let fromString =
@@ -143,7 +130,7 @@ module Service =
 
     // Web specific implementation of IUserIdentity. It therefore belongs in
     // Program.fs rather than Infrastructure.fs.
-    module UserIdentity2 =
+    module UserIdentity =
         let getCurrentIdentity(context: HttpContext) : ScrumIdentity =
             if isNull context then
                 Anonymous
@@ -173,46 +160,7 @@ module Service =
                         // use a claim's value to determine which one.
                         match List.length rolesClaim with
                         | 0 -> Anonymous
-                        | _ -> Authenticated(userIdClaim, rolesClaim)    
-    
-    // Web specific implementation of IUserIdentity. It therefore belongs in
-    // Program.fs rather than Infrastructure.fs.
-    type UserIdentity(context: HttpContext) =
-        interface IScrumIdentity with
-            member x.GetCurrent() : ScrumIdentity =
-                // Access to HttpContext from outside a controller goes through
-                // IHttpContextAccess per
-                // https://docs.microsoft.com/en-us/aspnet/core/migration/claimsprincipal-current.
-                // Running in a non-HTTP context, HttpContext is therefore null.
-                if isNull context then
-                    Anonymous
-                else
-                    let claimsPrincipal = context.User
-                    if isNull claimsPrincipal then
-                        Anonymous
-                    else
-                        let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
-                        let claims = claimsIdentity.Claims
-                        if Seq.isEmpty claims then
-                            Anonymous
-                        else
-                            let userIdClaim =
-                                claims
-                                |> Seq.filter (fun c -> c.Type = ScrumClaims.UserIdClaim)
-                                |> Seq.map _.Value
-                                |> Seq.exactlyOne
-                            let rolesClaim =
-                                claims
-                                |> Seq.filter (fun c -> c.Type = ClaimTypes.Role)
-                                |> Seq.map (fun c -> ScrumRole.fromString c.Value)
-                                |> List.ofSeq
-
-                            // With a proper identity provider, we'd likely have
-                            // kinds of authenticated identities, and we might
-                            // use a claim's value to determine which one.
-                            match List.length rolesClaim with
-                            | 0 -> Anonymous
-                            | _ -> Authenticated(userIdClaim, rolesClaim)
+                        | _ -> Authenticated(userIdClaim, rolesClaim)   
 
     module IdentityProvider =
         let sign (settings: JwtAuthenticationSettings) (now: DateTime) (claims: Claim array) : string =
@@ -250,7 +198,7 @@ module Service =
     type AvailableScript = { Name: string; Hash: string; Sql: string }
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
-    type DatabaseMigrator(logger: IScrumLogger, connectionString: string) =
+    type DatabaseMigrator(log: LogMessage -> unit, connectionString: string) =
         let createMigrationsSql =
             "
             create table migrations(
@@ -294,7 +242,7 @@ module Service =
 
             if exist = 0 then
                 // SQLite doesn't support transactional schema changes.
-                logger.LogInformation "Creating migrations table"
+                log (Information2 "reating migrations table")
                 use cmd = new SQLiteCommand(createMigrationsSql, connection)
                 let count = cmd.ExecuteNonQuery()
                 assert (count = 0)
@@ -337,7 +285,7 @@ module Service =
                 let cmd = new SQLiteCommand(sql, connection, tx)
 
                 try
-                    logger.LogInformation $"Applying migration: '{available[i].Name}'"
+                    log (Information2 $"Applying migration: '{available[i].Name}'")
                     let count = cmd.ExecuteNonQuery()
                     assert (count = 1)
 
@@ -358,7 +306,7 @@ module Service =
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(seed.Sql, connection, tx)
             try
-                logger.LogInformation "Applying seed"
+                log (Information2 "Applying seed")
                 let count = cmd.ExecuteNonQuery()
                 assert (count >= -1)
                 tx.Commit()
@@ -374,140 +322,18 @@ module Service =
             let availableMigrations =
                 availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
-            logger.LogInformation $"Found {availableScripts.Length} available migration(s)"
+            log (Information2 $"Found {availableScripts.Length} available migration(s)")
             let appliedMigrations = getAppliedMigrations connection
-            logger.LogInformation $"Found {appliedMigrations.Length} applied migration(s)"
+            log (Information2 $"Found {appliedMigrations.Length} applied migration(s)")
 
             verifyAppliedMigrations availableMigrations appliedMigrations
             applyNewMigrations connection availableMigrations appliedMigrations
 
             let seeds = availableScripts |> Array.filter (fun s -> s.Name = "seed")
-            logger.LogInformation $"Found {seeds.Length} seed"
+            log (Information2 $"Found {seeds.Length} seed")
             seeds |> Array.exactlyOne |> applySeed connection
 
 open Service
-
-module Controller =
-    open System
-    open System.Collections.Generic
-    open System.Threading
-    open System.Threading.Tasks
-    open Microsoft.AspNetCore.Authorization
-    open Microsoft.AspNetCore.Http
-    open Microsoft.Extensions.Configuration
-    open Microsoft.AspNetCore.Mvc
-    open Microsoft.Extensions.Logging
-    open Scrum.Application.Seedwork
-    open Scrum.Application.StoryAggregateRequest
-    open Scrum.Application.DomainEventRequest
-    open Scrum.Infrastructure
-    open Scrum.Infrastructure.Seedwork
-    open Seedwork    
-    
-    type ScrumController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
-        inherit ControllerBase()
-
-        let connectionString = configuration.GetConnectionString("Scrum")
-        let identity = UserIdentity(httpContext.HttpContext)
-        let logger = ScrumLogger(loggerFactory.CreateLogger())
-        let env = new AppEnv(connectionString, identity, logger) :> IAppEnv
-
-        member _.Env = env
-
-        [<NonAction>]
-        member x.UnexpectedQueryStringParameters(expectedParameters: string list) : string list =
-            // Per design APIs conservatively:
-            // https://opensource.zalando.com/restful-api-guidelines/#109
-            x.Request.Query
-            |> Seq.map _.Key
-            |> Seq.toList
-            |> List.except expectedParameters
-
-        interface IDisposable with
-            member x.Dispose() = x.Env.Dispose()
-
-    type AddTaskToStoryDto = { title: string; description: string }
-    type StoryTaskUpdateDto = { title: string; description: string }
-
-    [<Authorize; Route("[controller]")>]
-    type StoriesController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
-        inherit ScrumController(configuration, httpContext, loggerFactory)
-
-        [<HttpGet("{id}")>]
-        member x.GetByStoryId(id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let! result = GetStoryByIdQuery.runAsync x.Env ct { Id = id }
-                return
-                    match result with
-                    | Ok s -> OkObjectResult(s) :> ActionResult
-                    | Error e ->
-                        let accept = x.Request.Headers.Accept
-                        match e with
-                        | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                        | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-                        | GetStoryByIdQuery.StoryNotFound id ->
-                            ProblemDetails.createJsonResult accept StatusCodes.Status404NotFound $"Story not found: '{string id}'"
-            }
-
-        [<HttpGet>]
-        member x.GetStoriesPaged(limit: int, cursor: string, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
-                let accept = x.Request.Headers.Accept
-                if List.length unexpected > 0 then
-                    return ProblemDetails.fromUnexpectedQueryStringParameters accept unexpected
-                else
-                    let! result = GetStoriesPagedQuery.runAsync x.Env ct { Limit = limit; Cursor = cursor |> Option.ofObj }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                            | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-            }
-
-    [<Authorize; Route("persisted-domain-events")>]
-    type PersistedDomainEventsController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
-        inherit ScrumController(configuration, httpContext, loggerFactory)
-
-        [<HttpGet("{id}")>]
-        member x.GetPersistedDomainEvents(limit: int, cursor: string, id: Guid, ct: CancellationToken) : Task<ActionResult> =
-            task {
-                let unexpected = x.UnexpectedQueryStringParameters [ nameof limit; nameof cursor ]
-                let accept = x.Request.Headers.Accept
-                if List.length unexpected > 0 then
-                    return ProblemDetails.fromUnexpectedQueryStringParameters accept unexpected
-                else
-                    let! result = GetByAggregateIdQuery.runAsync x.Env ct { Id = id; Limit = limit; Cursor = cursor |> Option.ofObj }
-                    return
-                        match result with
-                        | Ok s -> OkObjectResult(s) :> ActionResult
-                        | Error e ->
-                            match e with
-                            | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetails.fromAuthorizationError accept ae
-                            | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.fromValidationErrors accept ve
-            }
-
-    [<Authorize; Route("[controller]")>]
-    type TestsController(configuration: IConfiguration, httpContext: IHttpContextAccessor, loggerFactory: ILoggerFactory) =
-        inherit ScrumController(configuration, httpContext, loggerFactory)
-
-        [<HttpGet("introspect")>]
-        member x.Introspect() =
-            // API gateways and other proxies between the client and the
-            // service tag on extra information to the request. This endpoint
-            // allows a client to see what the request looked like from the
-            // server's point of view.
-            x.Request.Headers |> Seq.map (fun h -> KeyValuePair(h.Key, h.Value.ToString()))
-
-        [<HttpGet("current-time")>]
-        member _.GetCurrentTime() : DateTime =
-            // Useful for establishing baseline performance numbers and testing
-            // rate limits. Because this action doesn't perform significant
-            // work, it provides an upper bound for requests/second given a
-            // response time distribution.
-            DateTime.UtcNow
 
 module HealthCheck =
     open System
@@ -611,6 +437,7 @@ module Routes (* Handlers *) =
     open Seedwork
     open Scrum.Application.Seedwork
     open Scrum.Application.StoryAggregateRequest
+    open Scrum.Application.DomainEventRequest
     open Scrum.Infrastructure
     open Scrum.Infrastructure.Seedwork
     
@@ -640,13 +467,14 @@ module Routes (* Handlers *) =
             Error (ProblemDetails.create 400 $"Unexpected query string parameters: %s{unexpected}")
    
     let verifyUserIsAuthenticated : HttpHandler =
+        // TODO: this function comes part of Giraffe.
         fun (next : HttpFunc) (ctx : HttpContext) ->
             if isNotNull ctx.User && ctx.User.Identity.IsAuthenticated
             then next ctx
             else setStatusCode 401 earlyReturn ctx    
     
     let issueTokenHandler : HttpHandler =
-        // TODO: Fail is token is provided and/or user isn't anonymous
+        // TODO: Fail if token is provided and/or user isn't anonymous
         fun (next : HttpFunc) (ctx : HttpContext) ->
             let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
             let settings = settings.Value
@@ -682,7 +510,7 @@ module Routes (* Handlers *) =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
             let settings = settings.Value            
-            let identity = UserIdentity2.getCurrentIdentity ctx
+            let identity = UserIdentity.getCurrentIdentity ctx
             let result = IdentityProvider.renewToken settings DateTime.UtcNow identity
             match result with
             | Ok token ->
@@ -739,18 +567,18 @@ module Routes (* Handlers *) =
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")
             
-            let log = ScrumLogger2.log logger           
-            let identity = UserIdentity2.getCurrentIdentity ctx
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx
             
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let storyExist = SqliteStoryRepository2.existAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let storyExist = SqliteStoryRepository.existAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
                 let! request = ctx.BindJsonAsync<StoryCreateDto>()
                 let! result =
-                    CaptureBasicStoryDetailsCommand.runAsync2
+                    CaptureBasicStoryDetailsCommand.runAsync
                         log
                         currentUtc
                         storyExist
@@ -787,18 +615,18 @@ module Routes (* Handlers *) =
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")            
-            let log = ScrumLogger2.log logger           
-            let identity = UserIdentity2.getCurrentIdentity ctx           
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
 
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! request = ctx.BindJsonAsync<StoryUpdateDto>()
                 let! result =
-                    ReviseBasicStoryDetailsCommand.runAsync2
+                    ReviseBasicStoryDetailsCommand.runAsync
                         log
                         currentUtc
                         getStoryById
@@ -833,18 +661,18 @@ module Routes (* Handlers *) =
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")            
-            let log = ScrumLogger2.log logger           
-            let identity = UserIdentity2.getCurrentIdentity ctx           
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
             
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
                 let! result =
-                    AddBasicTaskDetailsToStoryCommand.runAsync2
+                    AddBasicTaskDetailsToStoryCommand.runAsync
                         log
                         currentUtc
                         getStoryById
@@ -879,18 +707,18 @@ module Routes (* Handlers *) =
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")            
-            let log = ScrumLogger2.log logger           
-            let identity = UserIdentity2.getCurrentIdentity ctx           
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
             
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
                 let! result =
-                    ReviseBasicTaskDetailsCommand.runAsync2
+                    ReviseBasicTaskDetailsCommand.runAsync
                         log
                         currentUtc
                         getStoryById
@@ -925,17 +753,17 @@ module Routes (* Handlers *) =
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")            
-            let log = ScrumLogger2.log logger           
-            let identity = UserIdentity2.getCurrentIdentity ctx           
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
             
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! result =
-                    RemoveTaskCommand.runAsync2 
+                    RemoveTaskCommand.runAsync 
                         log
                         currentUtc
                         getStoryById
@@ -966,17 +794,17 @@ module Routes (* Handlers *) =
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
             let connectionString = configuration.GetConnectionString("Scrum")            
-            let log = ScrumLogger2.log logger           
-            let identity = UserIdentity2.getCurrentIdentity ctx           
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
             
             task {
                 use connection = getConnection connectionString
                 use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository2.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository2.applyEventAsync transaction ctx.RequestAborted
+                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! result =
-                    RemoveStoryCommand.runAsync2 
+                    RemoveStoryCommand.runAsync 
                         log
                         currentUtc
                         getStoryById
@@ -999,8 +827,179 @@ module Routes (* Handlers *) =
                     ctx.SetStatusCode problem.Status                        
                     ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                     return! json problem next ctx
-            }    
+            }
+            
+    let getStoryByIdHandler (storyId: Guid) : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")            
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
+            
+            task {
+                use connection = getConnection connectionString
+                use transaction = connection.BeginTransaction()
+                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                
+                let! result =
+                    GetStoryByIdQuery.runAsync 
+                        log
+                        getStoryById
+                        identity
+                        { Id = storyId }
+
+                match result with
+                | Ok _ ->
+                    do! transaction.CommitAsync(ctx.RequestAborted)
+                    ctx.SetStatusCode 200
+                    return! json {||} next ctx
+                | Error e ->
+                    do! transaction.RollbackAsync(ctx.RequestAborted)
+                    let problem =
+                        match e with
+                        | GetStoryByIdQuery.AuthorizationError ae -> fromAuthorizationError ae
+                        | GetStoryByIdQuery.ValidationErrors ve -> fromValidationErrors ve
+                        | GetStoryByIdQuery.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                    ctx.SetStatusCode problem.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json problem next ctx
+            }                
     
+    let getStoriesPagedHandler : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")            
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
+                        
+            task {
+                let! result =          
+                    taskResult {
+                        let! limit =
+                            ctx.GetQueryStringValue "limit"
+                            // TODO: generalize message generation.
+                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'limit'")
+                            |> Result.bind (fun limit ->
+                                   // TODO: Extract into helper function taking in string field name.
+                                   let ok, limit = Int32.TryParse(limit)
+                                   if ok then
+                                       Ok limit
+                                    else
+                                       Error (ProblemDetails.create 400 "Query string parameter 'limit' must be an integer"))
+                        let! cursor =
+                            ctx.GetQueryStringValue "cursor"
+                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'cursor'")
+                        let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]                                        
+                                                             
+                        use connection = getConnection connectionString
+                        use transaction = connection.BeginTransaction()
+                        let getStoriesPaged = SqliteStoryRepository.getStoriesPagedAsync transaction ctx.RequestAborted
+                        
+                        let! result =
+                            GetStoriesPagedQuery.runAsync 
+                                log
+                                getStoriesPaged
+                                identity
+                                { Limit = limit; Cursor = cursor |> Option.ofObj }
+                            |> TaskResult.mapError(fun e ->
+                                let problem =
+                                    match e with
+                                    | GetStoriesPagedQuery.AuthorizationError ae -> fromAuthorizationError ae
+                                    | GetStoriesPagedQuery.ValidationErrors ve -> fromValidationErrors ve
+                                problem)
+                        do! transaction.RollbackAsync(ctx.RequestAborted)                            
+                        return result
+                    }
+                
+                // TODO: Extract into helper function.
+                match result with
+                | Ok paged ->
+                    ctx.SetStatusCode 200
+                    return! json paged next ctx
+                | Error e ->
+                    ctx.SetStatusCode e.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json e next ctx
+            }      
+     
+    let getPersistedDomainEvents (aggregateId: Guid) : HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            let configuration = ctx.GetService<IConfiguration>()
+            let logger = ctx.GetService<ILogger<_>>()
+            let connectionString = configuration.GetConnectionString("Scrum")            
+            let log = ScrumLogger.log logger           
+            let identity = UserIdentity.getCurrentIdentity ctx           
+            
+            task {                
+                let! result =
+                    taskResult {
+                        let! limit =
+                            ctx.GetQueryStringValue "limit"
+                            // TODO: generalize message generation.
+                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'limit'")
+                            |> Result.bind (fun limit ->
+                                   // TODO: Extract into helper function taking in string field name.
+                                   let ok, limit = Int32.TryParse(limit)
+                                   if ok then
+                                       Ok limit
+                                    else
+                                       Error (ProblemDetails.create 400 "Query string parameter 'limit' must be an integer"))
+                        let! cursor =
+                            ctx.GetQueryStringValue "cursor"
+                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'cursor'")
+                        let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]                                        
+
+                        use connection = getConnection connectionString
+                        use transaction = connection.BeginTransaction()
+                        let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
+
+                        let! result =
+                            GetByAggregateIdQuery.runAsync 
+                                log
+                                getByAggregateId
+                                identity
+                                { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
+                            |> TaskResult.mapError(fun e ->
+                                let problem =
+                                    match e with
+                                    | GetByAggregateIdQuery.AuthorizationError ae -> fromAuthorizationError ae
+                                    | GetByAggregateIdQuery.ValidationErrors ve -> fromValidationErrors ve
+                                problem)
+                        do! transaction.RollbackAsync(ctx.RequestAborted)                            
+                        return result                   
+                    }
+                    
+                // TODO: Extract into helper function.
+                match result with
+                | Ok paged ->
+                    ctx.SetStatusCode 200
+                    return! json paged next ctx
+                | Error e ->
+                    ctx.SetStatusCode e.Status                        
+                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                    return! json e next ctx                
+            }     
+     
+    let introspectTestHandler : HttpHandler =
+        fun (next : HttpFunc) (ctx : HttpContext) ->
+            // API gateways and other proxies between the client and the
+            // service tag on extra information to the request. This endpoint
+            // allows a client to see what the request looked like from the
+            // server's point of view.
+            let headers = ctx.Request.Headers |> Seq.map (fun h -> KeyValuePair(h.Key, h.Value.ToString()))
+            ctx.SetStatusCode 200
+            json headers next ctx     
+
+    let currentTimeTestHandler : HttpHandler =
+        fun (next : HttpFunc) (ctx : HttpContext) ->
+            // Useful for establishing baseline performance numbers and testing
+            // rate limits. Because this action doesn't perform significant
+            // work, it provides an upper bound for requests/second given a
+            // response time distribution.
+            text (DateTime.UtcNow.ToString()) next ctx       
+     
     let webApp =
         choose [
             // Loosely modeled after the corresponding OAuth2 endpoints.           
@@ -1016,12 +1015,21 @@ module Routes (* Handlers *) =
                 PUT >=> routef "/stories/%O/tasks/%O" reviseBasicTaskDetailsHandler
                 DELETE >=> routef "/stories/%O/tasks/%O" removeTaskHandler
                 DELETE >=> routef "/stories/%O" removeStoryHandler
-                //GET >=> route "/stories2/{storyId}" >=> getByStoryIdHandler
-                // GET >=> route "/stories2" >=> getStoriesPagedHandler                                       
+                GET >=> routef "/stories/%O" getStoryByIdHandler
+                GET >=> route "/stories" >=> getStoriesPagedHandler                                       
+            ]
+            
+            verifyUserIsAuthenticated >=> choose [
+                GET >=> routef "/persisted-domain-events/%O" getPersistedDomainEvents
+            ]
+            
+            GET >=> choose [
+                route "/tests/introspect" >=> introspectTestHandler
+                route "/tests/current-time" >=> currentTimeTestHandler
             ]
                         
             RequestErrors.NOT_FOUND "Not Found"
-        ] 
+        ]
 
 module Program =
     open System
@@ -1111,7 +1119,6 @@ module Program =
             .AddMvc(fun options ->
                 options.EnableEndpointRouting <- false
                 options.Filters.Add(typeof<WebExceptionFilterAttribute>) |> ignore)
-            .ConfigureApplicationPartManager(fun pm -> pm.FeatureProviders.Add(ControllerWithinModule()))
             .AddJsonOptions(fun options ->
                 let o = options.JsonSerializerOptions
                 // Per https://opensource.zalando.com/restful-api-guidelines/#118.
@@ -1123,10 +1130,9 @@ module Program =
                 o.WriteIndented <- true)
         |> ignore        
 
-        let logger = serviceProvider.GetService<ILogger<_>>()
-        let scrumLogger = ScrumLogger(logger)
+        let logger = ScrumLogger.log (serviceProvider.GetService<ILogger<_>>())                 
         let connectionString = builder.Configuration.GetConnectionString("Scrum")
-        DatabaseMigrator(scrumLogger, connectionString)
+        DatabaseMigrator(logger, connectionString)
             .Apply()
 
         builder.Services

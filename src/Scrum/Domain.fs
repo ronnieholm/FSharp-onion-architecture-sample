@@ -304,13 +304,6 @@ module StoryAggregate =
             )
         | None -> Error(TaskNotFound taskId)
 
-    [<Interface>]
-    type IStoryRepository =
-        abstract ExistAsync: CancellationToken -> StoryId -> Task<bool>
-        abstract GetByIdAsync: CancellationToken -> StoryId -> Task<Story option>
-        abstract GetStoriesPagedAsync: CancellationToken -> Limit -> Cursor option -> Task<Paged<Story>>
-        abstract ApplyEventAsync: CancellationToken -> StoryDomainEvent -> Task<unit>
-
 module DomainService =
     // Services shared across aggregates.
     ()
