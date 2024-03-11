@@ -42,7 +42,7 @@ module Seedwork =
 
     type ScrumIdentity =
         | Anonymous
-        | Authenticated of UserId: string * Role: ScrumRole list
+        | Authenticated of UserId: string * Roles: ScrumRole list
 
     type LogMessage =
          // Application specific logging.
