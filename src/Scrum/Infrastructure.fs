@@ -6,15 +6,14 @@ module Seedwork =
     open System.Text
     open System.Text.Json.Serialization
     open System.Threading
-    open System.Threading.Tasks
     open System.Data.SQLite
     open FsToolkit.ErrorHandling
     open Scrum.Domain.Shared.Paging
         
     exception InfrastructureException of string
 
-    let panic (s: string) : 't = raise (InfrastructureException(s))
-    let unreachable (s: string) : 't = raise (UnreachableException(s))
+    let panic message : 't = raise (InfrastructureException(message))
+    let unreachable message : 't = raise (UnreachableException(message))
 
     module Json =
         type DateTimeJsonConverter() =
@@ -58,10 +57,10 @@ module Seedwork =
                 // accomodate both, we print the error using %A.
                 panic $"Deserialization failed for '{datum}': '%A{e}'"
 
-        let parseCreatedAt (v: obj) : DateTime = DateTime(v :?> int64, DateTimeKind.Utc)
+        let parseCreatedAt (value: obj) = DateTime(value :?> int64, DateTimeKind.Utc)
 
-        let parseUpdatedAt (v: obj) : DateTime option =
-            v
+        let parseUpdatedAt value =
+            value
             |> Option.ofDBNull
             |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
 
@@ -89,14 +88,14 @@ module Seedwork =
                 assert (count = 1)
             }
 
-        let applyEventExecuteNonQuery (aggregateId: Guid) (cmd: SQLiteCommand) (ct: CancellationToken) : Task<Guid> =
+        let applyEventExecuteNonQuery aggregateId (cmd: SQLiteCommand) ct =
             task {
                 let! count = cmd.ExecuteNonQueryAsync(ct)
                 assert (count = 1)
                 return aggregateId
             }
 
-        let getLargestCreatedAtAsync (table: string) (connection: SQLiteConnection) (ct: CancellationToken) : Task<int64> =
+        let getLargestCreatedAtAsync table (connection: SQLiteConnection) ct =
             task {
                 let sqlLast = $"select created_at from {table} order by created_at desc limit 1"
                 use cmdLast = new SQLiteCommand(sqlLast, connection)
@@ -105,7 +104,7 @@ module Seedwork =
                 return if last = null then 0L else last :?> int64
             }
 
-        let cursorToOffset (cursor: Cursor option) : int64 =
+        let cursorToOffset cursor =
             match cursor with
             | Some c ->
                 Convert.FromBase64String(Cursor.value c)
@@ -113,7 +112,7 @@ module Seedwork =
                 |> Int64.Parse
             | None -> 0
 
-        let offsetsToCursor (globalOffset: int64) (localOffset: int64) : Cursor option =
+        let offsetsToCursor globalOffset localOffset =
             if globalOffset = localOffset then
                 None
             else
@@ -129,7 +128,6 @@ open System
 open System.Data.Common
 open System.Text.Json
 open System.Threading
-open System.Threading.Tasks
 open System.Collections.Generic
 open System.Data.SQLite
 open Microsoft.Extensions.Logging
@@ -146,7 +144,7 @@ open Seedwork.Repository
 module SqliteStoryRepository =
     // TODO: what do to about the repository interface in domain?
     
-    let storyToDomainAsync (ct: CancellationToken) (r: DbDataReader) : Task<Story list> =
+    let storyToDomainAsync ct (r: DbDataReader) =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
         // for details on the flat table to tree deserialization algorithm.
@@ -179,7 +177,7 @@ module SqliteStoryRepository =
                         let task = parseTaskFields r
                         tasks.Add(taskId, task)
 
-        let parseStoryFields (r: DbDataReader) : Story =
+        let parseStoryFields (r: DbDataReader) =
             // TODO: What to do if we have additional fields beyond basic story details?
             //       For any entity, we should probably not any "create" function to
             //       restore it. But how to check invariants otherwise?
@@ -224,7 +222,7 @@ module SqliteStoryRepository =
             return stories
         }    
     
-    let getByIdAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (id: StoryId) : Task<Story option> =
+    let getByIdAsync (transaction: SQLiteTransaction) (ct: CancellationToken) id =
         task {
             let connection = transaction.Connection
             
@@ -257,7 +255,7 @@ module SqliteStoryRepository =
         }
     
     
-    let existAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (id: StoryId) : Task<bool> =
+    let existAsync (transaction: SQLiteTransaction) (ct: CancellationToken) id =
         task {
             let connection = transaction.Connection
             let sql = "select count(*) from stories where id = @id"
@@ -274,7 +272,7 @@ module SqliteStoryRepository =
     // Compared to event sourcing, we immediately apply events to the store.
     // We don't have to worry about the shape of events evolving over time;
     // only to keep the store up to date.
-    let applyEventAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (now: DateTime) (event: StoryDomainEvent) : Task<unit> =
+    let applyEventAsync (transaction: SQLiteTransaction) (ct: CancellationToken) now event =
         let connection = transaction.Connection
         task {
             let! aggregateId =
@@ -364,7 +362,7 @@ module SqliteStoryRepository =
                     now
         }                        
 
-    let getStoriesPagedAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (limit: Limit) (cursor: Cursor option) : Task<Paged<Story>> =
+    let getStoriesPagedAsync (transaction: SQLiteTransaction) (ct: CancellationToken) limit cursor =
         let connection = transaction.Connection
         task {
             let sqlStories =
@@ -398,9 +396,8 @@ module SqliteDomainEventRepository =
             (transaction: SQLiteTransaction) 
             (ct: CancellationToken)
             (aggregateId: Guid)
-            (limit: Limit)
-            (cursor: Cursor option)
-            : Task<Paged<PersistedDomainEvent>> =
+            limit
+            cursor =
         task {
             let connection = transaction.Connection
             let sql =
@@ -446,7 +443,7 @@ module ScrumLogger =
         o.Converters.Add(Json.EnumJsonConverter())
         o        
                 
-    let log (logger: ILogger<_>) (message: LogMessage) =
+    let log (logger: ILogger<_>) message =
         match message with
         | Request (identity, useCase, request) ->
             let requestJson = JsonSerializer.Serialize(request, jsonSerializationOptions)

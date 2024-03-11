@@ -14,8 +14,8 @@ module Seedwork =
     type ValidationError = { Field: string; Message: string }
 
     module ValidationError =
-        let create (field: string) (message: string) = { Field = field; Message = message }
-        let mapError (field: string) : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
+        let create field message = { Field = field; Message = message }
+        let mapError field : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
 
     // A pseudo-aggregate or an aggregate in the application layer. In
     // principle, we could define value types similar to those making up
@@ -35,7 +35,7 @@ module Seedwork =
         | Member
         | Admin
 
-        override x.ToString() : string =
+        override x.ToString() =
             match x with
             | Member -> "member"
             | Admin -> "admin"
@@ -63,8 +63,8 @@ module Seedwork =
 
     let runWithDecoratorAsync
         (log: LogMessage -> unit)
-        (identity: ScrumIdentity)
-        (useCase: string)
+        identity
+        useCase
         (cmd: 't)
         (fn: unit -> TaskResult<'a, 'b>)
         : TaskResult<'a, 'b> =
@@ -77,7 +77,7 @@ module Seedwork =
         log (RequestDuration(useCase, elapsed))
         result
 
-    let isInRole (identity: ScrumIdentity) (role: ScrumRole) : Result<unit, string> =
+    let isInRole identity role =
         match identity with
         | Anonymous -> Error("Anonymous user unsupported")
         | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
@@ -103,7 +103,7 @@ module StoryAggregateRequest =
     module CaptureBasicStoryDetailsCommand =
         type CaptureBasicStoryDetailsValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
 
-        let validate (c: CaptureBasicStoryDetailsCommand) : Validation<CaptureBasicStoryDetailsValidatedCommand, ValidationError> =
+        let validate (c: CaptureBasicStoryDetailsCommand) =
             validation {
                 let! id = StoryId.create c.Id |> ValidationError.mapError (nameof c.Id)
                 and! title = StoryTitle.create c.Title |> ValidationError.mapError (nameof c.Title)
@@ -132,9 +132,8 @@ module StoryAggregateRequest =
             (currentUtc: unit -> DateTime)
             (storyExist: StoryId -> System.Threading.Tasks.Task<bool>)
             (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
-            (identity: ScrumIdentity)
-            (cmd: CaptureBasicStoryDetailsCommand)
-            : TaskResult<Guid, CaptureBasicStoryDetailsError> =
+            identity
+            cmd =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -160,7 +159,7 @@ module StoryAggregateRequest =
     module ReviseBasicStoryDetailsCommand =
         type ReviseBasicStoryDetailsValidatedCommand = { Id: StoryId; Title: StoryTitle; Description: StoryDescription option }
 
-        let validate (c: ReviseBasicStoryDetailsCommand) : Validation<ReviseBasicStoryDetailsValidatedCommand, ValidationError> =
+        let validate (c: ReviseBasicStoryDetailsCommand) =
             validation {
                 // Except for return type, this validation is identical to that
                 // of CreateStoryCommand. With more fields on the story, likely
@@ -188,9 +187,8 @@ module StoryAggregateRequest =
             (currentUtc: unit -> DateTime)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
             (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
-            (identity: ScrumIdentity)
-            (cmd: ReviseBasicStoryDetailsCommand)
-            : TaskResult<Guid, ReviseBasicStoryDetailsError> =
+            identity
+            cmd =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -225,8 +223,8 @@ module StoryAggregateRequest =
             (currentUtc: unit -> DateTime)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
             (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
-            (identity: ScrumIdentity)        
-            (cmd: RemoveStoryCommand) : TaskResult<Guid, RemoveStoryError> =
+            identity        
+            cmd =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -250,7 +248,7 @@ module StoryAggregateRequest =
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let validate (c: AddBasicTaskDetailsToStoryCommand) : Validation<AddBasicTaskDetailsToStoryValidatedCommand, ValidationError> =
+        let validate (c: AddBasicTaskDetailsToStoryCommand) =
             validation {
                 let! storyId = StoryId.create c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.create c.TaskId |> ValidationError.mapError (nameof c.TaskId)
@@ -280,9 +278,8 @@ module StoryAggregateRequest =
             (currentUtc: unit -> DateTime)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
             (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
-            (identity: ScrumIdentity)
-            (cmd: AddBasicTaskDetailsToStoryCommand)
-            : TaskResult<Guid, AddBasicTaskDetailsToStoryError> =
+            identity
+            cmd =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -309,7 +306,7 @@ module StoryAggregateRequest =
               Title: TaskTitle
               Description: TaskDescription option }
 
-        let validate (c: ReviseBasicTaskDetailsCommand) : Validation<ReviseBasicTaskDetailsValidatedCommand, ValidationError> =
+        let validate (c: ReviseBasicTaskDetailsCommand) =
             // Except for return type, identical to AddTaskToStoryCommand's
             // validate command. With more fields on the task, the two are
             // likely to differ.
@@ -342,9 +339,8 @@ module StoryAggregateRequest =
             (currentUtc: unit -> DateTime)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
             (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
-            (identity: ScrumIdentity)
-            (cmd: ReviseBasicTaskDetailsCommand)
-            : TaskResult<Guid, ReviseBasicTaskDetailsError> =
+            identity
+            cmd =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -366,7 +362,7 @@ module StoryAggregateRequest =
     module RemoveTaskCommand =
         type RemoveTaskValidatedCommand = { StoryId: StoryId; TaskId: TaskId }
 
-        let validate (c: RemoveTaskCommand) : Validation<RemoveTaskValidatedCommand, ValidationError> =
+        let validate (c: RemoveTaskCommand) =
             validation {
                 let! storyId = StoryId.create c.StoryId |> ValidationError.mapError (nameof c.StoryId)
                 and! taskId = TaskId.create c.TaskId |> ValidationError.mapError (nameof c.TaskId)
@@ -388,8 +384,8 @@ module StoryAggregateRequest =
             (currentUtc: unit -> DateTime)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
             (storyApplyEvent: DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>)
-            (identity: ScrumIdentity)        
-            (cmd: RemoveTaskCommand) : TaskResult<Guid, RemoveTaskError> =
+            identity
+            cmd =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -443,7 +439,7 @@ module StoryAggregateRequest =
     module GetStoryByIdQuery =
         type GetStoryByIdValidatedQuery = { Id: StoryId }
 
-        let validate (q: GetStoryByIdQuery) : Validation<GetStoryByIdValidatedQuery, ValidationError> =
+        let validate (q: GetStoryByIdQuery) =
             validation {
                 let! storyId = StoryId.create q.Id |> ValidationError.mapError (nameof q.Id)
                 return { Id = storyId }
@@ -457,8 +453,8 @@ module StoryAggregateRequest =
         let runAsync
             (log: LogMessage -> unit)
             (getStoryById: StoryId -> System.Threading.Tasks.Task<Story option>)
-            (identity: ScrumIdentity)                
-            (qry: GetStoryByIdQuery) : TaskResult<StoryDto, GetStoryByIdError> =
+            identity                
+            qry =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -486,7 +482,7 @@ module StoryAggregateRequest =
     module GetStoriesPagedQuery =
         type GetStoriesPagedValidatedQuery = { Limit: Limit; Cursor: Cursor option }
 
-        let validate (q: GetStoriesPagedQuery) : Validation<GetStoriesPagedValidatedQuery, ValidationError> =
+        let validate (q: GetStoriesPagedQuery) =
             validation {
                 let! limit = Limit.create q.Limit |> ValidationError.mapError (nameof q.Limit)
                 and! cursor =
@@ -503,9 +499,8 @@ module StoryAggregateRequest =
         let runAsync
             (log: LogMessage -> unit)
             (getStoriesPaged: Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<Story>>)
-            (identity: ScrumIdentity)                
-            (qry: GetStoriesPagedQuery)
-            : TaskResult<PagedDto<StoryDto>, GetStoriesPagedError> =
+            identity                
+            qry =
             let aux () =
                 taskResult {
                     do! isInRole identity Member |> Result.mapError AuthorizationError
@@ -532,7 +527,7 @@ module DomainEventRequest =
     module GetByAggregateIdQuery =
         type GetByAggregateIdValidatedQuery = { Id: Guid; Limit: Limit; Cursor: Cursor option }
 
-        let validate (q: GetByAggregateIdQuery) : Validation<GetByAggregateIdValidatedQuery, ValidationError> =
+        let validate (q: GetByAggregateIdQuery) =
             validation {
                 let! id = Validation.Guid.notEmpty q.Id |> ValidationError.mapError (nameof q.Id)
                 and! limit = Limit.create q.Limit |> ValidationError.mapError (nameof q.Limit)
@@ -552,7 +547,7 @@ module DomainEventRequest =
               CreatedAt: DateTime }
 
         module PersistedDomainEventDto =
-            let from (event: PersistedDomainEvent) : PersistedDomainEventDto =
+            let from (event: PersistedDomainEvent) =
                 { Id = event.Id
                   AggregateId = event.AggregateId
                   AggregateType = event.AggregateType
@@ -567,9 +562,8 @@ module DomainEventRequest =
         let runAsync
             (log: LogMessage -> unit)
             (getByAggregateId: Guid -> Limit ->  Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>)
-            (identity: ScrumIdentity)                   
-            (qry: GetByAggregateIdQuery)
-            : TaskResult<PagedDto<PersistedDomainEventDto>, GetStoryEventsByIdError> =
+            identity
+            qry =
             let aux () =
                 taskResult {
                     do! isInRole identity Admin |> Result.mapError AuthorizationError

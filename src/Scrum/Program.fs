@@ -12,7 +12,7 @@ module Seedwork =
     
     exception WebException of string
 
-    let panic (s: string) : 't = raise (WebException(s))
+    let panic message : 't = raise (WebException(message))
 
     module ScrumRole =
         let fromString =
@@ -67,28 +67,28 @@ module Seedwork =
                 |> Array.exists (fun v -> v = "application/problem+json")
             if ok then "application/problem+json" else "application/json"  
         
-        let toJsonResult (accept: StringValues) (error: ProblemDetails) : ActionResult =
-            JsonResult(error, StatusCode = error.Status, ContentType = inferContentType accept) :> _
+        let toJsonResult acceptHeaders error : ActionResult =
+            JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
 
-        let createJsonResult (accept: StringValues) (status: int) (detail: string) : ActionResult =
-            create status detail |> toJsonResult accept
+        let createJsonResult acceptHeaders status detail =
+            create status detail |> toJsonResult acceptHeaders
 
-        let fromAuthorizationError (accept: StringValues) (message: string) : ActionResult =
-            createJsonResult accept StatusCodes.Status401Unauthorized message
+        let fromAuthorizationError acceptHeaders message =
+            createJsonResult acceptHeaders StatusCodes.Status401Unauthorized message
 
-        let fromUnexpectedQueryStringParameters (accept: StringValues) (unexpected: string list) : ActionResult =
+        let fromUnexpectedQueryStringParameters acceptHeaders (unexpected: string list) =
             let parameters = String.Join(", ", unexpected |> List.toSeq)
-            createJsonResult accept StatusCodes.Status400BadRequest $"Unexpected query string parameters: {parameters}"
+            createJsonResult acceptHeaders StatusCodes.Status400BadRequest $"Unexpected query string parameters: {parameters}"
 
         type ValidationErrorDto = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
             JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
-        let fromValidationErrors (accept: StringValues) (errors: ValidationError list) : ActionResult =
+        let fromValidationErrors acceptHeaders (errors: ValidationError list) =
             (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
             |> JsonSerializer.Serialize
-            |> createJsonResult accept StatusCodes.Status400BadRequest
+            |> createJsonResult acceptHeaders StatusCodes.Status400BadRequest
 
 module Configuration =
     open System
@@ -234,7 +234,7 @@ module Service =
                 { Name = name; Hash = hash; Sql = sql })
             |> Array.sortBy _.Name
 
-        let getAppliedMigrations (connection: SQLiteConnection) : AppliedMigration array =
+        let getAppliedMigrations connection =
             let sql =
                 "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
             use cmd = new SQLiteCommand(sql, connection)
@@ -265,14 +265,14 @@ module Service =
                     migrations.Add(m)
                 migrations |> Seq.toArray
 
-        let verifyAppliedMigrations (available: AvailableScript array) (applied: AppliedMigration array) : unit =
+        let verifyAppliedMigrations (available: AvailableScript array) (applied: AppliedMigration array) =
             for i = 0 to applied.Length - 1 do
                 if applied[i].Name <> available[i].Name then
                     panic $"Mismatch in applied name '{applied[i].Name}' and available name '{available[i].Name}'"
                 if applied[i].Hash <> available[i].Hash then
                     panic $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{available[i].Hash}'"
 
-        let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) : unit =
+        let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) =
             for i = applied.Length to available.Length - 1 do
                 // With a transaction as we're updating the migrations table.
                 use tx = connection.BeginTransaction()
@@ -422,7 +422,7 @@ module Filter =
                 context.HttpContext.Response.StatusCode <- code
                 context.Result <- JsonResult(ProblemDetails.create code message)
 
-module Routes (* Handlers *) =
+module RouteHandlers =
     open System
     open System.Security.Claims
     open System.Collections.Generic
@@ -444,15 +444,15 @@ module Routes (* Handlers *) =
     let errorMessageSerializationOptions =
         JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)    
     
-    let fromValidationErrors (errors: ValidationError list): ProblemDetails =
+    let fromValidationErrors errors =
         (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
         |> JsonSerializer.Serialize
         |> ProblemDetails.create 400        
     
-    let fromAuthorizationError (message: string): ProblemDetails =
+    let fromAuthorizationError message =
         ProblemDetails.create 401 message
     
-    let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) (expectedParameters: string list): Result<unit, ProblemDetails> =
+    let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) expectedParameters =
         // Per design APIs conservatively:
         // https://opensource.zalando.com/restful-api-guidelines/#109
         let unexpected =
@@ -609,7 +609,7 @@ module Routes (* Handlers *) =
 
     type StoryUpdateDto = { title: string; description: string }
 
-    let reviseBasicStoryDetailsHandler (storyId: Guid) : HttpHandler =
+    let reviseBasicStoryDetailsHandler storyId =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             // TODO: verify no query string args passed
             let configuration = ctx.GetService<IConfiguration>()
@@ -656,7 +656,7 @@ module Routes (* Handlers *) =
     
     type AddTaskToStoryDto = { title: string; description: string }    
     
-    let addBasicTaskDetailsToStoryHandler (storyId: Guid) : HttpHandler =
+    let addBasicTaskDetailsToStoryHandler storyId =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -702,7 +702,7 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }
             
-    let reviseBasicTaskDetailsHandler (storyId: Guid, taskId: Guid) : HttpHandler =
+    let reviseBasicTaskDetailsHandler (storyId, taskId) =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -748,7 +748,7 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }
             
-    let removeTaskHandler (storyId: Guid, taskId: Guid) : HttpHandler =
+    let removeTaskHandler (storyId, taskId) =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -789,7 +789,7 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }
     
-    let removeStoryHandler (storyId: Guid) : HttpHandler =
+    let removeStoryHandler storyId =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -829,7 +829,7 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }
             
-    let getStoryByIdHandler (storyId: Guid) : HttpHandler =
+    let getStoryByIdHandler storyId =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -866,7 +866,7 @@ module Routes (* Handlers *) =
                     return! json problem next ctx
             }                
     
-    let getStoriesPagedHandler : HttpHandler =
+    let getStoriesPagedHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -924,7 +924,7 @@ module Routes (* Handlers *) =
                     return! json e next ctx
             }      
      
-    let getPersistedDomainEvents (aggregateId: Guid) : HttpHandler =
+    let getPersistedDomainEvents aggregateId =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -982,7 +982,7 @@ module Routes (* Handlers *) =
                     return! json e next ctx                
             }     
      
-    let introspectTestHandler : HttpHandler =
+    let introspectTestHandler =
         fun (next : HttpFunc) (ctx : HttpContext) ->
             // API gateways and other proxies between the client and the
             // service tag on extra information to the request. This endpoint
@@ -1220,7 +1220,7 @@ module Program =
         app.UseAuthentication() |> ignore
         app.UseAuthorization() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
-        app.UseGiraffe Routes.webApp
+        app.UseGiraffe RouteHandlers.webApp
         app.Run()
         
     [<EntryPoint>]
