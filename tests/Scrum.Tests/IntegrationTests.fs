@@ -192,7 +192,7 @@ type StoryAggregateRequestTests() =
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
             let! result = fns.CaptureBasicStoryDetails memberIdentity cmd
             test <@ result = Error(CaptureBasicStoryDetailsCommand.DuplicateStory(cmd.Id)) @>
-            fns.Rollback()
+            fns.Commit()
         }
 
     [<Fact>]
@@ -205,7 +205,7 @@ type StoryAggregateRequestTests() =
             test <@ result = Ok cmd.Id @>
             let! result = fns.GetStoryById memberIdentity { Id = cmd.Id }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
-            fns.Rollback()
+            fns.Commit()
         }
         
     [<Fact>]
@@ -244,7 +244,7 @@ type StoryAggregateRequestTests() =
             let cmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = missingId () }
             let! result = fns.AddBasicTaskDetailsToStory memberIdentity cmd
             test <@ result = Error(AddBasicTaskDetailsToStoryCommand.StoryNotFound(cmd.StoryId)) @>
-            fns.Rollback()
+            fns.Commit()
         }
         
     [<Fact>]
@@ -271,7 +271,7 @@ type StoryAggregateRequestTests() =
             let cmd = { StoryId = missingId (); TaskId = cmd.TaskId }
             let! result = fns.RemoveTask memberIdentity cmd
             test <@ result = Error(RemoveTaskCommand.StoryNotFound(cmd.StoryId)) @>
-            fns.Rollback()
+            fns.Commit()
         }
         
     [<Fact>]
@@ -283,7 +283,7 @@ type StoryAggregateRequestTests() =
             let cmd = { StoryId = cmd.Id; TaskId = missingId () }
             let! result = fns.RemoveTask memberIdentity cmd
             test <@ result = Error(RemoveTaskCommand.TaskNotFound(cmd.TaskId)) @>
-            fns.Rollback()
+            fns.Commit()
         }
         
     [<Fact>]
@@ -306,7 +306,7 @@ type StoryAggregateRequestTests() =
             let cmd = A.reviseBasicStoryDetailsCommand cmd
             let! result = fns.ReviseBasicStoryDetails memberIdentity cmd
             test <@ result = Error(ReviseBasicStoryDetailsCommand.StoryNotFound(cmd.Id)) @>
-            fns.Rollback()
+            fns.Commit()
         }
         
     [<Fact>]
@@ -334,7 +334,7 @@ type StoryAggregateRequestTests() =
             let cmd = { A.reviseBasicTaskDetailsCommand cmd with TaskId = missingId () }
             let! result = fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ result = Error(ReviseBasicTaskDetailsCommand.TaskNotFound(cmd.TaskId)) @>
-            fns.Rollback()
+            fns.Commit()
         }
         
     [<Fact>]
@@ -348,8 +348,8 @@ type StoryAggregateRequestTests() =
             let cmd = { A.reviseBasicTaskDetailsCommand cmd with StoryId = missingId () }
             let! result = fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ result = Error(ReviseBasicTaskDetailsCommand.StoryNotFound(cmd.StoryId)) @>
-            fns.Rollback()
-        }       
+            fns.Commit()
+        }
         
     [<Fact>]
     let ``get stories paged`` () =
