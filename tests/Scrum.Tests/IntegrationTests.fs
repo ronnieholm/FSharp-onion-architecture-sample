@@ -95,16 +95,16 @@ module Setup =
            ReviseBasicTaskDetails = ReviseBasicTaskDetailsCommand.runAsync nullLogger clock getStoryById storyApplyEvent
            GetByAggregateId = GetByAggregateIdQuery.runAsync nullLogger getByAggregateId
            Rollback =
-            fun () ->
-                transaction.Rollback()
-                transaction.Dispose()
-                connection.Dispose()
+               fun () ->
+                   transaction.Rollback()
+                   transaction.Dispose()
+                   connection.Dispose()
            Commit =
-            fun () ->
-                transaction.Commit()
-                transaction.Dispose()
-                connection.Dispose() |}
-                
+               fun () ->
+                   transaction.Commit()
+                   transaction.Dispose()
+                   connection.Dispose() |}
+
 open Setup
 
 type ApplyDatabaseMigrationsFixture() =
@@ -347,38 +347,31 @@ type StoryAggregateRequestTests() =
             let! result = fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ result = Error(ReviseBasicTaskDetailsCommand.StoryNotFound(cmd.StoryId)) @>
             fns.Rollback()
-        }
+        }       
         
     [<Fact>]
-    let ``get stories paged`` () =
+    let ``get stories paged2`` () =
         let fns = setupRequests ()
-        task {
+        taskResult {
             for i = 1 to 14 do
                 let cmd = { A.captureBasicStoryDetailsCommand () with Title = $"{i}" }
-                let! result = fns.CaptureBasicStoryDetails memberIdentity cmd
-                test <@ result = Ok cmd.Id @>                            
+                let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd |> fail
+                ()
 
-            let! page1 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = None }
-            match page1 with
-            | Ok page1 ->
-                Assert.Equal(5, page1.Items.Length)
-                let! page2 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page1.Cursor }
-                match page2 with
-                | Ok page2 ->
-                    Assert.Equal(5, page2.Items.Length)
-                    let! page3 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page2.Cursor }
-                    match page3 with
-                    | Ok page3 ->
-                        Assert.Equal(4, page3.Items.Length)
-                        let unique =
-                            List.concat [ page1.Items; page2.Items; page3.Items ]
-                            |> List.map _.Title
-                            |> List.distinct
-                            |> List.length
-                        Assert.Equal(14, unique)
-                    | Error _ -> Assert.Fail("Expected page 3")
-                | Error _ -> Assert.Fail("Expected page 2")
-            | Error _ -> Assert.Fail("Expected page 1")
+            let! page1 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = None } |> fail
+            let! page2 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page1.Cursor } |> fail
+            let! page3 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page2.Cursor } |> fail
+            
+            Assert.Equal(5, page1.Items.Length)
+            Assert.Equal(5, page2.Items.Length)
+            Assert.Equal(4, page3.Items.Length)
+
+            let unique =
+                List.concat [ page1.Items; page2.Items; page3.Items ]
+                |> List.map _.Title
+                |> List.distinct
+                |> List.length
+            Assert.Equal(14, unique)
             fns.Commit()
         }
         
@@ -435,8 +428,7 @@ type DomainEventRequestTests() =
         
     [<Fact>]
     let ``must have admin role to query domain events`` () =
-        let fns = setupRequests ()
-    
+        let fns = setupRequests ()   
         task {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd
