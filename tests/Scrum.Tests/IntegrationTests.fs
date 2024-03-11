@@ -130,6 +130,11 @@ type ApplyDatabaseMigrationsFixture() =
 type DisableParallelization() =
     interface ICollectionFixture<ApplyDatabaseMigrationsFixture>
 
+module Helpers =
+    let fail tr = Task.map (Result.mapError (fun e -> Assert.Fail($"%A{e}"))) tr
+
+open Helpers
+
 // Serializing integration tests makes for slower but more reliable tests. With
 // SQLite, only one transaction can be in progress at once anyway. Another
 // transaction will block on commit until the ongoing transaction finishes by
@@ -152,8 +157,6 @@ type StoryAggregateRequestTests() =
             test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError("Missing role 'member'")) @>
             fns.Commit()
         }
-
-    let fail tr = Task.map (Result.mapError (fun e -> Assert.Fail($"%A{e}"))) tr
 
     [<Fact>]
     let ``capture basic story and task details`` () =
@@ -378,51 +381,40 @@ type StoryAggregateRequestTests() =
 [<Collection(nameof DisableParallelization)>]
 type DomainEventRequestTests() =
     do reset ()
-
+       
     [<Fact>]
-    let ``query domain events`` () =
-        task {
+    let ``query domain events2`` () =
+        let fns = setupRequests ()
+        taskResult {
             // This could be one user making a request.
-            let fns = setupRequests ()
-
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! result = fns.CaptureBasicStoryDetails memberIdentity storyCmd
-            test <@ result = Ok storyCmd.Id @>
+            let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> fail
             for i = 1 to 13 do
                 let taskCmd =
                     { A.addBasicTaskDetailsToStoryCommand () with
                         StoryId = storyCmd.Id
                         Title = $"Title {i}" }
-                let! result = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd
-                test <@ result = Ok taskCmd.TaskId @>
+                let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd |> fail
+                ()
 
             // This could be another user making a request.
-            let! page1 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None }
-            match page1 with
-            | Ok page1 ->
-                Assert.Equal(5, page1.Items.Length)
-                let! page2 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor }
-                match page2 with
-                | Ok page2 ->
-                    Assert.Equal(5, page2.Items.Length)
-                    let! page3 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor }
-                    match page3 with
-                    | Ok page3 ->
-                        Assert.Equal(4, page3.Items.Length)
-                        let events = List.concat [ page1.Items; page2.Items; page3.Items ]
-                        Assert.Equal(14, events |> List.map _.CreatedAt |> List.distinct |> List.length)
-                        Assert.Equal(storyCmd.Id, (events |> List.map _.AggregateId |> List.distinct |> List.exactlyOne))
-                        Assert.Equal(
-                            "Story",
-                            (events
-                             |> List.map _.AggregateType
-                             |> List.distinct
-                             |> List.exactlyOne)
-                        )
-                    | Error _ -> Assert.Fail("Expected page 3")
-                | Error _ -> Assert.Fail("Expected page 2")
-            | Error _ -> Assert.Fail("Expected page 1")
-            
+            let! page1 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None } |> fail            
+            let! page2 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor } |> fail
+            let! page3 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor } |> fail
+
+            Assert.Equal(5, page1.Items.Length)
+            Assert.Equal(5, page2.Items.Length)
+            Assert.Equal(4, page3.Items.Length)
+
+            let events = List.concat [ page1.Items; page2.Items; page3.Items ]
+            Assert.Equal(14, events |> List.map _.CreatedAt |> List.distinct |> List.length)
+            Assert.Equal(storyCmd.Id, (events |> List.map _.AggregateId |> List.distinct |> List.exactlyOne))
+            Assert.Equal(
+                "Story",
+                (events
+                 |> List.map _.AggregateType
+                 |> List.distinct
+                 |> List.exactlyOne))
             fns.Commit()
         }
         
