@@ -472,7 +472,7 @@ module Routes (* Handlers *) =
             if isNotNull ctx.User && ctx.User.Identity.IsAuthenticated
             then next ctx
             else setStatusCode 401 earlyReturn ctx    
-    
+
     let issueTokenHandler : HttpHandler =
         // TODO: Fail if token is provided and/or user isn't anonymous
         fun (next : HttpFunc) (ctx : HttpContext) ->

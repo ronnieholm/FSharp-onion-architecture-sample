@@ -13,27 +13,27 @@ module Validation =
     open System
     
     module Guid =
-        let notEmpty (v: Guid) : Result<Guid, string> = if v = Guid.Empty then Error "Should be non-empty" else Ok v
+        let notEmpty value = if value = Guid.Empty then Error "Should be non-empty" else Ok value
 
     module String =
-        let notNullOrWhitespace (v: string) : Result<string, string> =
-            if String.IsNullOrWhiteSpace(v) then
+        let notNullOrWhitespace value =
+            if String.IsNullOrWhiteSpace(value) then
                 Error "Should be non-null, non-empty or non-whitespace"
             else
-                Ok v
+                Ok value
 
-        let maxLength (l: int) (v: string) : Result<string, string> =
-            if v.Length > l then
-                Error $"Should contain less than or equal to {l} characters"
+        let maxLength length (value: string) =
+            if value.Length > length then
+                Error $"Should contain less than or equal to {length} characters"
             else
-                Ok v
+                Ok value
 
     module Int =
-        let between (from: int) (to_: int) (v: int) : Result<int, string> =
-            if v < from && v > to_ then
+        let between from to_ value =
+            if value < from && value > to_ then
                 Error $"Should be between {from} and {to_}, both inclusive"
             else
-                Ok v
+                Ok value
 
 open Validation
 
@@ -42,36 +42,32 @@ module Shared =
         type Limit = private Limit of int
 
         module Limit =
-            let create (v: int) : Result<Limit, string> = v |> Int.between 1 100 |> Result.map Limit
+            let create value = value |> Int.between 1 100 |> Result.map Limit
             let value (Limit v) : int = v
 
         type Cursor = private Cursor of string
 
         module Cursor =
-            let create (v: string) : Result<Cursor, string> = v |> String.notNullOrWhitespace |> Result.map Cursor
+            let create (value: string) = value |> String.notNullOrWhitespace |> Result.map Cursor
             let value (Cursor v) : string = v
 
         type Paged<'t> = { Cursor: Cursor option; Items: 't list }
 
-open Shared.Paging
-
 module StoryAggregate =
     open System
-    open System.Threading
-    open System.Threading.Tasks   
     open Seedwork
 
     module TaskEntity =
         type TaskId = private TaskId of Guid
 
         module TaskId =
-            let create (v: Guid) : Result<TaskId, string> = v |> Guid.notEmpty |> Result.map TaskId
+            let create value = value |> Guid.notEmpty |> Result.map TaskId
             let value (TaskId v) : Guid = v
 
         type TaskTitle = private TaskTitle of string
 
         module TaskTitle =
-            let create (v: string) : Result<TaskTitle, string> =               
+            let create (v: string) =               
                 v
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 100)
@@ -82,8 +78,8 @@ module StoryAggregate =
         type TaskDescription = private TaskDescription of string
 
         module TaskDescription =
-            let create (v: string) : Result<TaskDescription, string> =
-                v
+            let create (value: string) =
+                value
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 1000)
                 |> Result.map TaskDescription
@@ -107,19 +103,19 @@ module StoryAggregate =
               Title = title
               Description = description }
 
-        let equals (a: Task) (b: Task) : bool = a.Entity.Id = b.Entity.Id
+        let equals a b = a.Entity.Id = b.Entity.Id
 
     type StoryId = private StoryId of Guid
 
     module StoryId =
-        let create (v: Guid) : Result<StoryId, string> = v |> Guid.notEmpty |> Result.map StoryId
+        let create value = value |> Guid.notEmpty |> Result.map StoryId
         let value (StoryId v) : Guid = v
 
     type StoryTitle = StoryTitle of string
 
     module StoryTitle =
-        let create (v: string) : Result<StoryTitle, string> =
-            v
+        let create value =
+            value
             |> String.notNullOrWhitespace
             |> Result.bind (String.maxLength 100)
             |> Result.map StoryTitle
@@ -129,8 +125,8 @@ module StoryAggregate =
     type StoryDescription = StoryDescription of string
 
     module StoryDescription =
-        let create (v: string) : Result<StoryDescription, string> =
-            v
+        let create (value: string) =
+            value
             |> String.notNullOrWhitespace
             |> Result.bind (String.maxLength 1000)
             |> Result.map StoryDescription
