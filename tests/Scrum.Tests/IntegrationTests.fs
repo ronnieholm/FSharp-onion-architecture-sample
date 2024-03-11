@@ -76,13 +76,12 @@ module Setup =
         connection   
     
     let setupRequests () =
-        let connection = getConnection connectionString // TODO: missing dispose
-        let transaction = connection.BeginTransaction() // TODO: missing dispose
+        let connection = getConnection connectionString
+        let transaction = connection.BeginTransaction()
         let storyExist = SqliteStoryRepository.existAsync transaction ct
         let getStoryById = SqliteStoryRepository.getByIdAsync transaction ct
         let getStoriesPaged = SqliteStoryRepository.getStoriesPagedAsync transaction ct
         let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ct
-
         let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ct
         
         {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync nullLogger clock storyExist storyApplyEvent
@@ -353,7 +352,7 @@ type StoryAggregateRequestTests() =
         }       
         
     [<Fact>]
-    let ``get stories paged2`` () =
+    let ``get stories paged`` () =
         let fns = setupRequests ()
         taskResult {
             for i = 1 to 14 do
@@ -383,7 +382,7 @@ type DomainEventRequestTests() =
     do reset ()
        
     [<Fact>]
-    let ``query domain events2`` () =
+    let ``query domain events`` () =
         let fns = setupRequests ()
         taskResult {
             // This could be one user making a request.
