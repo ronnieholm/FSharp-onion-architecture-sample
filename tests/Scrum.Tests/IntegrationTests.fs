@@ -1,5 +1,7 @@
 ﻿namespace Scrum.Tests
 
+// TODO: Use BDD test name syntax.
+
 open System
 open System.Threading
 open System.Data.SQLite
