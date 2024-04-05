@@ -20,3 +20,13 @@
 - Experiment with https://devblogs.microsoft.com/dotnet/a-new-fsharp-compiler-feature-graphbased-typechecking/
 - Use in SQLiteRepository for joins: https://learn.microsoft.com/en-us/dotnet/api/system.collections.objectmodel.keyedcollection-2?view=net-7.0&redirectedfrom=MSDN
 - Consider creating a separate Env type for each handler to pass in every dependency into every handler.
+- Add RowVersion to each aggregate/entity per https://www.youtube.com/watch?v=YfIM-gfJe4c (we can used modified timestamp as rowversion column, but better add a rowversion specific column).
+- Switch from HTTP 400 to HTTP 422 (https://youtu.be/x7v6SNIgJpE?t=4245)
+- Create sharedErrors DU to reduce boilerplate code in Giraffe handlers. 
+- "type StoryRemoved = { StoryId: StoryId; OccurredAt: DateTime }" should use base type similar to other events.
+- Write stateful property based test, generating events to the data access
+  layer. Test maintains in memory aggregate by processing each event, updating
+  the aggregate, and then compares aggregate with what's returned by the
+  database (https://youtu.be/LvFs33-1Tbo?t=1786). Possibly the event handler can
+  be reused from the aggregate if instead of making the update inside domain
+  functions make the update through it calling a handler event function. See also https://aaronstannard.com/fscheck-property-testing-csharp-part2/

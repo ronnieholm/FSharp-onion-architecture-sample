@@ -390,7 +390,6 @@ module HealthCheck =
                         return HealthCheckResult(HealthStatus.Unhealthy, description, e, null)
                 }
 
-
 module Filter =
     open System.Diagnostics
     open System.Net
@@ -399,7 +398,7 @@ module Filter =
     open Microsoft.AspNetCore.Mvc
     open Scrum.Infrastructure.Seedwork
     open Seedwork   
-    
+
     type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
         inherit ExceptionFilterAttribute()
 
@@ -577,16 +576,13 @@ module RouteHandlers =
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
                 let! request = ctx.BindJsonAsync<StoryCreateDto>()
+                let cmd: CaptureBasicStoryDetailsCommand =
+                    { Id = Guid.NewGuid()
+                      Title = request.title
+                      Description = request.description |> Option.ofObj }
                 let! result =
-                    CaptureBasicStoryDetailsCommand.runAsync
-                        log
-                        currentUtc
-                        storyExist
-                        storyApplyEvent
-                        identity
-                        { Id = Guid.NewGuid()
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
+                    runWithDecoratorAsync log identity cmd
+                        (fun () -> CaptureBasicStoryDetailsCommand.runAsync currentUtc storyExist storyApplyEvent identity cmd)
                         
                 match result with
                 | Ok id ->
@@ -609,7 +605,7 @@ module RouteHandlers =
 
     type StoryUpdateDto = { title: string; description: string }
 
-    let reviseBasicStoryDetailsHandler storyId =
+    let reviseBasicStoryDetailsHandler storyId : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             // TODO: verify no query string args passed
             let configuration = ctx.GetService<IConfiguration>()
@@ -625,16 +621,13 @@ module RouteHandlers =
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! request = ctx.BindJsonAsync<StoryUpdateDto>()
+                let cmd =
+                    { Id = storyId
+                      Title = request.title
+                      Description = request.description |> Option.ofObj }                
                 let! result =
-                    ReviseBasicStoryDetailsCommand.runAsync
-                        log
-                        currentUtc
-                        getStoryById
-                        storyApplyEvent
-                        identity
-                        { Id = storyId
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
+                    runWithDecoratorAsync log identity cmd
+                        (fun () -> ReviseBasicStoryDetailsCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)                        
                         
                 match result with
                 | Ok id ->
@@ -656,7 +649,7 @@ module RouteHandlers =
     
     type AddTaskToStoryDto = { title: string; description: string }    
     
-    let addBasicTaskDetailsToStoryHandler storyId =
+    let addBasicTaskDetailsToStoryHandler storyId: HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -671,17 +664,14 @@ module RouteHandlers =
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
+                let cmd: AddBasicTaskDetailsToStoryCommand =
+                    { TaskId = Guid.NewGuid()
+                      StoryId = storyId
+                      Title = request.title
+                      Description = request.description |> Option.ofObj }                
                 let! result =
-                    AddBasicTaskDetailsToStoryCommand.runAsync
-                        log
-                        currentUtc
-                        getStoryById
-                        storyApplyEvent
-                        identity
-                        { TaskId = Guid.NewGuid()
-                          StoryId = storyId
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
+                    runWithDecoratorAsync log identity cmd
+                        (fun () -> AddBasicTaskDetailsToStoryCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)
                         
                 match result with
                 | Ok taskId ->
@@ -702,7 +692,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }
             
-    let reviseBasicTaskDetailsHandler (storyId, taskId) =
+    let reviseBasicTaskDetailsHandler (storyId, taskId): HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -717,17 +707,14 @@ module RouteHandlers =
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
                 let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
+                let cmd =
+                    { StoryId = storyId
+                      TaskId = taskId
+                      Title = request.title
+                      Description = request.description |> Option.ofObj }                    
                 let! result =
-                    ReviseBasicTaskDetailsCommand.runAsync
-                        log
-                        currentUtc
-                        getStoryById
-                        storyApplyEvent
-                        identity
-                        { StoryId = storyId
-                          TaskId = taskId
-                          Title = request.title
-                          Description = request.description |> Option.ofObj }
+                    runWithDecoratorAsync log identity cmd
+                        (fun () -> ReviseBasicTaskDetailsCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)                
                         
                 match result with
                 | Ok taskId ->
@@ -748,7 +735,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }
             
-    let removeTaskHandler (storyId, taskId) =
+    let removeTaskHandler (storyId, taskId): HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -761,15 +748,11 @@ module RouteHandlers =
                 use transaction = connection.BeginTransaction()
                 let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
-                
+
+                let cmd = { StoryId = storyId; TaskId = taskId }
                 let! result =
-                    RemoveTaskCommand.runAsync 
-                        log
-                        currentUtc
-                        getStoryById
-                        storyApplyEvent
-                        identity
-                        { StoryId = storyId; TaskId = taskId }
+                    runWithDecoratorAsync log identity cmd
+                        (fun () -> RemoveTaskCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)                
 
                 match result with
                 | Ok _ ->
@@ -789,7 +772,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }
     
-    let removeStoryHandler storyId =
+    let removeStoryHandler storyId : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -803,14 +786,10 @@ module RouteHandlers =
                 let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
                 
+                let cmd: RemoveStoryCommand = { Id = storyId } 
                 let! result =
-                    RemoveStoryCommand.runAsync 
-                        log
-                        currentUtc
-                        getStoryById
-                        storyApplyEvent
-                        identity
-                        { Id = storyId }
+                    runWithDecoratorAsync log identity cmd
+                        (fun () -> RemoveStoryCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)                      
 
                 match result with
                 | Ok _ ->
@@ -829,7 +808,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }
             
-    let getStoryByIdHandler storyId =
+    let getStoryByIdHandler storyId : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -842,12 +821,10 @@ module RouteHandlers =
                 use transaction = connection.BeginTransaction()
                 let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
                 
+                let qry: GetStoryByIdQuery = { Id = storyId } 
                 let! result =
-                    GetStoryByIdQuery.runAsync 
-                        log
-                        getStoryById
-                        identity
-                        { Id = storyId }
+                    runWithDecoratorAsync log identity qry
+                        (fun () -> GetStoryByIdQuery.runAsync getStoryById identity qry)
 
                 match result with
                 | Ok _ ->
@@ -866,7 +843,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }                
     
-    let getStoriesPagedHandler =
+    let getStoriesPagedHandler : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -896,13 +873,11 @@ module RouteHandlers =
                         use connection = getConnection connectionString
                         use transaction = connection.BeginTransaction()
                         let getStoriesPaged = SqliteStoryRepository.getStoriesPagedAsync transaction ctx.RequestAborted
-                        
+
+                        let qry = { Limit = limit; Cursor = cursor |> Option.ofObj }                         
                         let! result =
-                            GetStoriesPagedQuery.runAsync 
-                                log
-                                getStoriesPaged
-                                identity
-                                { Limit = limit; Cursor = cursor |> Option.ofObj }
+                            runWithDecoratorAsync log identity qry
+                                (fun () -> GetStoriesPagedQuery.runAsync getStoriesPaged identity qry)
                             |> TaskResult.mapError(fun e ->
                                 let problem =
                                     match e with
@@ -924,7 +899,7 @@ module RouteHandlers =
                     return! json e next ctx
             }      
      
-    let getPersistedDomainEvents aggregateId =
+    let getPersistedDomainEvents aggregateId : HttpHandler=
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
             let logger = ctx.GetService<ILogger<_>>()
@@ -955,12 +930,10 @@ module RouteHandlers =
                         use transaction = connection.BeginTransaction()
                         let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
 
+                        let qry = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
                         let! result =
-                            GetByAggregateIdQuery.runAsync 
-                                log
-                                getByAggregateId
-                                identity
-                                { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
+                            runWithDecoratorAsync log identity qry
+                                (fun () -> GetByAggregateIdQuery.runAsync getByAggregateId identity qry)                       
                             |> TaskResult.mapError(fun e ->
                                 let problem =
                                     match e with
@@ -982,7 +955,7 @@ module RouteHandlers =
                     return! json e next ctx                
             }     
      
-    let introspectTestHandler =
+    let introspectTestHandler : HttpHandler=
         fun (next : HttpFunc) (ctx : HttpContext) ->
             // API gateways and other proxies between the client and the
             // service tag on extra information to the request. This endpoint

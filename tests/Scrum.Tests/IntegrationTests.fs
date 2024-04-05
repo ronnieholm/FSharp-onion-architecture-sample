@@ -63,7 +63,7 @@ open Database
 
 module Setup =
     let ct = CancellationToken.None
-    let nullLogger message = ()
+    let nullLogger _ = ()
     let clock () = DateTime.UtcNow
     let adminIdentity =
         ScrumIdentity.Authenticated(UserId = "123", Roles = [ ScrumRole.Admin ])
@@ -86,15 +86,15 @@ module Setup =
         let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ct
         let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ct
         
-        {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync nullLogger clock storyExist storyApplyEvent
-           AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync nullLogger clock getStoryById storyApplyEvent
-           RemoveStory = RemoveStoryCommand.runAsync nullLogger clock getStoryById storyApplyEvent
-           RemoveTask = RemoveTaskCommand.runAsync nullLogger clock getStoryById storyApplyEvent
-           GetStoryById = GetStoryByIdQuery.runAsync nullLogger getStoryById
-           GetStoriesPaged = GetStoriesPagedQuery.runAsync nullLogger getStoriesPaged
-           ReviseBasicStoryDetails = ReviseBasicStoryDetailsCommand.runAsync nullLogger clock getStoryById storyApplyEvent
-           ReviseBasicTaskDetails = ReviseBasicTaskDetailsCommand.runAsync nullLogger clock getStoryById storyApplyEvent
-           GetByAggregateId = GetByAggregateIdQuery.runAsync nullLogger getByAggregateId
+        {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync clock storyExist storyApplyEvent
+           AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync clock getStoryById storyApplyEvent
+           RemoveStory = RemoveStoryCommand.runAsync clock getStoryById storyApplyEvent
+           RemoveTask = RemoveTaskCommand.runAsync clock getStoryById storyApplyEvent
+           GetStoryById = GetStoryByIdQuery.runAsync getStoryById
+           GetStoriesPaged = GetStoriesPagedQuery.runAsync getStoriesPaged
+           ReviseBasicStoryDetails = ReviseBasicStoryDetailsCommand.runAsync clock getStoryById storyApplyEvent
+           ReviseBasicTaskDetails = ReviseBasicTaskDetailsCommand.runAsync clock getStoryById storyApplyEvent
+           GetByAggregateId = GetByAggregateIdQuery.runAsync getByAggregateId
            Rollback =
                fun () ->
                    transaction.Rollback()
