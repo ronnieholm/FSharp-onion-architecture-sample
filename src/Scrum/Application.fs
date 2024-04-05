@@ -89,19 +89,6 @@ module SharedModels =
     // https://opensource.zalando.com/restful-api-guidelines/#137)
     type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
-module Aliases =
-    open System
-    open Scrum.Domain.Shared.Paging
-    open Scrum.Domain.StoryAggregate
-
-    // Dependency type aliases to reduce boilerplate across the handlers.
-    type CurrentUtc = unit -> DateTime
-    type StoryExist = StoryId -> System.Threading.Tasks.Task<bool>
-    type StoryApplyEvent = DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>
-    type GetStoryById = StoryId -> System.Threading.Tasks.Task<Story option>
-    type GetStoriesPaged = Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<Story>>
-    type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
-
 module StoryAggregateRequest =
     open System
     open FsToolkit.ErrorHandling
@@ -110,7 +97,9 @@ module StoryAggregateRequest =
     open Scrum.Domain.StoryAggregate
     open Scrum.Domain.StoryAggregate.TaskEntity
     open SharedModels
-    open Aliases
+
+    type StoryApplyEvent = DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>
+    type GetStoriesPaged = Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<Story>>
 
     type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
@@ -141,7 +130,7 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.CaptureBasicStoryDetailsError.DuplicateTasks ids -> DuplicateTasks(ids |> List.map TaskId.value)
 
-        let runAsync (currentUtc: CurrentUtc) (storyExist: StoryExist) (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync currentUtc storyExist (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -187,7 +176,7 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync (currentUtc: CurrentUtc) (getStoryById: GetStoryById) (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync currentUtc getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -216,7 +205,7 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync (currentUtc: CurrentUtc) (getStoryById: GetStoryById) (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync currentUtc getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -262,7 +251,7 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-        let runAsync (currentUtc: CurrentUtc) (getStoryById: GetStoryById) (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync currentUtc getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -314,7 +303,7 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.ReviseBasicTaskDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync (currentUtc: CurrentUtc) (getStoryById: GetStoryById) (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync currentUtc getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -350,7 +339,7 @@ module StoryAggregateRequest =
             function
             | StoryAggregate.RemoveTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync (currentUtc: CurrentUtc) (getStoryById: GetStoryById) (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync currentUtc getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -410,7 +399,7 @@ module StoryAggregateRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync (getStoryById: GetStoryById) identity qry =
+        let runAsync getStoryById identity qry =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! qry = validate qry |> Result.mapError ValidationErrors
@@ -467,8 +456,9 @@ module DomainEventRequest =
     open Scrum.Domain
     open Scrum.Domain.Shared.Paging
     open SharedModels
-    open Aliases
 
+    type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
+    
     type GetByAggregateIdQuery = { Id: Guid; Limit: int; Cursor: string option }
 
     module GetByAggregateIdQuery =
