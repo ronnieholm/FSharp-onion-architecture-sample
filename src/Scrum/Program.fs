@@ -33,7 +33,7 @@ module Seedwork =
 
             override _.Read(_, _, _) = unreachable "Never called"
 
-            override x.Write(writer: Utf8JsonWriter, value: Exception, options: JsonSerializerOptions) =
+            override x.Write(writer, value, options) =
                 writer.WriteStartObject()
                 writer.WriteString(nameof value.Message, value.Message)
 
@@ -61,7 +61,7 @@ module Seedwork =
     module ProblemDetails =
         let create status detail : ProblemDetails = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
-        let inferContentType (acceptHeaders: StringValues) : string =
+        let inferContentType (acceptHeaders: StringValues) =
             let ok =
                 acceptHeaders.ToArray()
                 |> Array.exists (fun v -> v = "application/problem+json")
@@ -76,7 +76,7 @@ module Seedwork =
         let fromAuthorizationError acceptHeaders message =
             createJsonResult acceptHeaders StatusCodes.Status401Unauthorized message
 
-        let fromUnexpectedQueryStringParameters acceptHeaders (unexpected: string list) =
+        let fromUnexpectedQueryStringParameters acceptHeaders unexpected =
             let parameters = String.Join(", ", unexpected |> List.toSeq)
             createJsonResult acceptHeaders StatusCodes.Status400BadRequest $"Unexpected query string parameters: {parameters}"
 
@@ -85,7 +85,7 @@ module Seedwork =
         let errorMessageSerializationOptions =
             JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
-        let fromValidationErrors acceptHeaders (errors: ValidationError list) =
+        let fromValidationErrors acceptHeaders errors =
             (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
             |> JsonSerializer.Serialize
             |> createJsonResult acceptHeaders StatusCodes.Status400BadRequest
@@ -131,7 +131,7 @@ module Service =
     // Web specific implementation of IUserIdentity. It therefore belongs in
     // Program.fs rather than Infrastructure.fs.
     module UserIdentity =
-        let getCurrentIdentity(context: HttpContext) : ScrumIdentity =
+        let getCurrentIdentity(context: HttpContext) =
             if isNull context then
                 Anonymous
             else
@@ -163,7 +163,7 @@ module Service =
                         | _ -> Authenticated(userIdClaim, rolesClaim)   
 
     module IdentityProvider =
-        let sign (settings: JwtAuthenticationSettings) (now: DateTime) (claims: Claim array) : string =
+        let sign (settings: JwtAuthenticationSettings) (now: DateTime) claims =
             let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey))
             let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
             let validUntilUtc = now.AddSeconds(int settings.ExpirationInSeconds)
@@ -177,7 +177,7 @@ module Service =
                 )
             JwtSecurityTokenHandler().WriteToken(token)        
         
-        let issueToken (settings: JwtAuthenticationSettings) (now: DateTime) (userId: string) (roles: ScrumRole list) : string =
+        let issueToken (settings: JwtAuthenticationSettings) (now: DateTime) userId roles =
             // With an actual user store, we'd validate user credentials here.
             // But for this application, userId may be any string and role must
             // be either "member" or "admin".
@@ -190,7 +190,7 @@ module Service =
                    Claim(ScrumClaims.UserIdClaim, userId) |]
             Array.concat [ roles; rest ] |> sign settings now
 
-        let renewToken (settings: JwtAuthenticationSettings) (now: DateTime) (identity: ScrumIdentity) : Result<string, string> =
+        let renewToken settings now identity =
             match identity with
             | Anonymous -> Error "User is anonymous"
             | Authenticated(id, roles) -> Ok(issueToken settings now id roles)                    
@@ -208,7 +208,7 @@ module Service =
                 created_at integer not null
             ) strict;"
 
-        let getAvailableScripts () : AvailableScript array =
+        let getAvailableScripts () =
             let hasher = SHA1.Create()
             let assembly = Assembly.GetExecutingAssembly()
             let prefix = "Scrum.Sql."
@@ -242,7 +242,7 @@ module Service =
 
             if exist = 0 then
                 // SQLite doesn't support transactional schema changes.
-                log (Inf "reating migrations table")
+                log (Inf "Creating migrations table")
                 use cmd = new SQLiteCommand(createMigrationsSql, connection)
                 let count = cmd.ExecuteNonQuery()
                 assert (count = 0)
@@ -346,7 +346,7 @@ module HealthCheck =
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
         let mb = 1024 * 2024
         interface IHealthCheck with
-            member _.CheckHealthAsync(_, _) : Task<HealthCheckResult> =
+            member _.CheckHealthAsync(_, _) =
                 task {
                     let allocatedBytes = GC.GetTotalMemory(forceFullCollection = false)
                     let committedBytes = GC.GetGCMemoryInfo().TotalCommittedBytes
@@ -402,7 +402,7 @@ module Filter =
     type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
         inherit ExceptionFilterAttribute()
 
-        override _.OnException(context: ExceptionContext) : unit =
+        override _.OnException context =
             if hostEnvironment.IsDevelopment() then
                 ()
             else

@@ -15,7 +15,7 @@ module Seedwork =
 
     module ValidationError =
         let create field message = { Field = field; Message = message }
-        let mapError field : (Result<'a, string> -> Result<'a, ValidationError>) = Result.mapError (create field)
+        let mapError field = Result.mapError (create field)
 
     // A pseudo-aggregate or an aggregate in the application layer. In
     // principle, we could define value types similar to those making up
