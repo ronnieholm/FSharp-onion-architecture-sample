@@ -242,7 +242,7 @@ module Service =
 
             if exist = 0 then
                 // SQLite doesn't support transactional schema changes.
-                log (Information2 "reating migrations table")
+                log (Inf "reating migrations table")
                 use cmd = new SQLiteCommand(createMigrationsSql, connection)
                 let count = cmd.ExecuteNonQuery()
                 assert (count = 0)
@@ -285,7 +285,7 @@ module Service =
                 let cmd = new SQLiteCommand(sql, connection, tx)
 
                 try
-                    log (Information2 $"Applying migration: '{available[i].Name}'")
+                    log (Inf $"Applying migration: '{available[i].Name}'")
                     let count = cmd.ExecuteNonQuery()
                     assert (count = 1)
 
@@ -306,7 +306,7 @@ module Service =
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(seed.Sql, connection, tx)
             try
-                log (Information2 "Applying seed")
+                log (Inf "Applying seed")
                 let count = cmd.ExecuteNonQuery()
                 assert (count >= -1)
                 tx.Commit()
@@ -322,15 +322,15 @@ module Service =
             let availableMigrations =
                 availableScripts |> Array.filter (fun m -> m.Name <> "seed")
 
-            log (Information2 $"Found {availableScripts.Length} available migration(s)")
+            log (Inf $"Found {availableScripts.Length} available migration(s)")
             let appliedMigrations = getAppliedMigrations connection
-            log (Information2 $"Found {appliedMigrations.Length} applied migration(s)")
+            log (Inf $"Found {appliedMigrations.Length} applied migration(s)")
 
             verifyAppliedMigrations availableMigrations appliedMigrations
             applyNewMigrations connection availableMigrations appliedMigrations
 
             let seeds = availableScripts |> Array.filter (fun s -> s.Name = "seed")
-            log (Information2 $"Found {seeds.Length} seed")
+            log (Inf $"Found {seeds.Length} seed")
             seeds |> Array.exactlyOne |> applySeed connection
 
 open Service

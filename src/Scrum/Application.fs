@@ -50,9 +50,9 @@ module Seedwork =
         | RequestDuration of useCase: string * duration: uint<ms>
         | Exception of exn
         // Delegates to .NET's ILogger.
-        | Error2 of string
-        | Information2 of string
-        | Debug2 of string
+        | Err of string
+        | Inf of string
+        | Dbg of string
 
     let time (fn: unit -> 't) : 't * uint<ms> =
         let sw = Stopwatch()
@@ -68,19 +68,24 @@ module Seedwork =
 
     // TODO: Write separate tests for the decorator.
     let runWithDecoratorAsync<'TResponse> (log: LogMessage -> unit) identity useCase (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
-        task {
-            let useCase = useCase.GetType().Name
-            let result, elapsed =
-                time (fun _ ->
-                    // TODO: Write test with fn that waits for x ms to make sure elapsed is correct.
-                    log (Request(identity, useCase, useCase))
-                    fn ())
-            let! result = result
-            // Don't log errors from evaluating fn as these are expected errors. We
-            // don't want those to pollute the log with.
-            log (RequestDuration(useCase, elapsed))
-            return result
-        }
+        try
+            task {
+                let useCase = useCase.GetType().Name
+                let result, elapsed =
+                    time (fun _ ->
+                        // TODO: Write test with fn that waits for x ms to make sure elapsed is correct.
+                        log (Request(identity, useCase, useCase))
+                        fn ())
+                let! result = result
+                // Don't log errors from evaluating fn as these are expected errors. We
+                // don't want those to pollute the log with.
+                log (RequestDuration(useCase, elapsed))
+                return result
+            }
+        with
+        | e ->
+            log (Exception(e))
+            reraise()            
 
 open Seedwork
 

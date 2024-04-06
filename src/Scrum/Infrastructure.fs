@@ -413,7 +413,6 @@ module SqliteDomainEventRepository =
             cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
             cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
             let! r = cmd.ExecuteReaderAsync(ct)
-            let mutable keepGoing = true
             let events = ResizeArray<PersistedDomainEvent>()
 
             while! r.ReadAsync(ct) do
@@ -442,7 +441,7 @@ module ScrumLogger =
         o.Converters.Add(Json.DateTimeJsonConverter())
         o.Converters.Add(Json.EnumJsonConverter())
         o        
-                
+
     let log (logger: ILogger<_>) message =
         match message with
         | Request (identity, useCase, request) ->
@@ -452,9 +451,9 @@ module ScrumLogger =
             logger.LogInformation("{useCase}: {duration}", useCase, duration)
         | Exception e ->
             logger.LogDebug("{exception}", $"%A{e}")
-        | Error2 message ->
+        | Err message ->
             logger.LogError(message)
-        | Information2 message ->
+        | Inf message ->
             logger.LogInformation(message)
-        | Debug2 message ->
+        | Dbg message ->
             logger.LogDebug(message)
