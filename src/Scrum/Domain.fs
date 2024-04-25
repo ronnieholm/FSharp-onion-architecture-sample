@@ -2,7 +2,7 @@ module Scrum.Domain
 
 module Seedwork =
     open System
-    
+
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type DomainEvent = { OccurredAt: DateTime }
@@ -11,7 +11,7 @@ module Seedwork =
 // creations.
 module Validation =
     open System
-    
+
     module Guid =
         let notEmpty value = if value = Guid.Empty then Error "Should be non-empty" else Ok value
 
@@ -37,7 +37,7 @@ module Validation =
 
 open Validation
 
-module Shared =    
+module Shared =
     module Paging =
         type Limit = private Limit of int
 
@@ -48,7 +48,7 @@ module Shared =
         type Cursor = private Cursor of string
 
         module Cursor =
-            let create (value: string) = value |> String.notNullOrWhitespace |> Result.map Cursor
+            let create value = value |> String.notNullOrWhitespace |> Result.map Cursor
             let value (Cursor v) : string = v
 
         type Paged<'t> = { Cursor: Cursor option; Items: 't list }
@@ -67,18 +67,18 @@ module StoryAggregate =
         type TaskTitle = private TaskTitle of string
 
         module TaskTitle =
-            let create (v: string) =               
-                v
+            let create value =
+                value
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 100)
                 |> Result.map TaskTitle
-            
+
             let value (TaskTitle v) : string = v
 
         type TaskDescription = private TaskDescription of string
 
         module TaskDescription =
-            let create (value: string) =
+            let create value =
                 value
                 |> String.notNullOrWhitespace
                 |> Result.bind (String.maxLength 1000)
@@ -125,7 +125,7 @@ module StoryAggregate =
     type StoryDescription = StoryDescription of string
 
     module StoryDescription =
-        let create (value: string) =
+        let create value =
             value
             |> String.notNullOrWhitespace
             |> Result.bind (String.maxLength 1000)

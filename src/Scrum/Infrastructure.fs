@@ -9,7 +9,7 @@ module Seedwork =
     open System.Data.SQLite
     open FsToolkit.ErrorHandling
     open Scrum.Domain.Shared.Paging
-        
+
     exception InfrastructureException of string
 
     let panic message : 't = raise (InfrastructureException(message))
@@ -38,7 +38,7 @@ module Seedwork =
                         && t.GenericTypeArguments.Length = 1
                         && t.GenericTypeArguments[0].IsEnum)
                 then
-                    (value.ToString()
+                    (string value
                      |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
                      |> String.Concat)
                         .ToUpperInvariant()
@@ -142,8 +142,6 @@ open Seedwork
 open Seedwork.Repository
 
 module SqliteStoryRepository =
-    // TODO: what do to about the repository interface in domain?
-    
     let storyToDomainAsync ct (r: DbDataReader) =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
@@ -220,12 +218,12 @@ module SqliteStoryRepository =
 
             // TODO: PERF: maintain original order in a ResizeArray.
             return stories
-        }    
-    
+        }
+
     let getByIdAsync (transaction: SQLiteTransaction) (ct: CancellationToken) id =
         task {
             let connection = transaction.Connection
-            
+
             // For queries involving multiple tables, ADO.NET requires aliasing
             // fields for those to be extractable through the reader.
             let sql =
@@ -253,8 +251,7 @@ module SqliteStoryRepository =
                  | 1 -> stories |> List.exactlyOne |> Some
                  | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
         }
-    
-    
+
     let existAsync (transaction: SQLiteTransaction) (ct: CancellationToken) id =
         task {
             let connection = transaction.Connection
@@ -268,7 +265,7 @@ module SqliteStoryRepository =
                  | 1L -> true
                  | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
         }
-        
+
     // Compared to event sourcing, we immediately apply events to the store.
     // We don't have to worry about the shape of events evolving over time;
     // only to keep the store up to date.
@@ -341,7 +338,7 @@ module SqliteStoryRepository =
                     p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                     p.AddWithValue("@storyId", storyId |> string) |> ignore
                     applyEventExecuteNonQuery storyId cmd ct
-                    
+
             // We don't serialize an event to JSON because F# discriminated
             // unions aren't supported by System.Text.Json
             // (https://github.com/dotnet/runtime/issues/55744). Instead of
@@ -360,7 +357,7 @@ module SqliteStoryRepository =
                     (event.GetType().Name)
                     $"%A{event}"
                     now
-        }                        
+        }
 
     let getStoriesPagedAsync (transaction: SQLiteTransaction) (ct: CancellationToken) limit cursor =
         let connection = transaction.Connection
@@ -393,7 +390,7 @@ module SqliteStoryRepository =
 
 module SqliteDomainEventRepository =
     let getByAggregateIdAsync
-            (transaction: SQLiteTransaction) 
+            (transaction: SQLiteTransaction)
             (ct: CancellationToken)
             (aggregateId: Guid)
             limit
@@ -440,13 +437,13 @@ module ScrumLogger =
             JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true)
         o.Converters.Add(Json.DateTimeJsonConverter())
         o.Converters.Add(Json.EnumJsonConverter())
-        o        
+        o
 
     let log (logger: ILogger<_>) message =
         match message with
         | Request (identity, useCase, request) ->
             let requestJson = JsonSerializer.Serialize(request, jsonSerializationOptions)
-            logger.LogInformation("Use case: {useCase}, payload: {payload}, identity: {identity}", useCase, requestJson, $"%A{identity}")               
+            logger.LogInformation("Use case: {useCase}, payload: {payload}, identity: {identity}", useCase, requestJson, $"%A{identity}")
         | RequestDuration (useCase, duration) ->
             logger.LogInformation("{useCase}: {duration}", useCase, duration)
         | Exception e ->

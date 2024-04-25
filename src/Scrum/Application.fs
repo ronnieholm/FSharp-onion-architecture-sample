@@ -85,7 +85,7 @@ module Seedwork =
         with
         | e ->
             log (Exception(e))
-            reraise()            
+            reraise()
 
 open Seedwork
 
@@ -463,7 +463,7 @@ module DomainEventRequest =
     open SharedModels
 
     type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
-    
+
     type GetByAggregateIdQuery = { Id: Guid; Limit: int; Cursor: string option }
 
     module GetByAggregateIdQuery =
