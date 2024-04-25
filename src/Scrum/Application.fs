@@ -82,10 +82,9 @@ module Seedwork =
                 log (RequestDuration(useCase, elapsed))
                 return result
             }
-        with
-        | e ->
+        with e ->
             log (Exception(e))
-            reraise()
+            reraise ()
 
 open Seedwork
 
