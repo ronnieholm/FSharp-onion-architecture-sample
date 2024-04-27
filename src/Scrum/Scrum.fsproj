@@ -6,6 +6,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Scrum.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Compile Include="Domain.fs" />
     <Compile Include="Application.fs" />
     <Compile Include="Infrastructure.fs" />

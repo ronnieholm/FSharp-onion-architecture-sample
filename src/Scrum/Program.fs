@@ -1045,7 +1045,7 @@ module Program =
             printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
             true))
 
-    let runWebApp (args: string[]) =
+    let createWebApplication (args: string[]) =
         let builder = WebApplication.CreateBuilder(args)
         builder.Services
             .AddOptions<JwtAuthenticationSettings>()
@@ -1194,9 +1194,10 @@ module Program =
         app.UseAuthorization() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
         app.UseGiraffe RouteHandlers.webApp
-        app.Run()
+        app
 
     [<EntryPoint>]
     let main args =
-        runWebApp args
+        let app = createWebApplication args
+        app.Run()
         0
