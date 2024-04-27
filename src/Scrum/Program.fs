@@ -1137,8 +1137,8 @@ module Program =
 
         services.AddGiraffe()
 
-    let configureApplication (app: WebApplication) =
-        if app.Environment.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
+    let configureApplication (app: IApplicationBuilder) =
+        //if app.Environment.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
 
         app.UseHttpsRedirection() |> ignore
         app.UseCors() |> ignore
@@ -1195,14 +1195,14 @@ module Program =
     [<EntryPoint>]
     let main args =
         let webApplicationBuilder = WebApplication.CreateBuilder(args)
+
         configureServices(webApplicationBuilder.Services) |> ignore
         let webApplication = webApplicationBuilder.Build()
         configureApplication webApplication |> ignore
 
         let logger = ScrumLogger.log (webApplication.Services.GetService<ILogger<_>>())
         let connectionString = webApplication.Configuration.GetConnectionString("Scrum")
-        DatabaseMigrator(logger, connectionString)
-            .Apply()
+        DatabaseMigrator(logger, connectionString).Apply()
 
         webApplication.Run()
         0
