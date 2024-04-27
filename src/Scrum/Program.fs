@@ -1045,19 +1045,18 @@ module Program =
             printfn $"Unobserved %s{e.GetType().Name}: %s{e.Message}. %s{e.StackTrace}"
             true))
 
-    let createWebApplication (args: string[]) =
-        let builder = WebApplication.CreateBuilder(args)
-        builder.Services
+    let configureServices (services: IServiceCollection) =
+        services
             .AddOptions<JwtAuthenticationSettings>()
             .BindConfiguration(JwtAuthenticationSettings.JwtAuthentication)
             .ValidateDataAnnotations()
             .ValidateOnStart()
         |> ignore
 
-        let serviceProvider = builder.Services.BuildServiceProvider()
+        let serviceProvider = services.BuildServiceProvider()
         let jwtAuthenticationSettings =
             serviceProvider.GetService<IOptions<JwtAuthenticationSettings>>().Value
-        builder.Services
+        services
             .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             .AddJwtBearer(fun options ->
                 options.TokenValidationParameters <-
@@ -1083,12 +1082,12 @@ module Program =
                     ))
         |> ignore
 
-        builder.Services.AddCors(fun options ->
+        services.AddCors(fun options ->
             options.AddDefaultPolicy(fun builder -> builder.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod() |> ignore))
         |> ignore
 
-        builder.Services.AddHttpContextAccessor() |> ignore
-        builder.Services
+        services.AddHttpContextAccessor() |> ignore
+        services
             .AddMvc(fun options ->
                 options.EnableEndpointRouting <- false
                 options.Filters.Add(typeof<WebExceptionFilterAttribute>) |> ignore)
@@ -1103,12 +1102,9 @@ module Program =
                 o.WriteIndented <- true)
         |> ignore
 
-        let logger = ScrumLogger.log (serviceProvider.GetService<ILogger<_>>())
-        let connectionString = builder.Configuration.GetConnectionString("Scrum")
-        DatabaseMigrator(logger, connectionString)
-            .Apply()
-
-        builder.Services
+        let configuration = serviceProvider.GetService<IConfiguration>()
+        let connectionString = configuration.GetConnectionString("Scrum")
+        services
             .AddHealthChecks()
             .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
             .AddTypeActivatedCheck<SQLiteHealthCheck>(
@@ -1119,9 +1115,9 @@ module Program =
             )
         |> ignore
 
-        builder.Services.AddControllers() |> ignore
-        builder.Services.AddResponseCaching() |> ignore
-        builder.Services.AddEndpointsApiExplorer() |> ignore
+        services.AddControllers() |> ignore
+        services.AddResponseCaching() |> ignore
+        services.AddEndpointsApiExplorer() |> ignore
 
         // Azure hosting under a Linux means the application is running a
         // container. Inside the container, the application is run using the
@@ -1129,7 +1125,7 @@ module Program =
         // have build-in compression support, so we add in application level
         // compression:
         // https://learn.microsoft.com/en-us/aspnet/core/performance/response-compression.
-        builder.Services
+        services
             .AddResponseCompression(fun options ->
                 options.EnableForHttps <- true
                 options.Providers.Add<GzipCompressionProvider>())
@@ -1139,10 +1135,10 @@ module Program =
                 options.Level <- CompressionLevel.SmallestSize)
         |> ignore
 
-        builder.Services.AddGiraffe() |> ignore
+        services.AddGiraffe()
 
-        let app = builder.Build()
-        if builder.Environment.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
+    let configureApplication (app: WebApplication) =
+        if app.Environment.IsDevelopment() then app.UseDeveloperExceptionPage() |> ignore else ()
 
         app.UseHttpsRedirection() |> ignore
         app.UseCors() |> ignore
@@ -1198,6 +1194,15 @@ module Program =
 
     [<EntryPoint>]
     let main args =
-        let app = createWebApplication args
-        app.Run()
+        let webApplicationBuilder = WebApplication.CreateBuilder(args)
+        configureServices(webApplicationBuilder.Services) |> ignore
+        let webApplication = webApplicationBuilder.Build()
+        configureApplication webApplication |> ignore
+
+        let logger = ScrumLogger.log (webApplication.Services.GetService<ILogger<_>>())
+        let connectionString = webApplication.Configuration.GetConnectionString("Scrum")
+        DatabaseMigrator(logger, connectionString)
+            .Apply()
+
+        webApplication.Run()
         0
