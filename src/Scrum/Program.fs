@@ -853,6 +853,13 @@ module RouteHandlers =
                 return! json e next ctx
         }
 
+    let stringToInt32 field (value: string) =
+        let ok, value = Int32.TryParse(value)
+        if ok then
+           Ok value
+        else
+           Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")
+
     let getStoriesPagedHandler : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
@@ -867,14 +874,7 @@ module RouteHandlers =
                         let! limit =
                             ctx.GetQueryStringValue "limit"
                             |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
-                            |> Result.bind (fun limit ->
-                                   // TODO: Extract into helper function taking in string field name.
-                                   let ok, limit = Int32.TryParse(limit)
-                                   if ok then
-                                       Ok limit
-                                    else
-                                       Error (ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"))
-
+                            |> Result.bind (stringToInt32 "limit")
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
                             |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
@@ -913,13 +913,7 @@ module RouteHandlers =
                         let! limit =
                             ctx.GetQueryStringValue "limit"
                             |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
-                            |> Result.bind (fun limit ->
-                                   // TODO: Extract into helper function taking in string field name.
-                                   let ok, limit = Int32.TryParse(limit)
-                                   if ok then
-                                       Ok limit
-                                    else
-                                       Error (ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"))
+                            |> Result.bind (stringToInt32 "limit")
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
                             |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
