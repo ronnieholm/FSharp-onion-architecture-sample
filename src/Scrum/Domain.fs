@@ -155,7 +155,9 @@ module StoryAggregate =
           StoryTitle: StoryTitle
           StoryDescription: StoryDescription option }
 
-    type StoryRemoved = { StoryId: StoryId; OccurredAt: DateTime }
+    type StoryRemoved =
+        { DomainEvent: DomainEvent
+          StoryId: StoryId }
 
     type BasicTaskDetailsAddedToStory =
         { DomainEvent: DomainEvent
@@ -219,7 +221,9 @@ module StoryAggregate =
         // Depending on the specifics of a domain, we might want to explicitly
         // delete the story's tasks and emit task deleted events. In this case,
         // we leave cascade delete to the store.
-        StoryDomainEvent.StoryRemoved({ StoryId = story.Aggregate.Id; OccurredAt = occurredAt })
+        StoryDomainEvent.StoryRemoved
+            { DomainEvent = { OccurredAt = occurredAt }
+              StoryId = story.Aggregate.Id }
 
     type AddBasicTaskDetailsToStoryError = DuplicateTask of TaskId
 
