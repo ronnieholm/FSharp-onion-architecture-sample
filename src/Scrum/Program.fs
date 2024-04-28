@@ -843,6 +843,18 @@ module RouteHandlers =
                     return! json problem next ctx
             }
 
+    let toPagedResult result (ctx: HttpContext) (next: HttpFunc) =
+        task {
+            match result with
+            | Ok paged ->
+                ctx.SetStatusCode 200
+                return! json paged next ctx
+            | Error e ->
+                ctx.SetStatusCode e.Status
+                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                return! json e next ctx
+        }
+
     let getStoriesPagedHandler : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let configuration = ctx.GetService<IConfiguration>()
@@ -888,15 +900,7 @@ module RouteHandlers =
                         return result
                     }
 
-                // TODO: Extract into helper function.
-                match result with
-                | Ok paged ->
-                    ctx.SetStatusCode 200
-                    return! json paged next ctx
-                | Error e ->
-                    ctx.SetStatusCode e.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json e next ctx
+                return! toPagedResult result ctx next
             }
 
     let getPersistedDomainEvents aggregateId : HttpHandler=
@@ -944,15 +948,7 @@ module RouteHandlers =
                         return result
                     }
 
-                // TODO: Extract into helper function.
-                match result with
-                | Ok paged ->
-                    ctx.SetStatusCode 200
-                    return! json paged next ctx
-                | Error e ->
-                    ctx.SetStatusCode e.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json e next ctx
+                return! toPagedResult result ctx next
             }
 
     let introspectTestHandler : HttpHandler=
