@@ -76,10 +76,6 @@ module Seedwork =
         let authorizationError  message =
             create StatusCodes.Status401Unauthorized message
 
-        let unexpectedQueryStringParameters names =
-            let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
-            create 400 $"Unexpected query string parameters: %s{names}"
-
         type ValidationErrorDto = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
@@ -92,6 +88,10 @@ module Seedwork =
 
         let missingQueryStringParam name =
             create 400 $"Missing query string parameter '%s{name}'"
+
+        let unexpectedQueryStringParameters names =
+            let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
+            create 400 $"Unexpected query string parameters: %s{names}"
 
         let queryStringParameterMustBeOfType name type_ =
             create 400 $"Query string parameter '%s{name}' must be an %s{type_}"
@@ -873,10 +873,7 @@ module RouteHandlers =
                                    if ok then
                                        Ok limit
                                     else
-                                       let problem = ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"
-                                       ctx.SetStatusCode problem.Status
-                                       ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                                       Error problem)
+                                       Error (ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"))
 
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
@@ -891,14 +888,10 @@ module RouteHandlers =
                         let! result =
                             runWithDecoratorAsync log identity qry
                                 (fun () -> GetStoriesPagedQuery.runAsync getStoriesPaged identity qry)
-                            |> TaskResult.mapError(fun e ->
-                                let problem =
-                                    match e with
+                            |> TaskResult.mapError(
+                                    function
                                     | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
-                                    | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                                ctx.SetStatusCode problem.Status
-                                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                                problem)
+                                    | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve)
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         return result
                     }
@@ -919,7 +912,6 @@ module RouteHandlers =
                     taskResult {
                         let! limit =
                             ctx.GetQueryStringValue "limit"
-                            // TODO: generalize message generation.
                             |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
                             |> Result.bind (fun limit ->
                                    // TODO: Extract into helper function taking in string field name.
@@ -927,10 +919,7 @@ module RouteHandlers =
                                    if ok then
                                        Ok limit
                                     else
-                                       let problem = ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"
-                                       ctx.SetStatusCode problem.Status
-                                       ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                                       Error problem)
+                                       Error (ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"))
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
                             |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
@@ -944,14 +933,10 @@ module RouteHandlers =
                         let! result =
                             runWithDecoratorAsync log identity qry
                                 (fun () -> GetByAggregateIdQuery.runAsync getByAggregateId identity qry)
-                            |> TaskResult.mapError(fun e ->
-                                let problem =
-                                    match e with
+                            |> TaskResult.mapError(
+                                    function
                                     | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
-                                    | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                                ctx.SetStatusCode problem.Status
-                                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                                problem)
+                                    | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve)
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         return result
                     }
