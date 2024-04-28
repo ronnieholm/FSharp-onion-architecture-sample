@@ -12,7 +12,6 @@
 - Add OpenTelemetry
   - https://www.youtube.com/watch?v=tctadmNTHfU
   - https://www.youtube.com/watch?v=nFU-hcHyl2s
-- Use in SQLiteRepository for joins: https://learn.microsoft.com/en-us/dotnet/api/system.collections.objectmodel.keyedcollection-2?view=net-7.0&redirectedfrom=MSDN
 - Add RowVersion to each aggregate/entity per https://www.youtube.com/watch?v=YfIM-gfJe4c (we can used modified timestamp as rowversion column, but better add a rowversion specific column).
 - Switch from HTTP 400 to HTTP 422 (https://youtu.be/x7v6SNIgJpE?t=4245)
 - Create sharedErrors DU to reduce boilerplate code in Giraffe handlers. 

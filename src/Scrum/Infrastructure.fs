@@ -155,7 +155,8 @@ module SqliteStoryRepository =
                 (parseCreatedAt r["t_created_at"])
                 (parseUpdatedAt r["t_updated_at"]))
 
-        let storyIdToTask = Dictionary<StoryId, Dictionary<TaskId, Task>>()
+        let storyIdTaskIdIndex = Dictionary<StoryId, Dictionary<TaskId, int>>()
+        let tasks = ResizeArray<Task>()
         let taskToDomain () : unit =
             let taskId = r["t_id"]
             let storyId = r["t_story_id"]
@@ -163,22 +164,21 @@ module SqliteStoryRepository =
                 let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
                 let storyId =
                     storyId |> string |> Guid |> StoryId.create |> panicOnError "t_story_id"
-                let ok, tasks = storyIdToTask.TryGetValue(storyId)
+                let ok, taskIdIndex = storyIdTaskIdIndex.TryGetValue(storyId)
                 if not ok then
-                    let tasks = Dictionary<TaskId, Task>()
+                    let taskIdIndex = Dictionary<TaskId, int>()
                     let task = parseTaskFields r
-                    tasks.Add(taskId, task)
-                    storyIdToTask.Add(storyId, tasks)
+                    taskIdIndex.Add(taskId, tasks.Count)
+                    tasks.Add(task)
+                    storyIdTaskIdIndex.Add(storyId, taskIdIndex)
                 else
-                    let ok, _ = tasks.TryGetValue(taskId)
+                    let ok, _ = taskIdIndex.TryGetValue(taskId)
                     if not ok then
                         let task = parseTaskFields r
-                        tasks.Add(taskId, task)
+                        taskIdIndex.Add(taskId, tasks.Count)
+                        tasks.Add(task)
 
         let parseStoryFields (r: DbDataReader) =
-            // TODO: What to do if we have additional fields beyond basic story details?
-            //       For any entity, we should probably not any "create" function to
-            //       restore it. But how to check invariants otherwise?
             let story, _ =
                 (StoryAggregate.captureBasicStoryDetails
                     (r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id")
@@ -191,18 +191,15 @@ module SqliteStoryRepository =
                 |> panicOnError "story"
             story
 
-        // Dictionary doesn't maintain insertion order, so when an SQL query
-        // contains an "order by" clause, the dictionary will mess up ordering.
-        // The caller of toDomainAsync therefore must perform a second sort. An
-        // alternative would be to switch to a combination of Dictionary and
-        // ResizeArray (for storing read order).
-        let storyIdStories = Dictionary<StoryId, Story>()
+        let storyIdIndex = Dictionary<StoryId, int>()
+        let stories = ResizeArray<Story>()
         let toDomain (r: DbDataReader) : unit =
             let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
-            let ok, _ = storyIdStories.TryGetValue(storyId)
+            let ok, _ = storyIdIndex.TryGetValue(storyId)
             if not ok then
                 let story = parseStoryFields r
-                storyIdStories.Add(storyId, story)
+                storyIdIndex.Add(storyId, stories.Count)
+                stories.Add(story)
             taskToDomain ()
 
         task {
@@ -210,13 +207,12 @@ module SqliteStoryRepository =
                toDomain r
 
             let stories =
-                storyIdStories.Values
+                stories
                 |> Seq.toList
                 |> List.map (fun story ->
-                    let ok, tasks = storyIdToTask.TryGetValue(story.Aggregate.Id)
-                    { story with Tasks = if not ok then [] else tasks.Values |> Seq.toList })
+                    let ok, taskIndex = storyIdTaskIdIndex.TryGetValue(story.Aggregate.Id)
+                    { story with Tasks = if not ok then [] else taskIndex.Values |> Seq.map (fun idx -> tasks[idx]) |> Seq.toList })
 
-            // TODO: PERF: maintain original order in a ResizeArray.
             return stories
         }
 
@@ -266,9 +262,9 @@ module SqliteStoryRepository =
                  | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
         }
 
-    // Compared to event sourcing, we immediately apply events to the store.
-    // We don't have to worry about the shape of events evolving over time;
-    // only to keep the store up to date.
+    // Compared to event sourcing we aren't storing commands, but events from
+    // applying the commands. We don't have to worry about the shape of events
+    // evolving over time; only to keep the store up to date.
     let applyEventAsync (transaction: SQLiteTransaction) (ct: CancellationToken) now event =
         let connection = transaction.Connection
         task {
