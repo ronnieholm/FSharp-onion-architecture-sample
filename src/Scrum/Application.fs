@@ -19,8 +19,8 @@ module Seedwork =
 
     // A pseudo-aggregate or an aggregate in the application layer. In
     // principle, we could define value types similar to those making up
-    // aggregates in the domain, but for this case it's overkill. Prefixed
-    // with "Persisted" to avoid confusion with domain's DomainEvent.
+    // aggregates in the domain, but for this case it's overkill. Prefixed with
+    // "Persisted" to avoid confusion with domain's DomainEvent.
     type PersistedDomainEvent =
         { Id: Guid
           AggregateId: Guid
@@ -73,12 +73,13 @@ module Seedwork =
                 let useCase = useCase.GetType().Name
                 let result, elapsed =
                     time (fun _ ->
-                        // TODO: Write test with fn that waits for x ms to make sure elapsed is correct.
+                        // TODO: Write test with fn that waits for x ms to make
+                        // sure elapsed is correct.
                         log (Request(identity, useCase, useCase))
                         fn ())
                 let! result = result
-                // Don't log errors from evaluating fn as these are expected errors. We
-                // don't want those to pollute the log with.
+                // Don't log errors from evaluating fn as these are expected
+                // errors. We don't want those to pollute the log with.
                 log (RequestDuration(useCase, elapsed))
                 return result
             }
@@ -145,8 +146,8 @@ module StoryAggregateRequest =
                     StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (currentUtc ()) None
                     |> Result.mapError fromDomainError
                 do! storyApplyEvent (currentUtc ()) event
-                // Example of publishing the StoryBasicDetailsCaptured domain event to
-                // another aggregate:
+                // Example of publishing the StoryBasicDetailsCaptured domain
+                // event to another aggregate:
                 // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
                 // Integration events may be generated here and persisted.
                 return StoryId.value story.Aggregate.Id
@@ -413,9 +414,9 @@ module StoryAggregateRequest =
                 return StoryDto.from story
             }
 
-    // Query included to illustrate paging. In practice, we wouldn't query
-    // every story. Instead, queries would be for stories in a product backlog,
-    // a release backlog, or a sprint backlog, but we don't support organizing
+    // Query included to illustrate paging. In practice, we wouldn't query every
+    // story. Instead, queries would be for stories in a product backlog, a
+    // release backlog, or a sprint backlog, but we don't support organizing
     // stories into a backlog. For a backlog, it would likely only contain
     // StoryIds. Then either the client would lookup storyIds one by one or
     // submit a batch request for StoryIds.
@@ -448,8 +449,8 @@ module StoryAggregateRequest =
                 let! qry = validate qry |> Result.mapError ValidationErrors
                 let! stories = getStoriesPaged qry.Limit qry.Cursor
                 return
-                    // Per Zalando guidelines, we could write a
-                    // JsonConverter to replace "Items" by "Stories".
+                    // Per Zalando guidelines, we could write a JsonConverter to
+                    // replace "Items" by "Stories".
                     { PagedDto.Cursor = stories.Cursor |> Option.map Cursor.value
                       Items = stories.Items |> List.map StoryDto.from }
             }

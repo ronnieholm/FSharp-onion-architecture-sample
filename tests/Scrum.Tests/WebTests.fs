@@ -7,8 +7,8 @@ namespace Scrum.Tests.WebTests
 //
 // It's most useful with simple, single layer C# services.
 //
-// Our solution only makes minimal use of the dependency injection container,
-// so TestServer doesn't provide a way to mock most dependencies. Only for
+// Our solution only makes minimal use of the dependency injection container, so
+// TestServer doesn't provide a way to mock most dependencies. Only for
 // solutions with simple dependencies, such as a database, is the TestServer
 // useful.
 //

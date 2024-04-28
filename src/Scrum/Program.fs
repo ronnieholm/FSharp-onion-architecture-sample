@@ -87,14 +87,14 @@ module Seedwork =
             |> create StatusCodes.Status400BadRequest
 
         let missingQueryStringParam name =
-            create 400 $"Missing query string parameter '%s{name}'"
+            create StatusCodes.Status400BadRequest $"Missing query string parameter '%s{name}'"
 
         let unexpectedQueryStringParameters names =
             let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
-            create 400 $"Unexpected query string parameters: %s{names}"
+            create StatusCodes.Status400BadRequest $"Unexpected query string parameters: %s{names}"
 
         let queryStringParameterMustBeOfType name type_ =
-            create 400 $"Query string parameter '%s{name}' must be an %s{type_}"
+            create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
 
 module Configuration =
     open System
@@ -486,9 +486,10 @@ module RouteHandlers =
                     let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof userId; nameof roles ]
                     let token = IdentityProvider.issueToken settings DateTime.UtcNow userId roles
 
-                    // As the token is opaque, we can either promote information from inside the
-                    // token to fields on the response object or provide clients with an introspect
-                    // endpoint. We chose the latter while still wrapping the token in a response.
+                    // As the token is opaque, we can either promote information
+                    // from inside the token to fields on the response object or
+                    // provide clients with an introspect endpoint. We chose the
+                    // latter while still wrapping the token in a response.
                     return {| Token = token |}
                 }
 
@@ -525,8 +526,8 @@ module RouteHandlers =
             let map = Dictionary<string, obj>()
 
             for c in claimsIdentity.Claims do
-                // Special case non-string value, or it becomes a string in
-                // the JSON rendering of the claim.
+                // Special case non-string value, or it becomes a string in the
+                // JSON rendering of the claim.
                 if c.Type = "exp" then
                     map.Add("exp", Int32.Parse(c.Value) :> obj)
                 elif c.Type = ClaimTypes.Role then
@@ -940,10 +941,10 @@ module RouteHandlers =
 
     let introspectTestHandler : HttpHandler=
         fun (next : HttpFunc) (ctx : HttpContext) ->
-            // API gateways and other proxies between the client and the
-            // service tag on extra information to the request. This endpoint
-            // allows a client to see what the request looked like from the
-            // server's point of view.
+            // API gateways and other proxies between the client and the service
+            // tag on extra information to the request. This endpoint allows a
+            // client to see what the request looked like from the server's
+            // point of view.
             let headers = ctx.Request.Headers |> Seq.map (fun h -> KeyValuePair(h.Key, string h.Value))
             ctx.SetStatusCode 200
             json headers next ctx

@@ -235,10 +235,9 @@ module SqliteStoryRepository =
 
             // Note that ExecuteReader() returns SQLiteDataReader, but
             // ExecuteReaderAsync(...) returns DbDataReader. Perhaps because
-            // querying async against SQLite, running in the same address
-            // space, makes little async sense. We stick with
-            // ExecuteReaderAsync to illustrate how to work with a
-            // client/server database.
+            // querying async against SQLite, running in the same address space,
+            // makes little async sense. We stick with ExecuteReaderAsync to
+            // illustrate how to work with a client/server database.
             let! reader = cmd.ExecuteReaderAsync(ct)
             let! stories = storyToDomainAsync ct reader
             return
@@ -338,13 +337,12 @@ module SqliteStoryRepository =
 
             // We don't serialize an event to JSON because F# discriminated
             // unions aren't supported by System.Text.Json
-            // (https://github.com/dotnet/runtime/issues/55744). Instead of
-            // a custom converter, or taking a dependency on
-            // https://github.com/Tarmil/FSharp.SystemTextJson), we use the
-            // F# type printer. This wouldn't work in a pure event sourced
-            // system where we'd read back the event for processing, but the
-            // printer suffices for persisting domain event for
-            // troubleshooting.
+            // (https://github.com/dotnet/runtime/issues/55744). Instead of a
+            // custom converter, or taking a dependency on
+            // https://github.com/Tarmil/FSharp.SystemTextJson), we use the F#
+            // type printer. This wouldn't work in a pure event sourced system
+            // where we'd read back the event for processing, but the printer
+            // suffices for persisting domain event for troubleshooting.
             do!
                 persistDomainEventAsync
                     transaction

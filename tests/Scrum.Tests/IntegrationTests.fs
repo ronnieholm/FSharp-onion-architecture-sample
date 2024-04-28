@@ -148,8 +148,8 @@ open Helpers
 //
 // Commenting out the collection attribute below may results in tests
 // succeeding. But if any test assumes a reset database, tests may start failing
-// because we've introduced the possibility of a race condition. For tests not to
-// interfere with each other, and the reset, serialize test runs.
+// because we've introduced the possibility of a race condition. For tests not
+// to interfere with each other, and the reset, serialize test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryAggregateRequestTests() =
     do reset ()
