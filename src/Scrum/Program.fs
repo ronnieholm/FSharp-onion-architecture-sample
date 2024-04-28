@@ -73,22 +73,28 @@ module Seedwork =
         let createJsonResult acceptHeaders status detail =
             create status detail |> toJsonResult acceptHeaders
 
-        let fromAuthorizationError acceptHeaders message =
-            createJsonResult acceptHeaders StatusCodes.Status401Unauthorized message
+        let authorizationError  message =
+            create StatusCodes.Status401Unauthorized message
 
-        let fromUnexpectedQueryStringParameters acceptHeaders unexpected =
-            let parameters = String.Join(", ", unexpected |> List.toSeq)
-            createJsonResult acceptHeaders StatusCodes.Status400BadRequest $"Unexpected query string parameters: {parameters}"
+        let unexpectedQueryStringParameters names =
+            let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
+            create 400 $"Unexpected query string parameters: %s{names}"
 
         type ValidationErrorDto = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
             JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
-        let fromValidationErrors acceptHeaders errors =
+        let validationErrors (errors: ValidationError list) =
             (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
             |> JsonSerializer.Serialize
-            |> createJsonResult acceptHeaders StatusCodes.Status400BadRequest
+            |> create StatusCodes.Status400BadRequest
+
+        let missingQueryStringParam name =
+            create 400 $"Missing query string parameter '%s{name}'"
+
+        let queryStringParameterMustBeOfType name type_ =
+            create 400 $"Query string parameter '%s{name}' must be an %s{type_}"
 
 module Configuration =
     open System
@@ -443,14 +449,6 @@ module RouteHandlers =
     let errorMessageSerializationOptions =
         JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
-    let fromValidationErrors errors =
-        (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
-        |> JsonSerializer.Serialize
-        |> ProblemDetails.create 400
-
-    let fromAuthorizationError message =
-        ProblemDetails.create 401 message
-
     let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) expectedParameters =
         // Per design APIs conservatively:
         // https://opensource.zalando.com/restful-api-guidelines/#109
@@ -462,8 +460,7 @@ module RouteHandlers =
         if List.isEmpty unexpected then
             Ok ()
         else
-            let unexpected = String.Join(", ", unexpected |> List.toSeq)
-            Error (ProblemDetails.create 400 $"Unexpected query string parameters: %s{unexpected}")
+            Error (ProblemDetails.unexpectedQueryStringParameters unexpected)
 
     let verifyUserIsAuthenticated : HttpHandler =
         // TODO: this function comes part of Giraffe.
@@ -481,11 +478,11 @@ module RouteHandlers =
                 result {
                     let! userId =
                         ctx.GetQueryStringValue "userId"
-                        |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'userId'")
+                        |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "userId")
                     let! roles =
                         ctx.GetQueryStringValue "roles"
                         |> Result.map (fun r -> r.Split(',') |> Array.map ScrumRole.fromString |> Array.toList)
-                        |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'roles'")
+                        |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "roles")
                     let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof userId; nameof roles ]
                     let token = IdentityProvider.issueToken settings DateTime.UtcNow userId roles
 
@@ -528,8 +525,8 @@ module RouteHandlers =
             let map = Dictionary<string, obj>()
 
             for c in claimsIdentity.Claims do
-                // Special case non-string value or it becomes a string in
-                // string in the JSON rendering of the claim.
+                // Special case non-string value, or it becomes a string in
+                // the JSON rendering of the claim.
                 if c.Type = "exp" then
                     map.Add("exp", Int32.Parse(c.Value) :> obj)
                 elif c.Type = ClaimTypes.Role then
@@ -593,9 +590,10 @@ module RouteHandlers =
                 | Error e ->
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
+                        let accept = ctx.Request.Headers.Accept
                         match e with
-                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
-                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
                         | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))
                     ctx.SetStatusCode problem.Status
@@ -639,8 +637,8 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
-                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | ReviseBasicStoryDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
                     ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
@@ -683,8 +681,8 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> fromAuthorizationError ae
-                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | AddBasicTaskDetailsToStoryCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
                     ctx.SetStatusCode problem.Status
@@ -726,8 +724,8 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> fromAuthorizationError ae
-                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | ReviseBasicTaskDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         | ReviseBasicTaskDetailsCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
@@ -763,8 +761,8 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | RemoveTaskCommand.AuthorizationError ae -> fromAuthorizationError ae
-                        | RemoveTaskCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | RemoveTaskCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | RemoveTaskCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | RemoveTaskCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         | RemoveTaskCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
@@ -800,8 +798,8 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | RemoveStoryCommand.AuthorizationError ae -> fromAuthorizationError ae
-                        | RemoveStoryCommand.ValidationErrors ve -> fromValidationErrors ve
+                        | RemoveStoryCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | RemoveStoryCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | RemoveStoryCommand.StoryNotFound _ -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
                     ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
@@ -835,8 +833,8 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | GetStoryByIdQuery.AuthorizationError ae -> fromAuthorizationError ae
-                        | GetStoryByIdQuery.ValidationErrors ve -> fromValidationErrors ve
+                        | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | GetStoryByIdQuery.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
                     ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
@@ -868,18 +866,21 @@ module RouteHandlers =
                     taskResult {
                         let! limit =
                             ctx.GetQueryStringValue "limit"
-                            // TODO: generalize message generation.
-                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'limit'")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
                             |> Result.bind (fun limit ->
                                    // TODO: Extract into helper function taking in string field name.
                                    let ok, limit = Int32.TryParse(limit)
                                    if ok then
                                        Ok limit
                                     else
-                                       Error (ProblemDetails.create 400 "Query string parameter 'limit' must be an integer"))
+                                       let problem = ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"
+                                       ctx.SetStatusCode problem.Status
+                                       ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                                       Error problem)
+
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
-                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'cursor'")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
                         let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
 
                         use connection = getConnection connectionString
@@ -893,8 +894,10 @@ module RouteHandlers =
                             |> TaskResult.mapError(fun e ->
                                 let problem =
                                     match e with
-                                    | GetStoriesPagedQuery.AuthorizationError ae -> fromAuthorizationError ae
-                                    | GetStoriesPagedQuery.ValidationErrors ve -> fromValidationErrors ve
+                                    | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                                    | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
+                                ctx.SetStatusCode problem.Status
+                                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                                 problem)
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         return result
@@ -917,17 +920,20 @@ module RouteHandlers =
                         let! limit =
                             ctx.GetQueryStringValue "limit"
                             // TODO: generalize message generation.
-                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'limit'")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
                             |> Result.bind (fun limit ->
                                    // TODO: Extract into helper function taking in string field name.
                                    let ok, limit = Int32.TryParse(limit)
                                    if ok then
                                        Ok limit
                                     else
-                                       Error (ProblemDetails.create 400 "Query string parameter 'limit' must be an integer"))
+                                       let problem = ProblemDetails.queryStringParameterMustBeOfType "limit" "integer"
+                                       ctx.SetStatusCode problem.Status
+                                       ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                                       Error problem)
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
-                            |> Result.mapError (fun _ -> ProblemDetails.create 400 "Missing query string parameter 'cursor'")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
                         let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
 
                         use connection = getConnection connectionString
@@ -941,8 +947,10 @@ module RouteHandlers =
                             |> TaskResult.mapError(fun e ->
                                 let problem =
                                     match e with
-                                    | GetByAggregateIdQuery.AuthorizationError ae -> fromAuthorizationError ae
-                                    | GetByAggregateIdQuery.ValidationErrors ve -> fromValidationErrors ve
+                                    | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                                    | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
+                                ctx.SetStatusCode problem.Status
+                                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                                 problem)
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         return result
