@@ -191,6 +191,7 @@ module SqliteStoryRepository =
                 |> panicOnError "story"
             story
 
+        // Dictionary doesn't maintain insertion order, so combine with ResizeArray.
         let storyIdIndex = Dictionary<StoryId, int>()
         let stories = ResizeArray<Story>()
         let toDomain (r: DbDataReader) : unit =
