@@ -1,33 +1,32 @@
-# ADR0004: When to persist changes to the store
+# ADR0004: When to persist store changes
 
 Status: Accepted and active.
 
 ## Context
 
-Saving changes to the store can happen in one of multiple places, each with
-their pros and cons.
+Saving changes to the store may happen in one of multiple places, each with pros
+and cons.
 
-Ideally, we want every change made by one handler and subscribed notification
-handlers to go into a single transaction.
+Ideally, we want every change made by one handler and subscribed event
+processors to go into a single transaction.
 
 ### Inside application layer handler
 
-One place to save changes is towards the end of each command handler (the
-`runAsync` functions). This way the handler can save changes and possibly read
-back a aggregate to return. Relying on save before get, though, is indicative of
-the application layer not being persistence ignorant, e.g., repository code
-setting `createdAt` or updating `updatedAt` (on domain types) to avoid repeating
-the logic across the domain.
+One place to save changes is towards the end of each command handler. The
+handler may save changes and possibly read back an aggregate to return (although
+unless the database calculates field value it's redundant work). Relying on save
+before get means the application layer isn't persistence ignorant, e.g.,
+repository code setting `createdAt` or updating `updatedAt` (on domain types) to
+avoid repeating the logic across the domain.
 
-A downside is that one can forget to save or, worse yet, save multiple times
-(perhaps because the application layer isn't persistent ignorant).
+A downside is that one can forget to save or save multiple times.
 
-Also, it's tempting to couple indepedent systems. Imagine a handler which saves
-a new entity, then sends an email. Only with a distributed transaction
-encompassing both database and email system can we guarantee that both succeed
-or none succeed: if saving to store is executed first, it's guaranteed to
-succeed or fail before attemtping to send the email sending. But then if sending
-email fails, we've already updated the database.
+It's tempting to couple independent systems. Imagine a handler which saves a new
+entity, then sends an email. Only with a distributed transaction encompassing
+both database and email system are both guaranteed to either succeed or fail: if
+saving to store is executed first, it's guaranteed to succeed or fail before
+attemtping to send the email sending. But if sending email fails, we already
+updated the database.
 
 We could take the saga route so that if email sending fails, a compensating
 transaction is issued against the database. But by then another system might
@@ -35,7 +34,7 @@ have picked up the changes and updated additional state.
 
 ### Outside Applications layer handler
 
-With this approach, handler logic remains the same, except save happens at a
+With this approach, handler logic remains the same, except save happens at the
 level above the handler. In a ASP.NET application, save from the controller
 action would be one option. With core hosted by ASP.NET, one HTTP request
 typically maps to one handler. Other hosts, such as a console or service may
@@ -45,19 +44,20 @@ batch multiple updates. The higher level save approach supports both.
 
 With C# + EF, it's common to call `DbContext.Save` in each handler. The `Save`
 method is typically called on a `DbContext` derived class, talking advantage of
-EF change tracking identify created or updated aggregates across aggregates.
-Without each aggreate, the root stores the list of domain events to be published
+EF change tracking to identify created or updated aggregates.
+
+Within each aggreate, the root stores the list of domain events to be published
 by the `Save` method. As publishing an event can generate more events,
 publishing goes on until no more events are present in any changed aggregate.
 
-With this approach, `Save` has multiple responsibilities, but it fits well into
-EF's way of working. In our application, we have no conceptual equivalent of
-`DbContext`, and prefer more expclit publishing of events within each handler
-(see ADR009 for details).
+With this approach, `Save` has multiple responsibilities (such as publishing
+events to processors), but it fits well into EF's way of working. In our
+application, we have no conceptual equivalent of `DbContext`, and prefer more
+expclit publishing of events within each handler.
 
 ## Decision
 
-Chaining multiple systems, such as the database and an email systemer, may be
+Chaining multiple systems, such as the database and an email system, may be
 better done by a separate job picking up the newly created entity. The job then
 attempts to send the email multiple times until it succeeds or gives up.
 
@@ -70,15 +70,9 @@ Storing queues in a database may not work at FAANG scale, but is adequate for
 many business applications. It simplifies application logic and reduces the
 number of failure modes.
 
-Until disproven by business requirements, we save outside handlers. If for some
-reason, we need to save inside a handler, we can pass in the `AppEnv`'s commit
-function as a dependency similar to other dependencies (see
-`IntegrationTests.fs` for an example).
-
 ## Consequences
 
-Keeping saving to store outside any handler makes for a more robust and flexible
-approach.
+We save outside handlers for the flexibility and persistence ignorance.
 
 ## See also
 

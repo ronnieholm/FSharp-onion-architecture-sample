@@ -17,28 +17,30 @@ File ordering matters to the F# compiler, so `Domain.fs` depends on nothing,
 source file, definition must precede use.
 
 For larger applications, switching to vertical slice architecture may be
-preferred. With that approach, `Story.fs` (or a variation thereof) would contain
-domain, application, infrastructure, web, and possibly test code:
+preferred. With vertical slice architecture, `Story.fs` (or a variation thereof)
+would contain domain, application, infrastructure, web, and maybe even test
+code:
 
 - Shared.fs
 - Story.fs (domain + application + infrastructure + ASP.NET handlers + test)
 - Program.fs
 
-`Story.fs` might also be a folder with multiple files or its own assembly.
+`Story.fs` could also be a folder with multiple files or its own assembly for
+faster compile times.
 
 Vertical slice architecture potentially improves compile times. The F# compiler
 is mostly sequential across an assembly with multiple assemblies compiled in
-parallel. For this reason, organizing into separate assemblies domain,
+parallel. For this reason, organizing code into dependent assemblies for domain,
 application, integration, web, unit test, and integration test is a bad idea.
-Compilation would become sequential across the solution.
+Compilation becomes sequential across the solution.
 
 ## Decision
 
 To best illustrate the concepts, and until the sample grows sufficiently large,
 we use horizontal architecture. We also stick with one F# file per layer of the
-onion, even though compared to the typical C# file, F# files are large. Roughly
+onion, even though compared to typical C# files, F# files are large. Roughly
 speaking, each module within each file would correspond to a class in F# (and
-nested modules to subfolders). With things defined in dependency order and a
+nested modules to subfolders). With types defined in dependency order and a
 reasonable IDE, navigating large files is a non-issue.
 
 ## Consequences

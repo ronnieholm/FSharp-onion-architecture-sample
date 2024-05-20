@@ -4,11 +4,10 @@ Status: Accepted and active.
 
 ## Context
 
-The identity of an entity is the value of its `Id` field, not all fields. To
-indicate this, we prevent the compiler generated `Equals` and `GetHashCode`
-methods on entities.
+The identity of an entity is the value of its `Id` field only. We therefore
+prevent compiler generated `Equals` and `GetHashCode` methods on entities.
 
-A less F# idiomatic approach might then be to implement equally like so:
+A less F# idiomatic approach would be to implement equally like so:
 
 ```fsharp
 [<NoComparison; NoEquality>]
@@ -16,42 +15,43 @@ type Task =
     { Entity: Entity<TaskId>
       Title: TaskTitle
       Description: TaskDescription option }
-                           
+
     interface IEquatable<Task> with
         member x.Equals (other: Task) : bool = other.Entity.Id.Equals x.Entity.Id
-        
+
     override x.Equals (other: Task) : bool =
         match other with
         | :? Task as t -> (x :> IEquatable<_>).Equals t
         | _ -> false
-        
+
     override x.GetHashCode() : int = x.Entity.Id.GetHashCode()
 ```
 
-Adding custom equality through generic overrides is ceremony. Instead we could
-add an `equals` function to the entity's module:
+Adding custom equality through generic overrides is more ceremony than adding an
+`equals` function to the entity's module:
 
 ```fsharp
 let equals a b = a.Entity.Id = b.Entity.Id
 ```
 
-In the application, not every entity is tested for equality, so `equals` could
-be added ad hoc. If instead we decided to compare `Id`s at call sites, the
-difference would be
+In the application, not every entity requires testing for equality, so `equals`
+could is added ad hoc.
+
+ If we decided to compare `Id`s at call sites, the difference would be
 
 ```fsharp
 let duplicate = story.Tasks |> List.exists (equals task)
 let duplicate = story.Tasks |> List.exists (fun t -> t.Entity.Id = task.Entity.Id)
 ```
 
-At the call site, we'd have to write different code depending on if it's an
-entity or an aggregate.
+Call sites would require different code depending on if it's an entity or an
+aggregate.
 
 ## Decision
 
 With C# and object orientation, comparison code would go in an entity base
-class, which also holds the `Id` fields. Adding `equals` to entities which
-actually require comparison is a reasonable trade-off for less ceremony.
+class, which also holds the `Id` field. In contrast, adding `equals` to entities
+which actually require it is a reasonable trade-off for less ceremony.
 
 ## Consequences
 

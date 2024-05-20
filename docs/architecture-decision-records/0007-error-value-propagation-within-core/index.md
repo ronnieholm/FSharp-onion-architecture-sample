@@ -1,10 +1,10 @@
-# ADR0010: Error value propagation within core
+# ADR0007: Error value propagation within core
 
 Status: Accepted and active.
 
 ## Context
 
-With application layer acting as entry point for hosts such as ASP.NET, it's
+With the application layer acting as entry point for hosts such as ASP.NET, it's
 where application and domain errors are documented. But being a coordination
 layer, executing use cases, the application layer is only directly responsible
 for a subset of errors. e.g., failed validation of the request or failed loading
@@ -30,7 +30,7 @@ type AddBasicTaskDetailsToStoryError =
 
 where `BusinessError` is any error returned by the domain layer.
 
-Inside the domain layer we would do as follows and have the application layer
+Inside the domain layer we could do as follows and have the application layer
 map errors to the `AddBasicTaskDetailsToStoryError` type:
 
 ```fsharp
@@ -57,7 +57,7 @@ switch HTTP response code based on the error and (2) as a caller looking at
 ## Decision
 
 We want the application layer `AddBasicTaskDetailsToStoryError` to reflect all
-possible error cases, so it must become
+possible error cases, so it becomes
 
 ```fsharp
 type AddBasicTaskDetailsToStoryError =
@@ -101,5 +101,5 @@ let fromDomainError =
 
 ## Consequences
 
-Defining domain errors and mappers is more work, but now every application layer
-error union fully documents the error cases.
+Defining domain errors and mappers is more work, but every application layer
+error union now fully documents the error cases.
