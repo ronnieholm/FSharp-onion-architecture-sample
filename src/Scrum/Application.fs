@@ -49,7 +49,7 @@ module Seedwork =
         | Request of ScrumIdentity * useCase: string * request: obj
         | RequestDuration of useCase: string * duration: uint<ms>
         | Exception of exn
-        // Delegates to .NET's ILogger.
+        // Delegate to .NET ILogger.
         | Err of string
         | Inf of string
         | Dbg of string

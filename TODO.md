@@ -21,3 +21,4 @@
   database (https://youtu.be/LvFs33-1Tbo?t=1786). Possibly the event handler can
   be reused from the aggregate if instead of making the update inside domain
   functions make the update through it calling a handler event function. See also https://aaronstannard.com/fscheck-property-testing-csharp-part3/
+- https://www.compositional-it.com/news-blog/working-with-phantom-types-in-fsharp/
