@@ -129,11 +129,6 @@ module StoryAggregateRequest =
             | AuthorizationError of string
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
-            | DuplicateTasks of Guid list
-
-        let fromDomainError =
-            function
-            | StoryAggregate.CaptureBasicStoryDetailsError.DuplicateTasks ids -> DuplicateTasks(ids |> List.map TaskId.value)
 
         let runAsync currentUtc storyExist (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
@@ -142,9 +137,8 @@ module StoryAggregateRequest =
                 do!
                     storyExist cmd.Id
                     |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
-                let! story, event =
-                    StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description [] (currentUtc ()) None
-                    |> Result.mapError fromDomainError
+                let story, event =
+                    StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (currentUtc ())
                 do! storyApplyEvent (currentUtc ()) event
                 // Example of publishing the StoryBasicDetailsCaptured domain
                 // event to another aggregate:

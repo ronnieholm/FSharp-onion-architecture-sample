@@ -146,14 +146,21 @@ module SqliteStoryRepository =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
         // for details on the flat table to tree deserialization algorithm.
+
         let parseTaskFields (r: DbDataReader) : Task =
-            (TaskEntity.create
-                (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
-                (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+            // We know tasks are unique based on the primary key constraint in
+            // the database. If we wanted to assert invariants not maintained by
+            // the database, it requires explictly code. Integration tests would
+            // generally catch such issues, with the exception of the database
+            // updated by a migration.
+            { Entity = {
+                Id = (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
+                CreatedAt = (parseCreatedAt r["t_created_at"])
+                UpdatedAt = (parseUpdatedAt r["t_updated_at"]) }
+              Title = (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+              Description =
                 (Option.ofDBNull r["t_description"]
-                 |> Option.map (string >> TaskDescription.create >> panicOnError "t_description"))
-                (parseCreatedAt r["t_created_at"])
-                (parseUpdatedAt r["t_updated_at"]))
+                |> Option.map (string >> TaskDescription.create >> panicOnError "t_description")) }
 
         let storyIdTaskIdIndex = Dictionary<StoryId, Dictionary<TaskId, int>>()
         let tasks = ResizeArray<Task>()
@@ -179,17 +186,20 @@ module SqliteStoryRepository =
                         tasks.Add(task)
 
         let parseStoryFields (r: DbDataReader) =
-            let story, _ =
-                (StoryAggregate.captureBasicStoryDetails
-                    (r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id")
-                    (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
-                    (Option.ofDBNull r["s_description"]
-                     |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
-                    []
-                    (parseCreatedAt r["s_created_at"])
-                    (parseUpdatedAt r["s_updated_at"]))
-                |> panicOnError "story"
-            story
+            // Don't call StoryAggregate.captureBasicStoryDetails as in general
+            // it doesn't guarantee correct construction. If a story is modelled
+            // as a state machine, it would always reset to the starting state.
+            // In addition, StoryAggregate.captureBasicStoryDetails emits events
+            // which we'd be discarding.
+            { Aggregate = {
+                Id = (r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id")
+                CreatedAt = (parseCreatedAt r["s_created_at"])
+                UpdatedAt = (parseUpdatedAt r["s_updated_at"]) }
+              Title = (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
+              Description =
+                (Option.ofDBNull r["s_description"]
+                |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
+              Tasks = [] }
 
         // Dictionary doesn't maintain insertion order, so combine with ResizeArray.
         let storyIdIndex = Dictionary<StoryId, int>()

@@ -185,28 +185,20 @@ module StoryAggregate =
 
     open TaskEntity
 
-    type CaptureBasicStoryDetailsError = DuplicateTasks of TaskId list
-
-    let captureBasicStoryDetails id title description tasks createdAt updatedAt =
-        let duplicates =
-            tasks
-            |> List.groupBy _.Entity.Id
-            |> List.filter (fun (_, tasks) -> List.length tasks > 1)
-            |> List.map fst
-        if List.length duplicates > 0 then
-            Error(DuplicateTasks duplicates)
-        else
-            Ok(
-                { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = updatedAt }
-                  Title = title
-                  Description = description
-                  Tasks = tasks },
-                StoryDomainEvent.BasicStoryDetailsCaptured
-                    { DomainEvent = { OccurredAt = createdAt }
-                      StoryId = id
-                      StoryTitle = title
-                      StoryDescription = description }
-            )
+    // A list of tasks could be part of the initial story. Then after creation,
+    // addBasicTaskDetailsToStory could be called for each. It would make
+    // captureBasicStoryDetails return a list of events: one for the story and
+    // one for each task. For simplicity, tasks are left out.
+    let captureBasicStoryDetails id title description createdAt =
+        { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
+          Title = title
+          Description = description
+          Tasks = [] },
+        StoryDomainEvent.BasicStoryDetailsCaptured
+            { DomainEvent = { OccurredAt = createdAt }
+              StoryId = id
+              StoryTitle = title
+              StoryDescription = description }
 
     let reviseBasicStoryDetails story title description updatedAt =
         let root = { story.Aggregate with UpdatedAt = Some updatedAt }

@@ -596,7 +596,6 @@ module RouteHandlers =
                         | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
                         | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
-                        | CaptureBasicStoryDetailsCommand.DuplicateTasks ids -> unreachable (String.Join(", ", ids))
                     ctx.SetStatusCode problem.Status
                     ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                     return! json problem next ctx
