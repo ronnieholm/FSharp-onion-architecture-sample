@@ -257,12 +257,11 @@ module StoryAggregateRequest =
                 let! story =
                     getStoryById cmd.StoryId
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                let task = create cmd.TaskId cmd.Title cmd.Description (currentUtc ()) None
                 let! _, event =
-                    addBasicTaskDetailsToStory story task (currentUtc ())
+                    addBasicTaskDetailsToStory story cmd.TaskId cmd.Title cmd.Description (currentUtc ())
                     |> Result.mapError fromDomainError
                 do! storyApplyEvent (currentUtc ()) event
-                return TaskId.value task.Entity.Id
+                return TaskId.value cmd.TaskId
             }
 
     type ReviseBasicTaskDetailsCommand = { StoryId: Guid; TaskId: Guid; Title: string; Description: string option }

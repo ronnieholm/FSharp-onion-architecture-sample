@@ -97,9 +97,8 @@ module StoryAggregate =
             (title: TaskTitle)
             (description: TaskDescription option)
             (createdAt: DateTime)
-            (updatedAt: DateTime option)
             : Task =
-            { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = updatedAt }
+            { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
               Title = title
               Description = description }
 
@@ -219,7 +218,10 @@ module StoryAggregate =
 
     type AddBasicTaskDetailsToStoryError = DuplicateTask of TaskId
 
-    let addBasicTaskDetailsToStory story task occurredAt =
+    // Don't pass an externally created Task as it may contain additional state
+    // but basic details.
+    let addBasicTaskDetailsToStory story taskId title description createdAt =
+        let task = TaskEntity.create taskId title description createdAt
         let duplicate = story.Tasks |> List.exists (equals task)
         if duplicate then
             Error(DuplicateTask task.Entity.Id)
@@ -227,7 +229,7 @@ module StoryAggregate =
             Ok(
                 { story with Tasks = task :: story.Tasks },
                 StoryDomainEvent.BasicTaskDetailsAddedToStory
-                    { DomainEvent = { OccurredAt = occurredAt }
+                    { DomainEvent = { OccurredAt = createdAt }
                       StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
                       TaskTitle = task.Title
