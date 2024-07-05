@@ -440,12 +440,12 @@ module StoryRequest =
             taskResult {
                 do! isInRole identity Member |> Result.mapError AuthorizationError
                 let! qry = validate qry |> Result.mapError ValidationErrors
-                let! stories = getStoriesPaged qry.Limit qry.Cursor
+                let! storiesPage = getStoriesPaged qry.Limit qry.Cursor
                 return
                     // Per Zalando guidelines, we could write a JsonConverter to
                     // replace "Items" by "Stories".
-                    { PagedDto.Cursor = stories.Cursor |> Option.map Cursor.value
-                      Items = stories.Items |> List.map StoryDto.from }
+                    { PagedDto.Cursor = storiesPage.Cursor |> Option.map Cursor.value
+                      Items = storiesPage.Items |> List.map StoryDto.from }
             }
 
 module DomainEventRequest =
@@ -498,10 +498,10 @@ module DomainEventRequest =
             taskResult {
                 do! isInRole identity Admin |> Result.mapError AuthorizationError
                 let! qry = validate qry |> Result.mapError ValidationErrors
-                let! events = getByAggregateId qry.Id qry.Limit qry.Cursor
+                let! eventsPage = getByAggregateId qry.Id qry.Limit qry.Cursor
                 return
-                    { PagedDto.Cursor = events.Cursor |> Option.map Cursor.value
-                      Items = events.Items |> List.map PersistedDomainEventDto.from }
+                    { PagedDto.Cursor = eventsPage.Cursor |> Option.map Cursor.value
+                      Items = eventsPage.Items |> List.map PersistedDomainEventDto.from }
             }
 
 module ApplicationService =
