@@ -441,7 +441,7 @@ module RouteHandlers =
     open FsToolkit.ErrorHandling
     open Seedwork
     open Scrum.Application.Seedwork
-    open Scrum.Application.StoryAggregateRequest
+    open Scrum.Application.StoryRequest
     open Scrum.Application.DomainEventRequest
     open Scrum.Infrastructure
     open Scrum.Infrastructure.Seedwork

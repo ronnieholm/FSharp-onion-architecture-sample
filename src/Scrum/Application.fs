@@ -94,7 +94,7 @@ module SharedModels =
     // https://opensource.zalando.com/restful-api-guidelines/#137)
     type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
-module StoryAggregateRequest =
+module StoryRequest =
     open System
     open FsToolkit.ErrorHandling
     open Scrum.Domain
