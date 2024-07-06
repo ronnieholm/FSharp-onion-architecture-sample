@@ -160,7 +160,7 @@ type StoryAggregateRequestTests() =
             let fns = setupRequests ()
             let storyCmd = A.captureBasicStoryDetailsCommand ()
             let! result = fns.CaptureBasicStoryDetails adminIdentity storyCmd
-            test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError("Missing role 'member'")) @>
+            test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError Member) @>
             fns.Commit()
         }
 
@@ -433,6 +433,6 @@ type DomainEventRequestTests() =
             let taskCmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = storyCmd.Id }
             let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd
             let! result = fns.GetByAggregateId memberIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None }
-            test <@ result = Error(GetByAggregateIdQuery.AuthorizationError("Missing role 'admin'")) @>
+            test <@ result = Error(GetByAggregateIdQuery.AuthorizationError Admin) @>
             fns.Commit()
         }

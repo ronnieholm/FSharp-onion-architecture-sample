@@ -44,6 +44,12 @@ module Seedwork =
         | Anonymous
         | Authenticated of UserId: string * Roles: ScrumRole list
 
+    let isInRole identity role =
+        match identity with
+        | Anonymous -> false
+        | Authenticated(_, roles) ->
+            if List.contains role roles then true else false
+
     type LogMessage =
         // Application specific logging.
         | Request of ScrumIdentity * useCase: string * request: obj
@@ -60,11 +66,6 @@ module Seedwork =
         let result = fn ()
         let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
         result, elapsed
-
-    let isInRole identity role =
-        match identity with
-        | Anonymous -> Error("Anonymous user unsupported")
-        | Authenticated(_, roles) -> if List.contains role roles then Ok() else Error($"Missing role '{role}'")
 
     // TODO: Write separate tests for the decorator.
     let runWithDecoratorAsync<'TResponse> (log: LogMessage -> unit) identity useCase (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
@@ -126,13 +127,13 @@ module StoryRequest =
             }
 
         type CaptureBasicStoryDetailsError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
 
         let runAsync utcNow storyExist (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 do!
                     storyExist cmd.Id
@@ -171,13 +172,13 @@ module StoryRequest =
             }
 
         type ReviseBasicStoryDetailsError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
                     getStoryById cmd.Id
@@ -200,13 +201,13 @@ module StoryRequest =
             }
 
         type RemoveStoryError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
                     getStoryById cmd.Id
@@ -241,7 +242,7 @@ module StoryRequest =
             }
 
         type AddBasicTaskDetailsToStoryError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | DuplicateTask of Guid
@@ -252,7 +253,7 @@ module StoryRequest =
 
         let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
                     getStoryById cmd.StoryId
@@ -292,7 +293,7 @@ module StoryRequest =
             }
 
         type ReviseBasicTaskDetailsError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | TaskNotFound of Guid
@@ -303,7 +304,7 @@ module StoryRequest =
 
         let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
                     getStoryById cmd.StoryId
@@ -328,7 +329,7 @@ module StoryRequest =
             }
 
         type RemoveTaskError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
             | TaskNotFound of Guid
@@ -339,7 +340,7 @@ module StoryRequest =
 
         let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
                 let! story =
                     getStoryById cmd.StoryId
@@ -393,13 +394,13 @@ module StoryRequest =
             }
 
         type GetStoryByIdError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
         let runAsync getStoryById identity qry =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! qry = validate qry |> Result.mapError ValidationErrors
                 let! story =
                     getStoryById qry.Id
@@ -433,12 +434,12 @@ module StoryRequest =
             }
 
         type GetStoriesPagedError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
 
         let runAsync (getStoriesPaged: GetStoriesPaged) identity qry =
             taskResult {
-                do! isInRole identity Member |> Result.mapError AuthorizationError
+                do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! qry = validate qry |> Result.mapError ValidationErrors
                 let! storiesPage = getStoriesPaged qry.Limit qry.Cursor
                 return
@@ -491,12 +492,12 @@ module DomainEventRequest =
                   CreatedAt = event.CreatedAt }
 
         type GetStoryEventsByIdError =
-            | AuthorizationError of string
+            | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
 
         let runAsync (getByAggregateId: GetByAggregateId) identity qry =
             taskResult {
-                do! isInRole identity Admin |> Result.mapError AuthorizationError
+                do! isInRole identity Admin |> Result.requireTrue (AuthorizationError Admin)
                 let! qry = validate qry |> Result.mapError ValidationErrors
                 let! eventsPage = getByAggregateId qry.Id qry.Limit qry.Cursor
                 return

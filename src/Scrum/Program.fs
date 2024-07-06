@@ -73,8 +73,8 @@ module Seedwork =
         let createJsonResult acceptHeaders status detail =
             create status detail |> toJsonResult acceptHeaders
 
-        let authorizationError  message =
-            create StatusCodes.Status401Unauthorized message
+        let authorizationError (role: ScrumRole) =
+            create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
 
         type ValidationErrorDto = { Field: string; Message: string }
 
@@ -593,7 +593,7 @@ module RouteHandlers =
                     let problem =
                         let accept = ctx.Request.Headers.Accept
                         match e with
-                        | CaptureBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | CaptureBasicStoryDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
                     ctx.SetStatusCode problem.Status
@@ -637,7 +637,7 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | ReviseBasicStoryDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | ReviseBasicStoryDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | ReviseBasicStoryDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
@@ -681,7 +681,7 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | AddBasicTaskDetailsToStoryCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
@@ -724,7 +724,7 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | ReviseBasicTaskDetailsCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | ReviseBasicTaskDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | ReviseBasicTaskDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         | ReviseBasicTaskDetailsCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
@@ -761,7 +761,7 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | RemoveTaskCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | RemoveTaskCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | RemoveTaskCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | RemoveTaskCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         | RemoveTaskCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
@@ -798,7 +798,7 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | RemoveStoryCommand.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | RemoveStoryCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | RemoveStoryCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | RemoveStoryCommand.StoryNotFound _ -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
@@ -833,7 +833,7 @@ module RouteHandlers =
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
                         match e with
-                        | GetStoryByIdQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                        | GetStoryByIdQuery.AuthorizationError role -> ProblemDetails.authorizationError role
                         | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
                         | GetStoryByIdQuery.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                     ctx.SetStatusCode problem.Status
@@ -890,7 +890,7 @@ module RouteHandlers =
                                 (fun () -> GetStoriesPagedQuery.runAsync getStoriesPaged identity qry)
                             |> TaskResult.mapError(
                                     function
-                                    | GetStoriesPagedQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                                    | GetStoriesPagedQuery.AuthorizationError role -> ProblemDetails.authorizationError role
                                     | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve)
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         return result
@@ -929,7 +929,7 @@ module RouteHandlers =
                                 (fun () -> GetByAggregateIdQuery.runAsync getByAggregateId identity qry)
                             |> TaskResult.mapError(
                                     function
-                                    | GetByAggregateIdQuery.AuthorizationError ae -> ProblemDetails.authorizationError ae
+                                    | GetByAggregateIdQuery.AuthorizationError role -> ProblemDetails.authorizationError role
                                     | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve)
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         return result
