@@ -546,7 +546,7 @@ module RouteHandlers =
 
             json map next ctx
 
-    let currentUtc () = DateTime.UtcNow
+    let utcNow () = DateTime.UtcNow
 
     let getConnection (connectionString: string): SQLiteConnection =
         let connection = new SQLiteConnection(connectionString)
@@ -580,7 +580,7 @@ module RouteHandlers =
                       Description = request.description |> Option.ofObj }
                 let! result =
                     runWithDecoratorAsync log identity cmd
-                        (fun () -> CaptureBasicStoryDetailsCommand.runAsync currentUtc storyExist storyApplyEvent identity cmd)
+                        (fun () -> CaptureBasicStoryDetailsCommand.runAsync utcNow storyExist storyApplyEvent identity cmd)
 
                 match result with
                 | Ok id ->
@@ -625,7 +625,7 @@ module RouteHandlers =
                       Description = request.description |> Option.ofObj }
                 let! result =
                     runWithDecoratorAsync log identity cmd
-                        (fun () -> ReviseBasicStoryDetailsCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)
+                        (fun () -> ReviseBasicStoryDetailsCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
                 | Ok id ->
@@ -669,7 +669,7 @@ module RouteHandlers =
                       Description = request.description |> Option.ofObj }
                 let! result =
                     runWithDecoratorAsync log identity cmd
-                        (fun () -> AddBasicTaskDetailsToStoryCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)
+                        (fun () -> AddBasicTaskDetailsToStoryCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
                 | Ok taskId ->
@@ -712,7 +712,7 @@ module RouteHandlers =
                       Description = request.description |> Option.ofObj }
                 let! result =
                     runWithDecoratorAsync log identity cmd
-                        (fun () -> ReviseBasicTaskDetailsCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)
+                        (fun () -> ReviseBasicTaskDetailsCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
                 | Ok taskId ->
@@ -750,7 +750,7 @@ module RouteHandlers =
                 let cmd = { StoryId = storyId; TaskId = taskId }
                 let! result =
                     runWithDecoratorAsync log identity cmd
-                        (fun () -> RemoveTaskCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)
+                        (fun () -> RemoveTaskCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
                 | Ok _ ->
@@ -787,7 +787,7 @@ module RouteHandlers =
                 let cmd: RemoveStoryCommand = { Id = storyId }
                 let! result =
                     runWithDecoratorAsync log identity cmd
-                        (fun () -> RemoveStoryCommand.runAsync currentUtc getStoryById storyApplyEvent identity cmd)
+                        (fun () -> RemoveStoryCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
                 | Ok _ ->

@@ -276,6 +276,6 @@ module StoryAggregate =
             )
         | None -> Error(TaskNotFound taskId)
 
-module DomainService =
+module Service =
     // Services shared across aggregates.
     ()
