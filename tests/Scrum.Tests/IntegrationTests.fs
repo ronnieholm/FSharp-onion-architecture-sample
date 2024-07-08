@@ -32,11 +32,11 @@ module A =
           Title = "title"
           Description = Some "description" }
 
-    let reviseBasicTaskDetailsCommand (cmd: AddBasicTaskDetailsToStoryCommand) =
-        { StoryId = cmd.StoryId
-          TaskId = cmd.TaskId
-          Title = cmd.Title
-          Description = cmd.Description }
+    let reviseBasicTaskDetailsCommand (source: AddBasicTaskDetailsToStoryCommand) =
+        { StoryId = source.StoryId
+          TaskId = source.TaskId
+          Title = source.Title
+          Description = source.Description }
 
 module Database =
     // SQLite driver creates the database at the path if the file doesn't
@@ -137,7 +137,8 @@ type DisableParallelization() =
     interface ICollectionFixture<ApplyDatabaseMigrationsFixture>
 
 module Helpers =
-    let fail tr = Task.map (Result.mapError (fun e -> Assert.Fail($"%A{e}"))) tr
+    let failOnError result =
+        Task.map (Result.mapError (fun e -> Assert.Fail($"%A{e}"))) result
 
 open Helpers
 
@@ -155,11 +156,11 @@ type StoryAggregateRequestTests() =
     do reset ()
 
     [<Fact>]
-    let ``must have member role to create basic story details`` () =
+    let ``must have member role to capture basic story details`` () =
         task {
             let fns = setupRequests ()
-            let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! result = fns.CaptureBasicStoryDetails adminIdentity storyCmd
+            let cmd = A.captureBasicStoryDetailsCommand ()
+            let! result = fns.CaptureBasicStoryDetails adminIdentity cmd
             test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError Member) @>
             fns.Commit()
         }
@@ -169,10 +170,10 @@ type StoryAggregateRequestTests() =
         let fns = setupRequests ()
         taskResult {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> fail
+            let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> failOnError
             let taskCmd = { A.addBasicTaskDetailsToStoryCommand () with StoryId = storyCmd.Id }
-            let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd |> fail
-            let! r = fns.GetStoryById memberIdentity { Id = taskCmd.StoryId } |> fail
+            let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd |> failOnError
+            let! r = fns.GetStoryById memberIdentity { Id = taskCmd.StoryId } |> failOnError
 
             let story =
                 { Id = storyCmd.Id
@@ -364,12 +365,12 @@ type StoryAggregateRequestTests() =
         taskResult {
             for i = 1 to 14 do
                 let cmd = { A.captureBasicStoryDetailsCommand () with Title = $"{i}" }
-                let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd |> fail
+                let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd |> failOnError
                 ()
 
-            let! page1 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = None } |> fail
-            let! page2 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page1.Cursor } |> fail
-            let! page3 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page2.Cursor } |> fail
+            let! page1 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = None } |> failOnError
+            let! page2 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page1.Cursor } |> failOnError
+            let! page3 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page2.Cursor } |> failOnError
 
             Assert.Equal(5, page1.Items.Length)
             Assert.Equal(5, page2.Items.Length)
@@ -394,19 +395,19 @@ type DomainEventRequestTests() =
         taskResult {
             // This could be one user making a request.
             let storyCmd = A.captureBasicStoryDetailsCommand ()
-            let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> fail
+            let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> failOnError
             for i = 1 to 13 do
                 let taskCmd =
                     { A.addBasicTaskDetailsToStoryCommand () with
                         StoryId = storyCmd.Id
                         Title = $"Title {i}" }
-                let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd |> fail
+                let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd |> failOnError
                 ()
 
             // This could be another user making a request.
-            let! page1 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None } |> fail
-            let! page2 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor } |> fail
-            let! page3 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor } |> fail
+            let! page1 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None } |> failOnError
+            let! page2 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor } |> failOnError
+            let! page3 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor } |> failOnError
 
             Assert.Equal(5, page1.Items.Length)
             Assert.Equal(5, page2.Items.Length)
