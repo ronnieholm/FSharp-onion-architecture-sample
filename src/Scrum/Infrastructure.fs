@@ -142,87 +142,92 @@ open Seedwork
 open Seedwork.Repository
 
 module SqliteStoryRepository =
-    let storyToDomainAsync ct (r: DbDataReader) =
+    let parseStory id (r: DbDataReader) =
+        // Don't parse by calling StoryAggregate.captureBasicStoryDetails as
+        // in general it doesn't guarantee correct construction. When an
+        // entity is a state machine, it resets the entity to its starting
+        // state. Furthermore, StoryAggregate.captureBasicStoryDetails emits
+        // events which we'd be discarding.
+        { Aggregate = {
+            Id = id
+            CreatedAt = parseCreatedAt r["s_created_at"]
+            UpdatedAt = parseUpdatedAt r["s_updated_at"] }
+          Title = (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
+          Description =
+            (Option.ofDBNull r["s_description"]
+            |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
+          Tasks = [] }
+
+    let parseTask id (r: DbDataReader) =
+        // We know tasks are unique based on the primary key constraint in
+        // the database. If we wanted to assert invariants not maintained by
+        // the database, it requires explictly code. Integration tests would
+        // generally catch such issues, with the exception of the database
+        // updated by a migration.
+        { Entity = {
+            Id = id
+            CreatedAt = parseCreatedAt r["t_created_at"]
+            UpdatedAt = parseUpdatedAt r["t_updated_at"] }
+          Title = (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
+          Description =
+            (Option.ofDBNull r["t_description"]
+            |> Option.map (string >> TaskDescription.create >> panicOnError "t_description")) }
+
+
+    let storiesToDomainAsync ct (r: DbDataReader) =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
         // for details on the flat table to tree deserialization algorithm.
-
-        let parseTaskFields (r: DbDataReader) : Task =
-            // We know tasks are unique based on the primary key constraint in
-            // the database. If we wanted to assert invariants not maintained by
-            // the database, it requires explictly code. Integration tests would
-            // generally catch such issues, with the exception of the database
-            // updated by a migration.
-            { Entity = {
-                Id = (r["t_id"] |> string |> Guid |> TaskId.create |> panicOnError "t_id")
-                CreatedAt = (parseCreatedAt r["t_created_at"])
-                UpdatedAt = (parseUpdatedAt r["t_updated_at"]) }
-              Title = (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
-              Description =
-                (Option.ofDBNull r["t_description"]
-                |> Option.map (string >> TaskDescription.create >> panicOnError "t_description")) }
-
         let storyIdTaskIdIndex = Dictionary<StoryId, Dictionary<TaskId, int>>()
         let tasks = ResizeArray<Task>()
-        let taskToDomain () : unit =
+        let visitTask storyId =
             let taskId = r["t_id"]
-            let storyId = r["t_story_id"]
             if taskId <> DBNull.Value then
                 let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
-                let storyId =
-                    storyId |> string |> Guid |> StoryId.create |> panicOnError "t_story_id"
                 let ok, taskIdIndex = storyIdTaskIdIndex.TryGetValue(storyId)
                 if not ok then
+                    // First task on the story. Mark story -> task path visited.
                     let taskIdIndex = Dictionary<TaskId, int>()
-                    let task = parseTaskFields r
                     taskIdIndex.Add(taskId, tasks.Count)
-                    tasks.Add(task)
                     storyIdTaskIdIndex.Add(storyId, taskIdIndex)
                 else
+                    // Non-first task on the story. Mark task path under
+                    // existing story visited.
                     let ok, _ = taskIdIndex.TryGetValue(taskId)
                     if not ok then
-                        let task = parseTaskFields r
                         taskIdIndex.Add(taskId, tasks.Count)
-                        tasks.Add(task)
-
-        let parseStoryFields (r: DbDataReader) =
-            // Don't call StoryAggregate.captureBasicStoryDetails as in general
-            // it doesn't guarantee correct construction. If a story is modelled
-            // as a state machine, it would always reset to the starting state.
-            // In addition, StoryAggregate.captureBasicStoryDetails emits events
-            // which we'd be discarding.
-            { Aggregate = {
-                Id = (r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id")
-                CreatedAt = (parseCreatedAt r["s_created_at"])
-                UpdatedAt = (parseUpdatedAt r["s_updated_at"]) }
-              Title = (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
-              Description =
-                (Option.ofDBNull r["s_description"]
-                |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
-              Tasks = [] }
+                let task = parseTask taskId r
+                tasks.Add(task)
 
         // Dictionary doesn't maintain insertion order, so combine with ResizeArray.
         let storyIdIndex = Dictionary<StoryId, int>()
         let stories = ResizeArray<Story>()
-        let toDomain (r: DbDataReader) : unit =
-            let storyId = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
-            let ok, _ = storyIdIndex.TryGetValue(storyId)
+        let visitStory () =
+            let id = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
+            let ok, _ = storyIdIndex.TryGetValue(id)
             if not ok then
-                let story = parseStoryFields r
-                storyIdIndex.Add(storyId, stories.Count)
+                let story = parseStory id r
+                storyIdIndex.Add(id, stories.Count)
                 stories.Add(story)
-            taskToDomain ()
+            visitTask id
 
         task {
             while! r.ReadAsync(ct) do
-               toDomain r
+               visitStory ()
 
             let stories =
                 stories
                 |> Seq.toList
                 |> List.map (fun story ->
                     let ok, taskIndex = storyIdTaskIdIndex.TryGetValue(story.Aggregate.Id)
-                    { story with Tasks = if not ok then [] else taskIndex.Values |> Seq.map (fun idx -> tasks[idx]) |> Seq.toList })
+                    let tasks =
+                        if ok then
+                            taskIndex.Values
+                            |> Seq.map (fun idx -> tasks[idx])
+                            |> Seq.toList
+                        else
+                            []
+                    { story with Tasks = tasks })
 
             return stories
         }
@@ -236,7 +241,7 @@ module SqliteStoryRepository =
             let sql =
                 "
                 select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
-                       t.id t_id, t.story_id t_story_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
+                       t.id t_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                 from stories s
                 left join tasks t on s.id = t.story_id
                 where s.id = @id"
@@ -249,7 +254,7 @@ module SqliteStoryRepository =
             // makes little async sense. We stick with ExecuteReaderAsync to
             // illustrate how to work with a client/server database.
             let! reader = cmd.ExecuteReaderAsync(ct)
-            let! stories = storyToDomainAsync ct reader
+            let! stories = storiesToDomainAsync ct reader
             return
                 (let count = stories |> List.length
                  match count with
@@ -381,7 +386,7 @@ module SqliteStoryRepository =
             cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
             cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
             let! reader = cmd.ExecuteReaderAsync(ct)
-            let! stories = storyToDomainAsync ct reader
+            let! stories = storiesToDomainAsync ct reader
             let stories = stories |> List.sortBy _.Aggregate.CreatedAt
 
             if stories.Length = 0 then
