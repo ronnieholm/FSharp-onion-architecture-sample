@@ -82,9 +82,7 @@ module Setup =
         cmd.ExecuteNonQuery() |> ignore
         connection
 
-    let setupRequests () =
-        let connection = getConnection connectionString
-        let transaction = connection.BeginTransaction()
+    let setupRequests (transaction: SQLiteTransaction) =
         let storyExist = SqliteStoryRepository.existAsync transaction ct
         let getStoryById = SqliteStoryRepository.getByIdAsync transaction ct
         let getStoriesPaged = SqliteStoryRepository.getStoriesPagedAsync transaction ct
@@ -99,17 +97,7 @@ module Setup =
            GetStoriesPaged = GetStoriesPagedQuery.runAsync getStoriesPaged
            ReviseBasicStoryDetails = ReviseBasicStoryDetailsCommand.runAsync clock getStoryById storyApplyEvent
            ReviseBasicTaskDetails = ReviseBasicTaskDetailsCommand.runAsync clock getStoryById storyApplyEvent
-           GetByAggregateId = GetByAggregateIdQuery.runAsync getByAggregateId
-           Rollback =
-               fun () ->
-                   transaction.Rollback()
-                   transaction.Dispose()
-                   connection.Dispose()
-           Commit =
-               fun () ->
-                   transaction.Commit()
-                   transaction.Dispose()
-                   connection.Dispose() |}
+           GetByAggregateId = GetByAggregateIdQuery.runAsync getByAggregateId |}
 
 open Setup
 
@@ -152,22 +140,27 @@ open Helpers
 // because we've introduced the possibility of a race condition. For tests not
 // to interfere with each other, and the reset, serialize test runs.
 [<Collection(nameof DisableParallelization)>]
-type StoryAggregateRequestTests() =
-    do reset ()
+type StoryAggregateRequestTests() as this =
+    [<DefaultValue>] val mutable connection: SQLiteConnection
+    [<DefaultValue>] val mutable transaction: SQLiteTransaction
+
+    do
+        reset ()
+        this.connection <- getConnection connectionString
+        this.transaction <- this.connection.BeginTransaction()
 
     [<Fact>]
     let ``must have member role to capture basic story details`` () =
         task {
-            let fns = setupRequests ()
+            let fns = setupRequests this.transaction
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! result = fns.CaptureBasicStoryDetails adminIdentity cmd
             test <@ result = Error(CaptureBasicStoryDetailsCommand.AuthorizationError Member) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``capture basic story and task details`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         taskResult {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> failOnError
@@ -188,24 +181,22 @@ type StoryAggregateRequestTests() =
                         CreatedAt = r.Tasks[0].CreatedAt
                         UpdatedAt = None } ] }
             test <@ r = expected @>
-            fns.Commit()
             return! Ok()
         }
 
     [<Fact>]
     let ``capture duplicate story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
             let! actual = fns.CaptureBasicStoryDetails memberIdentity cmd
             test <@ actual = Error(CaptureBasicStoryDetailsCommand.DuplicateStory(cmd.Id)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``remove story without task`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
@@ -213,12 +204,11 @@ type StoryAggregateRequestTests() =
             test <@ result = Ok cmd.Id @>
             let! result = fns.GetStoryById memberIdentity { Id = cmd.Id }
             test <@ result = Error(GetStoryByIdQuery.StoryNotFound(cmd.Id)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``remove story with task`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
@@ -228,12 +218,11 @@ type StoryAggregateRequestTests() =
             test <@ actual = Ok cmd.StoryId @>
             let! actual = fns.GetStoryById memberIdentity { Id = cmd.StoryId }
             test <@ actual = Error(GetStoryByIdQuery.StoryNotFound(cmd.StoryId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``add duplicate task to story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let storyCmd = A.captureBasicStoryDetailsCommand ()
             let taskCmd = A.addBasicTaskDetailsToStoryCommand storyCmd.Id
@@ -241,22 +230,20 @@ type StoryAggregateRequestTests() =
             let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd
             let! actual = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd
             test <@ actual = Error(AddBasicTaskDetailsToStoryCommand.DuplicateTask(taskCmd.TaskId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``add task to non-existing story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.addBasicTaskDetailsToStoryCommand (missingId ())
             let! actual = fns.AddBasicTaskDetailsToStory memberIdentity cmd
             test <@ actual = Error(AddBasicTaskDetailsToStoryCommand.StoryNotFound(cmd.StoryId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``remove task from story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
@@ -265,57 +252,52 @@ type StoryAggregateRequestTests() =
             let cmd = { StoryId = cmd.StoryId; TaskId = cmd.TaskId }
             let! actual = fns.RemoveTask memberIdentity cmd
             test <@ actual = Ok cmd.TaskId @>
-            fns.Commit ()
         }
 
     [<Fact>]
     let ``remove task from non-existing story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = { StoryId = missingId (); TaskId = missingId () }
             let! actual = fns.RemoveTask memberIdentity cmd
             test <@ actual = Error(RemoveTaskCommand.StoryNotFound(cmd.StoryId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``remove non-existing task from story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
             let cmd = { StoryId = cmd.Id; TaskId = missingId () }
             let! actual = fns.RemoveTask memberIdentity cmd
             test <@ actual = Error(RemoveTaskCommand.TaskNotFound(cmd.TaskId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``revise basic story details`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
             let cmd = A.reviseBasicStoryDetailsCommand cmd.Id
             let! actual = fns.ReviseBasicStoryDetails memberIdentity cmd
             test <@ actual = Ok cmd.Id @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``revise non-existing story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let cmd = A.reviseBasicStoryDetailsCommand cmd.Id
             let! actual = fns.ReviseBasicStoryDetails memberIdentity cmd
             test <@ actual = Error(ReviseBasicStoryDetailsCommand.StoryNotFound(cmd.Id)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``revise basic task details`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
@@ -324,34 +306,31 @@ type StoryAggregateRequestTests() =
             let cmd = A.reviseBasicTaskDetailsCommand cmd.StoryId cmd.TaskId
             let! actual = fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ actual = Ok cmd.TaskId @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``revise non-existing task`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
             let cmd = A.reviseBasicTaskDetailsCommand cmd.Id (missingId ())
             let! (actual: Result<Guid,ReviseBasicTaskDetailsCommand.ReviseBasicTaskDetailsError>) = fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ actual = Error(ReviseBasicTaskDetailsCommand.TaskNotFound(cmd.TaskId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``revise task on non-existing story`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let cmd = A.reviseBasicTaskDetailsCommand (missingId ()) (missingId ())
             let! actual = fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ actual = Error(ReviseBasicTaskDetailsCommand.StoryNotFound(cmd.StoryId)) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``get stories paged`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         let stories = 14
         taskResult {
             for i = 1 to stories do
@@ -373,25 +352,35 @@ type StoryAggregateRequestTests() =
                 |> List.distinct
                 |> List.length
             Assert.Equal(stories, unique)
-            fns.Commit()
         }
 
+    interface IDisposable with
+        member this.Dispose() =
+            this.transaction.Commit()
+            this.transaction.Dispose()
+            this.connection.Dispose()
+
 [<Collection(nameof DisableParallelization)>]
-type DomainEventRequestTests() =
-    do reset ()
+type DomainEventRequestTests()  as this =
+    [<DefaultValue>] val mutable connection: SQLiteConnection
+    [<DefaultValue>] val mutable transaction: SQLiteTransaction
+
+    do
+        reset ()
+        this.connection <- getConnection connectionString
+        this.transaction <- this.connection.BeginTransaction()
 
     [<Fact>]
     let ``must have admin role to query domain events`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         task {
             let! actual = fns.GetByAggregateId memberIdentity { Id = missingId (); Limit = 5; Cursor = None }
             test <@ actual = Error(GetByAggregateIdQuery.AuthorizationError Admin) @>
-            fns.Commit()
         }
 
     [<Fact>]
     let ``Get by aggregate Id paged`` () =
-        let fns = setupRequests ()
+        let fns = setupRequests this.transaction
         taskResult {
             // This could be one user making a request.
             let storyCmd = A.captureBasicStoryDetailsCommand ()
@@ -419,5 +408,10 @@ type DomainEventRequestTests() =
                  |> List.map _.AggregateType
                  |> List.distinct
                  |> List.exactlyOne))
-            fns.Commit()
         }
+
+    interface IDisposable with
+        member this.Dispose() =
+            this.transaction.Commit()
+            this.transaction.Dispose()
+            this.connection.Dispose()

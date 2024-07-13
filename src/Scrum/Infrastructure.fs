@@ -178,37 +178,43 @@ module SqliteStoryRepository =
         // See
         // https://github.com/ronnieholm/Playground/tree/master/FlatToTreeStructure
         // for details on the flat table to tree deserialization algorithm.
-        let storyIdTaskIdIndex = Dictionary<StoryId, Dictionary<TaskId, int>>()
-        let tasks = ResizeArray<Task>()
+        let storyTasks = Dictionary<StoryId, Dictionary<TaskId, Task>>()
+        let storyTasksOrder = Dictionary<StoryId, ResizeArray<TaskId>>()
         let visitTask storyId =
             let taskId = r["t_id"]
             if taskId <> DBNull.Value then
                 let taskId = taskId |> string |> Guid |> TaskId.create |> panicOnError "t_id"
-                let ok, taskIdIndex = storyIdTaskIdIndex.TryGetValue(storyId)
-                if not ok then
+                let task = parseTask taskId r
+
+                let storyVisited, tasks = storyTasks.TryGetValue(storyId)
+                if not storyVisited then
                     // First task on the story. Mark story -> task path visited.
-                    let taskIdIndex = Dictionary<TaskId, int>()
-                    taskIdIndex.Add(taskId, tasks.Count)
-                    storyIdTaskIdIndex.Add(storyId, taskIdIndex)
+                    let tasks = Dictionary<_, _>()
+                    tasks.Add(taskId, task)
+                    storyTasks.Add(storyId, tasks)
+
+                    let order = ResizeArray<_>()
+                    order.Add(taskId)
+                    storyTasksOrder.Add(storyId, order)
                 else
                     // Non-first task on the story. Mark task path under
                     // existing story visited.
-                    let ok, _ = taskIdIndex.TryGetValue(taskId)
-                    if not ok then
-                        taskIdIndex.Add(taskId, tasks.Count)
-                let task = parseTask taskId r
-                tasks.Add(task)
+                    let taskVisited, _ = tasks.TryGetValue(taskId)
+                    if not taskVisited then
+                        tasks.Add(taskId, task)
+                        let order = storyTasksOrder[storyId]
+                        order.Add(taskId)
 
         // Dictionary doesn't maintain insertion order, so combine with ResizeArray.
-        let storyIdIndex = Dictionary<StoryId, int>()
-        let stories = ResizeArray<Story>()
+        let stories = Dictionary<StoryId, Story>()
+        let storyOrder = ResizeArray<StoryId>()
         let visitStory () =
             let id = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
-            let ok, _ = storyIdIndex.TryGetValue(id)
+            let ok, _ = stories.TryGetValue(id)
             if not ok then
                 let story = parseStory id r
-                storyIdIndex.Add(id, stories.Count)
-                stories.Add(story)
+                stories.Add(id, story)
+                storyOrder.Add(id)
             visitTask id
 
         task {
@@ -216,19 +222,19 @@ module SqliteStoryRepository =
                visitStory ()
 
             let stories =
-                stories
-                |> Seq.toList
-                |> List.map (fun story ->
-                    let ok, taskIndex = storyIdTaskIdIndex.TryGetValue(story.Aggregate.Id)
+                storyOrder
+                |> Seq.map (fun storyId ->
+                    let story = stories[storyId]
                     let tasks =
+                        let ok, order = storyTasksOrder.TryGetValue(storyId)
                         if ok then
-                            taskIndex.Values
-                            |> Seq.map (fun idx -> tasks[idx])
+                            order
+                            |> Seq.map (fun taskId -> storyTasks[storyId][taskId])
                             |> Seq.toList
                         else
                             []
-                    { story with Tasks = tasks })
-
+                    { story with Tasks = Seq.toList tasks})
+                |> Seq.toList
             return stories
         }
 
