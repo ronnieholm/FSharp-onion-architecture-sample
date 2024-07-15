@@ -95,11 +95,11 @@ module Seedwork =
                 return aggregateId
             }
 
-        let getLargestCreatedAtAsync table (connection: SQLiteConnection) ct =
+        let getLargestCreatedAtAsync table (connection: SQLiteConnection) (transaction: SQLiteTransaction) ct =
             task {
-                let sqlLast = $"select created_at from {table} order by created_at desc limit 1"
-                use cmdLast = new SQLiteCommand(sqlLast, connection)
-                let! last = cmdLast.ExecuteScalarAsync(ct)
+                let sql = $"select created_at from {table} order by created_at desc limit 1"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let! last = cmd.ExecuteScalarAsync(ct)
                 // ExecuteScalarAsync returns null on zero rows returned.
                 return if last = null then 0L else last :?> int64
             }
@@ -112,11 +112,11 @@ module Seedwork =
                 |> Int64.Parse
             | None -> 0
 
-        let offsetsToCursor globalOffset localOffset =
-            if globalOffset = localOffset then
+        let offsetsToCursor pageEndOffset globalEndOffset =
+            if pageEndOffset = globalEndOffset then
                 None
             else
-                localOffset
+                pageEndOffset
                 |> string
                 |> Encoding.UTF8.GetBytes
                 |> Convert.ToBase64String
@@ -205,24 +205,28 @@ module SqliteStoryRepository =
                         let order = storyTasksOrder[storyId]
                         order.Add(taskId)
 
-        // Dictionary doesn't maintain insertion order, so combine with ResizeArray.
+        // Dictionary doesn't maintain insertion order, so combine with
+        // ResizeArray to support SQL with order clause.
         let stories = Dictionary<StoryId, Story>()
-        let storyOrder = ResizeArray<StoryId>()
+        let storiesOrder = ResizeArray<StoryId>()
         let visitStory () =
             let id = r["s_id"] |> string |> Guid |> StoryId.create |> panicOnError "s_id"
             let ok, _ = stories.TryGetValue(id)
             if not ok then
                 let story = parseStory id r
                 stories.Add(id, story)
-                storyOrder.Add(id)
+                storiesOrder.Add(id)
             visitTask id
 
         task {
             while! r.ReadAsync(ct) do
                visitStory ()
 
-            let stories =
-                storyOrder
+            assert(stories.Count = storiesOrder.Count)
+            assert(storyTasks.Count = storyTasksOrder.Count)
+
+            return
+                storiesOrder
                 |> Seq.map (fun storyId ->
                     let story = stories[storyId]
                     let tasks =
@@ -233,9 +237,8 @@ module SqliteStoryRepository =
                             |> Seq.toList
                         else
                             []
-                    { story with Tasks = Seq.toList tasks})
+                    { story with Tasks = Seq.toList tasks })
                 |> Seq.toList
-            return stories
         }
 
     let getByIdAsync (transaction: SQLiteTransaction) (ct: CancellationToken) id =
@@ -375,7 +378,7 @@ module SqliteStoryRepository =
                     now
         }
 
-    let getStoriesPagedAsync (transaction: SQLiteTransaction) (ct: CancellationToken) limit cursor =
+    let getPagedAsync (transaction: SQLiteTransaction) (ct: CancellationToken) limit cursor =
         let connection = transaction.Connection
         task {
             let sqlStories =
@@ -393,14 +396,13 @@ module SqliteStoryRepository =
             cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
             let! reader = cmd.ExecuteReaderAsync(ct)
             let! stories = storiesToDomainAsync ct reader
-            let stories = stories |> List.sortBy _.Aggregate.CreatedAt
 
             if stories.Length = 0 then
                 return { Cursor = None; Items = [] }
             else
                 let pageEndOffset = stories[stories.Length - 1].Aggregate.CreatedAt.Ticks
-                let! globalEndOffset = getLargestCreatedAtAsync "stories" connection ct
-                let cursor = offsetsToCursor globalEndOffset pageEndOffset
+                let! globalEndOffset = getLargestCreatedAtAsync "stories" connection transaction ct
+                let cursor = offsetsToCursor pageEndOffset globalEndOffset
                 return { Cursor = cursor; Items = stories }
         }
 
@@ -442,8 +444,8 @@ module SqliteDomainEventRepository =
                 return { Cursor = None; Items = [] }
             else
                 let pageEndOffset = events[events.Count - 1].CreatedAt.Ticks
-                let! globalEndOffset = getLargestCreatedAtAsync "domain_events" connection ct
-                let cursor = offsetsToCursor globalEndOffset pageEndOffset
+                let! globalEndOffset = getLargestCreatedAtAsync "domain_events" connection transaction ct
+                let cursor = offsetsToCursor pageEndOffset globalEndOffset
                 return { Cursor = cursor; Items = events |> Seq.toList }
         }
 

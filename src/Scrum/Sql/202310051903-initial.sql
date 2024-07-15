@@ -8,6 +8,10 @@
 -- pragma foreign_keys = ON
 -- Or foreign key cascade delete has no effect.
 
+-- The uniqueness constraint on created_at is required for pagination.
+-- Resolution is assumed high enough that two rows in a table can never be
+-- created with the same time.
+
 create table stories
 (
     id          text primary key,

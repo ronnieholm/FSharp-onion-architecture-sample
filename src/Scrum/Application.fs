@@ -104,8 +104,8 @@ module StoryRequest =
     open Scrum.Domain.StoryAggregate.TaskEntity
     open Models
 
-    type StoryApplyEvent = DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>
-    type GetStoriesPaged = Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<Story>>
+    type ApplyEvent = DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>
+    type GetPaged = Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<Story>>
 
     type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
@@ -131,7 +131,7 @@ module StoryRequest =
             | ValidationErrors of ValidationError list
             | DuplicateStory of Guid
 
-        let runAsync utcNow storyExist (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync utcNow storyExist (storyApplyEvent: ApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -176,7 +176,7 @@ module StoryRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync utcNow getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -205,7 +205,7 @@ module StoryRequest =
             | ValidationErrors of ValidationError list
             | StoryNotFound of Guid
 
-        let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync utcNow getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -251,7 +251,7 @@ module StoryRequest =
             function
             | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-        let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync utcNow getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -302,7 +302,7 @@ module StoryRequest =
             function
             | StoryAggregate.ReviseBasicTaskDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync utcNow getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -338,7 +338,7 @@ module StoryRequest =
             function
             | StoryAggregate.RemoveTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-        let runAsync utcNow getStoryById (storyApplyEvent: StoryApplyEvent) identity cmd =
+        let runAsync utcNow getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -437,7 +437,7 @@ module StoryRequest =
             | AuthorizationError of ScrumRole
             | ValidationErrors of ValidationError list
 
-        let runAsync (getStoriesPaged: GetStoriesPaged) identity qry =
+        let runAsync (getStoriesPaged: GetPaged) identity qry =
             taskResult {
                 do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                 let! qry = validate qry |> Result.mapError ValidationErrors

@@ -882,7 +882,7 @@ module RouteHandlers =
 
                         use connection = getConnection connectionString
                         use transaction = connection.BeginTransaction()
-                        let getStoriesPaged = SqliteStoryRepository.getStoriesPagedAsync transaction ctx.RequestAborted
+                        let getStoriesPaged = SqliteStoryRepository.getPagedAsync transaction ctx.RequestAborted
 
                         let qry = { Limit = limit; Cursor = cursor |> Option.ofObj }
                         let! result =

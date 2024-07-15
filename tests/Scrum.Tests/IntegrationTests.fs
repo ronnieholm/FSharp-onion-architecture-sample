@@ -83,20 +83,20 @@ module Setup =
         connection
 
     let setupRequests (transaction: SQLiteTransaction) =
-        let storyExist = SqliteStoryRepository.existAsync transaction ct
-        let getStoryById = SqliteStoryRepository.getByIdAsync transaction ct
-        let getStoriesPaged = SqliteStoryRepository.getStoriesPagedAsync transaction ct
-        let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ct
+        let exist = SqliteStoryRepository.existAsync transaction ct
+        let getById = SqliteStoryRepository.getByIdAsync transaction ct
+        let getPaged = SqliteStoryRepository.getPagedAsync transaction ct
+        let applyEvent = SqliteStoryRepository.applyEventAsync transaction ct
         let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ct
 
-        {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync clock storyExist storyApplyEvent
-           AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync clock getStoryById storyApplyEvent
-           RemoveStory = RemoveStoryCommand.runAsync clock getStoryById storyApplyEvent
-           RemoveTask = RemoveTaskCommand.runAsync clock getStoryById storyApplyEvent
-           GetStoryById = GetStoryByIdQuery.runAsync getStoryById
-           GetStoriesPaged = GetStoriesPagedQuery.runAsync getStoriesPaged
-           ReviseBasicStoryDetails = ReviseBasicStoryDetailsCommand.runAsync clock getStoryById storyApplyEvent
-           ReviseBasicTaskDetails = ReviseBasicTaskDetailsCommand.runAsync clock getStoryById storyApplyEvent
+        {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync clock exist applyEvent
+           AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync clock getById applyEvent
+           RemoveStory = RemoveStoryCommand.runAsync clock getById applyEvent
+           RemoveTask = RemoveTaskCommand.runAsync clock getById applyEvent
+           GetStoryById = GetStoryByIdQuery.runAsync getById
+           GetStoriesPaged = GetStoriesPagedQuery.runAsync getPaged
+           ReviseBasicStoryDetails = ReviseBasicStoryDetailsCommand.runAsync clock getById applyEvent
+           ReviseBasicTaskDetails = ReviseBasicTaskDetailsCommand.runAsync clock getById applyEvent
            GetByAggregateId = GetByAggregateIdQuery.runAsync getByAggregateId |}
 
 open Setup
