@@ -104,8 +104,8 @@ module StoryRequest =
     open Scrum.Domain.StoryAggregate.TaskEntity
     open Models
 
-    type ApplyEvent = DateTime -> StoryDomainEvent -> System.Threading.Tasks.Task<unit>
-    type GetPaged = Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<Story>>
+    type ApplyEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
+    type GetPaged = Limit -> Cursor option -> Threading.Tasks.Task<Paged<Story>>
 
     type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
 
@@ -140,7 +140,7 @@ module StoryRequest =
                     |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                 let story, event =
                     StoryAggregate.captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (utcNow ())
-                do! storyApplyEvent (utcNow ()) event
+                do! storyApplyEvent event
                 // Example of publishing the StoryBasicDetailsCaptured domain
                 // event to another aggregate:
                 // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
@@ -185,7 +185,7 @@ module StoryRequest =
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                 let story, event =
                     reviseBasicStoryDetails story cmd.Title cmd.Description (utcNow ())
-                do! storyApplyEvent (utcNow ()) event
+                do! storyApplyEvent event
                 return StoryId.value story.Aggregate.Id
             }
 
@@ -213,7 +213,7 @@ module StoryRequest =
                     getStoryById cmd.Id
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                 let event = StoryAggregate.removeStory story (utcNow ())
-                do! storyApplyEvent (utcNow ()) event
+                do! storyApplyEvent event
                 return StoryId.value story.Aggregate.Id
             }
 
@@ -261,7 +261,7 @@ module StoryRequest =
                 let! _, event =
                     addBasicTaskDetailsToStory story cmd.TaskId cmd.Title cmd.Description (utcNow ())
                     |> Result.mapError fromDomainError
-                do! storyApplyEvent (utcNow ()) event
+                do! storyApplyEvent event
                 return TaskId.value cmd.TaskId
             }
 
@@ -312,7 +312,7 @@ module StoryRequest =
                 let! _, event =
                     reviseBasicTaskDetails story cmd.TaskId cmd.Title cmd.Description (utcNow ())
                     |> Result.mapError fromDomainError
-                do! storyApplyEvent (utcNow ()) event
+                do! storyApplyEvent event
                 return TaskId.value cmd.TaskId
             }
 
@@ -346,7 +346,7 @@ module StoryRequest =
                     getStoryById cmd.StoryId
                     |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
                 let! _, event = removeTask story cmd.TaskId (utcNow ()) |> Result.mapError fromDomainError
-                do! storyApplyEvent (utcNow ()) event
+                do! storyApplyEvent event
                 return TaskId.value cmd.TaskId
             }
 
