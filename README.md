@@ -62,22 +62,22 @@ configuration.
 ```bash
 # Authentication (supported roles: member and/or admin)
 ## Post
-curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request post
-curl https://localhost:5000/authentication/renew-token --insecure --request post -H "Authorization: Bearer <token>"
-curl https://localhost:5000/authentication/introspect --insecure --request post -H "Authorization: Bearer <token>"
+curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request POST
+curl https://localhost:5000/authentication/renew-token --insecure --request POST -H "Authorization: Bearer <token>"
+curl https://localhost:5000/authentication/introspect --insecure --request POST -H "Authorization: Bearer <token>"
 
 # Stories
 ## Post
-curl https://localhost:5000/stories --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title", "description": "description"}'
-curl https://localhost:5000/stories/<storyId>/tasks --insecure --request post -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
+curl https://localhost:5000/stories --insecure --request POST -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title", "description": "description"}'
+curl https://localhost:5000/stories/<storyId>/tasks --insecure --request POST -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
 
 ## Put
-curl https://localhost:5000/stories/<storyId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
-curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request put -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
+curl https://localhost:5000/stories/<storyId> --insecure --request PUT -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
+curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request PUT -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
 
 ## Delete
-curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request delete -H 'Authorization: Bearer <token>'
-curl https://localhost:5000/stories/<storyId> --insecure --request delete -H 'Authorization: Bearer <token>'
+curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request DELETE -H 'Authorization: Bearer <token>'
+curl https://localhost:5000/stories/<storyId> --insecure --request DELETE -H 'Authorization: Bearer <token>'
 
 ## Get
 curl https://localhost:5000/stories/<storyId> --insecure -H 'Authorization: Bearer <token>'
