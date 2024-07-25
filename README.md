@@ -36,12 +36,13 @@ The Scrum domain was chosen because it offers sufficient complexity and everyone
 is familiar with it, though most aspects of the application is illustrated with
 stories and tasks only.
 
-With only stories and tasks, onion architecture may seem to introduce a
-disproportional amount of complexity. A larger domain and integrations with
-external services is where onion architecture starts to pays off.
+With only stories and tasks, onion architecture and domain driven design may
+seem to introduce a disproportional amount of complexity. They're only worth it
+for a larger domain with more integrations, and where core isn't solely
+exercised through a web service.
 
-That said, not every project requires an implementation of every concept from
-onion architecture and domain driven design. Those should be scaled up or down
+Not every project requires an implementation of every concept from onion
+architecture and domain driven design. Concepts should be scaled up or down
 based on actual business complexity.
 
 ## Getting started
