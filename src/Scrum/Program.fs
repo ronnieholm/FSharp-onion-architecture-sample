@@ -579,7 +579,7 @@ module RouteHandlers =
                       Title = request.title
                       Description = request.description |> Option.ofObj }
                 let! result =
-                    runWithDecoratorAsync log identity cmd
+                    runWithMiddlewareAsync log identity cmd
                         (fun () -> CaptureBasicStoryDetailsCommand.runAsync utcNow storyExist storyApplyEvent identity cmd)
 
                 match result with
@@ -624,7 +624,7 @@ module RouteHandlers =
                       Title = request.title
                       Description = request.description |> Option.ofObj }
                 let! result =
-                    runWithDecoratorAsync log identity cmd
+                    runWithMiddlewareAsync log identity cmd
                         (fun () -> ReviseBasicStoryDetailsCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
@@ -668,7 +668,7 @@ module RouteHandlers =
                       Title = request.title
                       Description = request.description |> Option.ofObj }
                 let! result =
-                    runWithDecoratorAsync log identity cmd
+                    runWithMiddlewareAsync log identity cmd
                         (fun () -> AddBasicTaskDetailsToStoryCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
@@ -711,7 +711,7 @@ module RouteHandlers =
                       Title = request.title
                       Description = request.description |> Option.ofObj }
                 let! result =
-                    runWithDecoratorAsync log identity cmd
+                    runWithMiddlewareAsync log identity cmd
                         (fun () -> ReviseBasicTaskDetailsCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
@@ -749,7 +749,7 @@ module RouteHandlers =
 
                 let cmd = { StoryId = storyId; TaskId = taskId }
                 let! result =
-                    runWithDecoratorAsync log identity cmd
+                    runWithMiddlewareAsync log identity cmd
                         (fun () -> RemoveTaskCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
@@ -786,7 +786,7 @@ module RouteHandlers =
 
                 let cmd: RemoveStoryCommand = { Id = storyId }
                 let! result =
-                    runWithDecoratorAsync log identity cmd
+                    runWithMiddlewareAsync log identity cmd
                         (fun () -> RemoveStoryCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
                 match result with
@@ -821,7 +821,7 @@ module RouteHandlers =
 
                 let qry: GetStoryByIdQuery = { Id = storyId }
                 let! result =
-                    runWithDecoratorAsync log identity qry
+                    runWithMiddlewareAsync log identity qry
                         (fun () -> GetStoryByIdQuery.runAsync getStoryById identity qry)
 
                 match result with
@@ -886,7 +886,7 @@ module RouteHandlers =
 
                         let qry = { Limit = limit; Cursor = cursor |> Option.ofObj }
                         let! result =
-                            runWithDecoratorAsync log identity qry
+                            runWithMiddlewareAsync log identity qry
                                 (fun () -> GetStoriesPagedQuery.runAsync getStoriesPaged identity qry)
                             |> TaskResult.mapError(
                                     function
@@ -925,7 +925,7 @@ module RouteHandlers =
 
                         let qry = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
                         let! result =
-                            runWithDecoratorAsync log identity qry
+                            runWithMiddlewareAsync log identity qry
                                 (fun () -> GetByAggregateIdQuery.runAsync getByAggregateId identity qry)
                             |> TaskResult.mapError(
                                     function

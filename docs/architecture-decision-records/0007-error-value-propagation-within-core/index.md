@@ -6,7 +6,7 @@ Status: Accepted and active.
 
 With the application layer acting as entry point for hosts such as ASP.NET, it's
 where application and domain errors are documented. But being a coordination
-layer, executing use cases, the application layer is only directly responsible
+layer, executing workflows, the application layer is only directly responsible
 for a subset of errors. e.g., failed validation of the request or failed loading
 the aggregate due to invalid Id.
 

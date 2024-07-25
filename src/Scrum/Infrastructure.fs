@@ -465,11 +465,11 @@ module ScrumLogger =
 
     let log (logger: ILogger<_>) message =
         match message with
-        | Request (identity, useCase, request) ->
-            let requestJson = JsonSerializer.Serialize(request, jsonSerializationOptions)
-            logger.LogInformation("Use case: {useCase}, payload: {payload}, identity: {identity}", useCase, requestJson, $"%A{identity}")
-        | RequestDuration (useCase, duration) ->
-            logger.LogInformation("{useCase}: {duration}", useCase, duration)
+        | Workflow (identity, name, payload) ->
+            let payloadJson = JsonSerializer.Serialize(payload, jsonSerializationOptions)
+            logger.LogInformation("Workflow: {name}, payload: {payload}, identity: {identity}", name, payloadJson, $"%A{identity}")
+        | WorkflowDuration (name, duration) ->
+            logger.LogInformation("{name}: {duration}", name, duration)
         | Exception e ->
             logger.LogDebug("{exception}", $"%A{e}")
         | Err message ->

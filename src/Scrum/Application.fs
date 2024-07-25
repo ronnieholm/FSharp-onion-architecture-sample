@@ -52,8 +52,8 @@ module Seedwork =
 
     type LogMessage =
         // Application specific logging.
-        | Request of ScrumIdentity * useCase: string * request: obj
-        | RequestDuration of useCase: string * duration: uint<ms>
+        | Workflow of ScrumIdentity * name: string * payload: obj
+        | WorkflowDuration of name: string * duration: uint<ms>
         | Exception of exn
         // Delegate to .NET ILogger.
         | Err of string
@@ -67,21 +67,21 @@ module Seedwork =
         let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
         result, elapsed
 
-    // TODO: Write separate tests for the decorator.
-    let runWithDecoratorAsync<'TResponse> (log: LogMessage -> unit) identity useCase (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
+    // TODO: Write separate tests for the middleware.
+    let runWithMiddlewareAsync<'TResponse> (log: LogMessage -> unit) identity payload (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
         try
             task {
-                let useCase = useCase.GetType().Name
+                let name = payload.GetType().Name
                 let result, elapsed =
                     time (fun _ ->
                         // TODO: Write test with fn that waits for x ms to make
                         // sure elapsed is correct.
-                        log (Request(identity, useCase, useCase))
+                        log (Workflow(identity, name, payload))
                         fn ())
                 let! result = result
                 // Don't log errors from evaluating fn as these are expected
                 // errors. We don't want those to pollute the log with.
-                log (RequestDuration(useCase, elapsed))
+                log (WorkflowDuration(name, elapsed))
                 return result
             }
         with e ->

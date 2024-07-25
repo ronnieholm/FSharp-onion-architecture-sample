@@ -51,7 +51,7 @@ repository. As both the command handler generating the event and subsequent
 event processors run within the same transaction, querying the store guarantees
 up-to-date entities.
 
-One command handler isn't limited to emitting a single event. Imagine a use case
+One command handler isn't limited to emitting a single event. Imagine a workflow
 where the handler adds and removes items to or from a list. This could result in
 multiple events.
 
