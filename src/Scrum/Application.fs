@@ -444,7 +444,7 @@ module StoryRequest =
                 let! storiesPage = getStoriesPaged qry.Limit qry.Cursor
                 return
                     // Per Zalando guidelines, we could write a JsonConverter to
-                    // replace "Items" by "Stories".
+                    // replace "Items" with "Stories".
                     { PagedDto.Cursor = storiesPage.Cursor |> Option.map Cursor.value
                       Items = storiesPage.Items |> List.map StoryDto.from }
             }

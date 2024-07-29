@@ -43,7 +43,8 @@ exercised through a web service.
 
 Not every project requires an implementation of every concept from onion
 architecture and domain driven design. Concepts should be scaled up or down
-based on actual business complexity.
+based on actual business complexity and expected total cost of ownership over
+the lifetime of the software.
 
 ## Getting started
 
