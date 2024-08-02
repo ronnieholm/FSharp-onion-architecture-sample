@@ -602,6 +602,7 @@ module RouteHandlers =
             }
 
     type StoryUpdateDto = { title: string; description: string }
+    // TODO: We have request (should we Dto -> Request) but out response types. Should we for completeness for non-trivial inlined types? Only if different from type returned by application layer.
 
     let reviseBasicStoryDetailsHandler storyId : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
