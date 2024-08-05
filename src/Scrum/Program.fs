@@ -86,7 +86,7 @@ module Seedwork =
             |> JsonSerializer.Serialize
             |> create StatusCodes.Status400BadRequest
 
-        let missingQueryStringParam name =
+        let missingQueryStringParameter name =
             create StatusCodes.Status400BadRequest $"Missing query string parameter '%s{name}'"
 
         let unexpectedQueryStringParameters names =
@@ -478,11 +478,11 @@ module RouteHandlers =
                 result {
                     let! userId =
                         ctx.GetQueryStringValue "userId"
-                        |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "userId")
+                        |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "userId")
                     let! roles =
                         ctx.GetQueryStringValue "roles"
                         |> Result.map (fun r -> r.Split(',') |> Array.map ScrumRole.fromString |> Array.toList)
-                        |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "roles")
+                        |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "roles")
                     let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof userId; nameof roles ]
                     let token = IdentityProvider.issueToken settings DateTime.UtcNow userId roles
 
@@ -586,12 +586,11 @@ module RouteHandlers =
                 | Ok id ->
                     do! transaction.CommitAsync(ctx.RequestAborted)
                     ctx.SetStatusCode 201
-                    ctx.SetHttpHeader("location", $"/stories/{id}")
+                    ctx.SetHttpHeader("location", $"/stories/{id}") // TODO: should headers be capitalized?
                     return! json {| StoryId = id |} next ctx
                 | Error e ->
                     do! transaction.RollbackAsync(ctx.RequestAborted)
                     let problem =
-                        let accept = ctx.Request.Headers.Accept
                         match e with
                         | CaptureBasicStoryDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
                         | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
@@ -874,11 +873,11 @@ module RouteHandlers =
                     taskResult {
                         let! limit =
                             ctx.GetQueryStringValue "limit"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
                             |> Result.bind (stringToInt32 "limit")
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
                         let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
 
                         use connection = getConnection connectionString
@@ -913,11 +912,11 @@ module RouteHandlers =
                     taskResult {
                         let! limit =
                             ctx.GetQueryStringValue "limit"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "limit")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
                             |> Result.bind (stringToInt32 "limit")
                         let! cursor =
                             ctx.GetQueryStringValue "cursor"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParam "cursor")
+                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
                         let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
 
                         use connection = getConnection connectionString

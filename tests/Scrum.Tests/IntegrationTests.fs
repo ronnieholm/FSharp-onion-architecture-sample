@@ -71,9 +71,9 @@ module Setup =
     let nullLogger _ = ()
     let clock () = DateTime.UtcNow
     let adminIdentity =
-        ScrumIdentity.Authenticated(UserId = "123", Roles = [ ScrumRole.Admin ])
+        Authenticated(UserId = "123", Roles = [ Admin ])
     let memberIdentity =
-        ScrumIdentity.Authenticated(UserId = "123", Roles = [ ScrumRole.Member ])
+        Authenticated(UserId = "123", Roles = [ Member ])
 
     let getConnection (connectionString: string) : SQLiteConnection =
         let connection = new SQLiteConnection(connectionString)

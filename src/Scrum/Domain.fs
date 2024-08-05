@@ -193,7 +193,7 @@ module StoryAggregate =
           Title = title
           Description = description
           Tasks = [] },
-        StoryDomainEvent.BasicStoryDetailsCaptured
+        BasicStoryDetailsCaptured
             { DomainEvent = { OccurredAt = createdAt }
               StoryId = id
               StoryTitle = title
@@ -202,7 +202,7 @@ module StoryAggregate =
     let reviseBasicStoryDetails story title description updatedAt =
         let root = { story.Aggregate with UpdatedAt = Some updatedAt }
         { story with Aggregate = root; Title = title; Description = description },
-        StoryDomainEvent.BasicStoryDetailsRevised
+        BasicStoryDetailsRevised
             { DomainEvent = { OccurredAt = updatedAt }
               StoryId = story.Aggregate.Id
               StoryTitle = title
@@ -212,7 +212,7 @@ module StoryAggregate =
         // Depending on the specifics of a domain, we might want to explicitly
         // delete the story's tasks and emit task deleted events. In this case,
         // we leave cascade delete to the store.
-        StoryDomainEvent.StoryRemoved
+        StoryRemoved
             { DomainEvent = { OccurredAt = occurredAt }
               StoryId = story.Aggregate.Id }
 
@@ -228,7 +228,7 @@ module StoryAggregate =
         else
             Ok(
                 { story with Tasks = task :: story.Tasks },
-                StoryDomainEvent.BasicTaskDetailsAddedToStory
+                BasicTaskDetailsAddedToStory
                     { DomainEvent = { OccurredAt = createdAt }
                       StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
@@ -249,7 +249,7 @@ module StoryAggregate =
             let story = { story with Tasks = updatedTask :: tasks }
             Ok(
                 story,
-                StoryDomainEvent.BasicTaskDetailsRevised
+                BasicTaskDetailsRevised
                     { DomainEvent = { OccurredAt = updatedAt }
                       StoryId = story.Aggregate.Id
                       TaskId = taskId
@@ -269,7 +269,7 @@ module StoryAggregate =
             let story = { story with Tasks = tasks }
             Ok(
                 story,
-                StoryDomainEvent.TaskRemoved
+                TaskRemoved
                     { DomainEvent = { OccurredAt = occurredAt }
                       StoryId = story.Aggregate.Id
                       TaskId = taskId }
