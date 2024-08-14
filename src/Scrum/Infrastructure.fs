@@ -130,6 +130,10 @@ open System.Text.Json
 open System.Threading
 open System.Collections.Generic
 open System.Data.SQLite
+open System.IO
+open System.Text
+open System.Reflection
+open System.Security.Cryptography
 open Microsoft.Extensions.Logging
 open FsToolkit.ErrorHandling
 open Scrum.Domain
@@ -140,6 +144,145 @@ open Scrum.Domain.StoryAggregate.TaskEntity
 open Scrum.Application.Seedwork
 open Seedwork
 open Seedwork.Repository
+
+module DatabaseMigration =
+    type AvailableScript = { Name: string; Hash: string; Sql: string }
+    type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
+
+    type Migrate(log: LogMessage -> unit, connectionString: string) =
+        let createMigrationsSql =
+            "
+            create table migrations(
+                name text primary key,
+                hash text not null,
+                sql text not null,
+                created_at integer not null
+            ) strict;"
+
+        let getAvailableScripts () =
+            let hasher = SHA1.Create()
+            let assembly = Assembly.GetExecutingAssembly()
+            let prefix = "Scrum.Sql."
+
+            assembly.GetManifestResourceNames()
+            |> Array.filter _.StartsWith(prefix)
+            |> Array.map (fun path ->
+                let sql =
+                    use stream = assembly.GetManifestResourceStream(path)
+                    if isNull stream then
+                        // On the SQL file, did you set Build action to
+                        // EmbeddedResource?
+                        panic $"Embedded resource not found: '{path}'"
+                    use reader = new StreamReader(stream)
+                    reader.ReadToEnd()
+
+                let hash =
+                    hasher.ComputeHash(Encoding.UTF8.GetBytes(sql))
+                    |> Array.map _.ToString("x2")
+                    |> String.Concat
+
+                let name = path.Replace(prefix, "").Replace(".sql", "")
+                { Name = name; Hash = hash; Sql = sql })
+            |> Array.sortBy _.Name
+
+        let getAppliedMigrations connection =
+            let sql =
+                "select count(*) from sqlite_master where type = 'table' and name = 'migrations'"
+            use cmd = new SQLiteCommand(sql, connection)
+            let exist = cmd.ExecuteScalar() :?> int64
+
+            if exist = 0 then
+                // SQLite doesn't support transactional schema changes.
+                log (Inf "Creating migrations table")
+                use cmd = new SQLiteCommand(createMigrationsSql, connection)
+                let count = cmd.ExecuteNonQuery()
+                assert (count = 0)
+                Array.empty
+            else
+                let sql = "select name, hash, sql, created_at from migrations order by created_at"
+                use cmd = new SQLiteCommand(sql, connection)
+
+                // Without transaction as we assume only one migration will run
+                // at once.
+                use r = cmd.ExecuteReader()
+
+                let migrations = ResizeArray<AppliedMigration>()
+                while r.Read() do
+                    let m =
+                        { Name = r["name"] |> string
+                          Hash = r["hash"] |> string
+                          Sql = r["sql"] |> string
+                          CreatedAt = Repository.parseCreatedAt r["created_at"] }
+                    migrations.Add(m)
+                migrations |> Seq.toArray
+
+        let verifyAppliedMigrations (available: AvailableScript array) (applied: AppliedMigration array) =
+            for i = 0 to applied.Length - 1 do
+                if applied[i].Name <> available[i].Name then
+                    panic $"Mismatch in applied name '{applied[i].Name}' and available name '{available[i].Name}'"
+                if applied[i].Hash <> available[i].Hash then
+                    panic $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{available[i].Hash}'"
+
+        let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) =
+            for i = applied.Length to available.Length - 1 do
+                // With a transaction as we're updating the migrations table.
+                use tx = connection.BeginTransaction()
+                use cmd = new SQLiteCommand(available[i].Sql, connection, tx)
+                let count = cmd.ExecuteNonQuery()
+                assert (count >= 0)
+
+                let sql =
+                    $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{available[i].Name}', '{available[i].Hash}', '{available[i].Sql}', {DateTime.UtcNow.Ticks})"
+                let cmd = new SQLiteCommand(sql, connection, tx)
+
+                try
+                    log (Inf $"Applying migration: '{available[i].Name}'")
+                    let count = cmd.ExecuteNonQuery()
+                    assert (count = 1)
+
+                    // Schema upgrade per migration code. Downgrading isn't
+                    // supported.
+                    match available[i].Name with
+                    | "202310051903-initial" -> ()
+                    | _ -> ()
+
+                    tx.Commit()
+                with e ->
+                    tx.Rollback()
+                    reraise ()
+
+        let applySeed (connection: SQLiteConnection) (seed: AvailableScript) =
+            // A pseudo-migration, so we don't record it in the migrations
+            // table.
+            use tx = connection.BeginTransaction()
+            use cmd = new SQLiteCommand(seed.Sql, connection, tx)
+            try
+                log (Inf "Applying seed")
+                let count = cmd.ExecuteNonQuery()
+                assert (count >= -1)
+                tx.Commit()
+            with e ->
+                tx.Rollback()
+                reraise ()
+
+        member _.Apply() : unit =
+            use connection = new SQLiteConnection(connectionString)
+            connection.Open()
+
+            let availableScripts = getAvailableScripts ()
+            let availableMigrations =
+                availableScripts |> Array.filter (fun m -> m.Name <> "seed")
+
+            log (Inf $"Found {availableScripts.Length} available migration(s)")
+            let appliedMigrations = getAppliedMigrations connection
+            log (Inf $"Found {appliedMigrations.Length} applied migration(s)")
+
+            verifyAppliedMigrations availableMigrations appliedMigrations
+            applyNewMigrations connection availableMigrations appliedMigrations
+
+            let seeds = availableScripts |> Array.filter (fun s -> s.Name = "seed")
+            log (Inf $"Found {seeds.Length} seed")
+            seeds |> Array.exactlyOne |> applySeed connection
 
 module SqliteStoryRepository =
     let parseStory id (r: DbDataReader) =

@@ -104,7 +104,7 @@ open Setup
 type ApplyDatabaseMigrationsFixture() =
     do
         // Runs before all tests.
-        DatabaseMigrator(nullLogger, connectionString).Apply()
+        DatabaseMigration.Migrate(nullLogger, connectionString).Apply()
 
     interface IDisposable with
         member _.Dispose() =
