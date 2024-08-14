@@ -24,3 +24,6 @@
 - https://www.compositional-it.com/news-blog/working-with-phantom-types-in-fsharp/
 - Add email sending service, storing emails in database for separate processing
 - Perform experiment copying Story aggregate out into seperate projects for main code and test code (vertical slice architecture)
+- Use fshttp for testing web layer
+- Use vscode user as with https://github.com/dotnet/orleans/blob/main/.devcontainer/devcontainer.json.
+- Create Orleans and Akka.NET branches

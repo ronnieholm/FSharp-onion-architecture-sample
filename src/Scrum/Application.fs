@@ -452,7 +452,7 @@ module StoryRequest =
 module DomainEventRequest =
     open System
     open FsToolkit.ErrorHandling
-    open Scrum.Domain
+    open Scrum.Domain.Seedwork
     open Scrum.Domain.Shared.Paging
     open Models
 
