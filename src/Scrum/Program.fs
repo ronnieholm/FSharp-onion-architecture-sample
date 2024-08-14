@@ -76,7 +76,7 @@ module Seedwork =
         let authorizationError (role: ScrumRole) =
             create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
 
-        type ValidationErrorDto = { Field: string; Message: string }
+        type ValidationErrorResponse = { Field: string; Message: string }
 
         let errorMessageSerializationOptions =
             JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
@@ -555,7 +555,7 @@ module RouteHandlers =
         cmd.ExecuteNonQuery() |> ignore
         connection
 
-    type StoryCreateDto = { title: string; description: string }
+    type StoryCreateRequest = { title: string; description: string }
 
     let captureBasicStoryDetailsHandler : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
@@ -573,7 +573,7 @@ module RouteHandlers =
                 let storyExist = SqliteStoryRepository.existAsync transaction ctx.RequestAborted
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<StoryCreateDto>()
+                let! request = ctx.BindJsonAsync<StoryCreateRequest>()
                 let cmd: CaptureBasicStoryDetailsCommand =
                     { Id = Guid.NewGuid()
                       Title = request.title
@@ -600,8 +600,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }
 
-    type StoryUpdateDto = { title: string; description: string }
-    // TODO: We have request (should we Dto -> Request) but out response types. Should we for completeness for non-trivial inlined types? Only if different from type returned by application layer.
+    type StoryUpdateRequest = { title: string; description: string }
 
     let reviseBasicStoryDetailsHandler storyId : HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
@@ -618,7 +617,7 @@ module RouteHandlers =
                 let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<StoryUpdateDto>()
+                let! request = ctx.BindJsonAsync<StoryUpdateRequest>()
                 let cmd =
                     { Id = storyId
                       Title = request.title
@@ -645,7 +644,7 @@ module RouteHandlers =
                     return! json problem next ctx
             }
 
-    type AddTaskToStoryDto = { title: string; description: string }
+    type AddTaskToStoryRequest = { title: string; description: string }
 
     let addBasicTaskDetailsToStoryHandler storyId: HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
@@ -661,7 +660,7 @@ module RouteHandlers =
                 let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
+                let! request = ctx.BindJsonAsync<AddTaskToStoryRequest>()
                 let cmd: AddBasicTaskDetailsToStoryCommand =
                     { TaskId = Guid.NewGuid()
                       StoryId = storyId
@@ -704,7 +703,7 @@ module RouteHandlers =
                 let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
                 let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<AddTaskToStoryDto>()
+                let! request = ctx.BindJsonAsync<AddTaskToStoryRequest>()
                 let cmd =
                     { StoryId = storyId
                       TaskId = taskId
