@@ -97,7 +97,7 @@ module Seedwork =
 
         let getLargestCreatedAtAsync table (connection: SQLiteConnection) (transaction: SQLiteTransaction) ct =
             task {
-                let sql = $"select created_at from {table} order by created_at desc limit 1" // TODO: use parameter
+                let sql = $"select created_at from {table} order by created_at desc limit 1"
                 use cmd = new SQLiteCommand(sql, connection, transaction)
                 let! last = cmd.ExecuteScalarAsync(ct)
                 // ExecuteScalarAsync returns null on zero rows returned.
