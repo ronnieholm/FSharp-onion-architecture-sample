@@ -111,8 +111,6 @@ module Configuration =
         [<Range(60, 86400)>]
         member val ExpirationInSeconds: uint = 0ul with get, set
 
-open Configuration
-
 module Service =
     open System
     open System.IdentityModel.Tokens.Jwt
@@ -123,6 +121,7 @@ module Service =
     open Microsoft.IdentityModel.Tokens
     open Scrum.Application.Seedwork
     open Seedwork
+    open Configuration
 
     // Names of claims shared between services.
     module ScrumClaims =
@@ -302,6 +301,7 @@ module RouteHandlers =
     open Scrum.Application.DomainEventRequest
     open Scrum.Infrastructure
     open Scrum.Infrastructure.Seedwork
+    open Configuration
 
     let errorMessageSerializationOptions =
         JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
@@ -870,6 +870,7 @@ module Program =
     open Seedwork
     open HealthCheck
     open Filter
+    open Configuration
 
     // Avoid the application using the host's (unexpected) culture. This can
     // make parsing unexpectedly go wrong.

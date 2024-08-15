@@ -124,28 +124,17 @@ module Seedwork =
                 |> panicOnError "base64"
                 |> Some
 
-open System
-open System.Data.Common
-open System.Text.Json
-open System.Threading
-open System.Collections.Generic
-open System.Data.SQLite
-open System.IO
-open System.Text
-open System.Reflection
-open System.Security.Cryptography
-open Microsoft.Extensions.Logging
-open FsToolkit.ErrorHandling
-open Scrum.Domain
-open Scrum.Domain.Seedwork
-open Scrum.Domain.Shared.Paging
-open Scrum.Domain.StoryAggregate
-open Scrum.Domain.StoryAggregate.TaskEntity
-open Scrum.Application.Seedwork
-open Seedwork
-open Seedwork.Repository
-
 module DatabaseMigration =
+    open System
+    open System.Data.SQLite
+    open System.IO
+    open System.Text
+    open System.Reflection
+    open System.Security.Cryptography
+    open Scrum.Domain
+    open Scrum.Application.Seedwork
+    open Seedwork
+
     type AvailableScript = { Name: string; Hash: string; Sql: string }
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
@@ -240,8 +229,8 @@ module DatabaseMigration =
                     let count = cmd.ExecuteNonQuery()
                     assert (count = 1)
 
-                    // Schema upgrade per migration code. Downgrading isn't
-                    // supported.
+                    // Schema upgrade per migration code. Downgrading is
+                    // unsupported.
                     match available[i].Name with
                     | "202310051903-initial" -> ()
                     | _ -> ()
@@ -252,8 +241,7 @@ module DatabaseMigration =
                     reraise ()
 
         let applySeed (connection: SQLiteConnection) (seed: AvailableScript) =
-            // A pseudo-migration, so we don't record it in the migrations
-            // table.
+            // A pseudo-migration. We don't record it in the migrations table.
             use tx = connection.BeginTransaction()
             use cmd = new SQLiteCommand(seed.Sql, connection, tx)
             try
@@ -285,6 +273,20 @@ module DatabaseMigration =
             seeds |> Array.exactlyOne |> applySeed connection
 
 module SqliteStoryRepository =
+    open System
+    open System.Data.Common
+    open System.Threading
+    open System.Collections.Generic
+    open System.Data.SQLite
+    open FsToolkit.ErrorHandling
+    open Scrum.Domain
+    open Scrum.Domain.Seedwork
+    open Scrum.Domain.Shared.Paging
+    open Scrum.Domain.StoryAggregate
+    open Scrum.Domain.StoryAggregate.TaskEntity
+    open Seedwork
+    open Seedwork.Repository
+
     let parseStory id (r: DbDataReader) =
         // Don't parse by calling StoryAggregate.captureBasicStoryDetails as
         // in general it doesn't guarantee correct construction. When an
@@ -556,6 +558,14 @@ module SqliteStoryRepository =
         }
 
 module SqliteDomainEventRepository =
+    open System
+    open System.Threading
+    open System.Data.SQLite
+    open Scrum.Domain
+    open Scrum.Domain.Shared.Paging
+    open Scrum.Application.Seedwork
+    open Seedwork.Repository
+
     let getByAggregateIdAsync
             (transaction: SQLiteTransaction)
             (ct: CancellationToken)
@@ -599,6 +609,12 @@ module SqliteDomainEventRepository =
         }
 
 module ScrumLogger =
+    open System.Text.Json
+    open Microsoft.Extensions.Logging
+    open Scrum.Domain
+    open Scrum.Application.Seedwork
+    open Seedwork
+
     let jsonSerializationOptions =
         let o =
             JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true)

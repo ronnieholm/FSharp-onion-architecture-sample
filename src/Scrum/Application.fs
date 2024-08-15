@@ -88,8 +88,6 @@ module Seedwork =
             log (Exception(e))
             reraise ()
 
-open Seedwork
-
 module Models =
     // Per Zalando API guidelines:
     // https://opensource.zalando.com/restful-api-guidelines/#137)
@@ -103,6 +101,7 @@ module StoryRequest =
     open Scrum.Domain.StoryAggregate
     open Scrum.Domain.StoryAggregate.TaskEntity
     open Models
+    open Seedwork
 
     type ApplyEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
     type GetPaged = Limit -> Cursor option -> Threading.Tasks.Task<Paged<Story>>
@@ -455,6 +454,7 @@ module DomainEventRequest =
     open Scrum.Domain.Seedwork
     open Scrum.Domain.Shared.Paging
     open Models
+    open Seedwork
 
     type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
 
