@@ -5,7 +5,7 @@
 
 // These integration tests are somewhere between unit and integration tests.
 // They're intended to use an actual database because it's a real-world bug
-// attractor. The tests should mock any other dependency.
+// attractor. The tests should mock most other dependency.
 
 open System
 open System.Threading
@@ -13,7 +13,6 @@ open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Swensen.Unquote
 open Xunit
-open Scrum.Web.Service
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryRequest
 open Scrum.Application.DomainEventRequest
@@ -140,7 +139,7 @@ open Helpers
 // because we've introduced the possibility of a race condition. For tests not
 // to interfere with each other, and the reset, serialize test runs.
 [<Collection(nameof DisableParallelization)>]
-type StoryAggregateRequestTests() as this =
+type StoryRequestTests() as this =
     [<DefaultValue>] val mutable connection: SQLiteConnection
     [<DefaultValue>] val mutable transaction: SQLiteTransaction
 
