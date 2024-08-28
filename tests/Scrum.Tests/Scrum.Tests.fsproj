@@ -7,8 +7,8 @@
 
   <ItemGroup>
     <Compile Include="IntegrationTests.fs" />
-    <Compile Include="WebTests.fs" />
     <Compile Include="UnitTests.fs" />
+    <Compile Include="WebTests.fs" />
   </ItemGroup>
 
   <ItemGroup>
@@ -19,6 +19,9 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
     <PackageReference Include="Unquote" />
     <PackageReference Include="xunit" />
+    <!-- Unfortunately https://fscheck.github.io/FsCheck reflects the master branch
+         at version 3.0.0-rc3 with no way to revert to 2.16.5. -->
+    <PackageReference Include="FsCheck" />
     <PackageReference Include="xunit.runner.visualstudio">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>

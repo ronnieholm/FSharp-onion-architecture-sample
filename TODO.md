@@ -24,3 +24,4 @@
 - Perform experiment copying Story aggregate out into seperate projects for main code and test code (vertical slice architecture)
 - Use vscode user as with https://github.com/dotnet/orleans/blob/main/.devcontainer/devcontainer.json.
 - Create Orleans and Akka.NET branches.
+- Current database write queries are only valid with isolation level serialization (https://rfd.shared.oxide.computer/rfd/0192)

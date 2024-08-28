@@ -73,10 +73,11 @@ module StoryAggregate =
         type TaskTitle = private TaskTitle of string
 
         module TaskTitle =
+            let maxLength = 100
             let create value =
                 value
                 |> String.notNullOrWhitespace
-                |> Result.bind (String.maxLength 100)
+                |> Result.bind (String.maxLength maxLength)
                 |> Result.map TaskTitle
 
             let value (TaskTitle v) : string = v
@@ -84,10 +85,11 @@ module StoryAggregate =
         type TaskDescription = private TaskDescription of string
 
         module TaskDescription =
+            let maxLength = 1000
             let create value =
                 value
                 |> String.notNullOrWhitespace
-                |> Result.bind (String.maxLength 1000)
+                |> Result.bind (String.maxLength maxLength)
                 |> Result.map TaskDescription
 
             let value (TaskDescription v) = v
@@ -119,10 +121,11 @@ module StoryAggregate =
     type StoryTitle = StoryTitle of string
 
     module StoryTitle =
+        let maxLength = 100
         let create value =
             value
             |> String.notNullOrWhitespace
-            |> Result.bind (String.maxLength 100)
+            |> Result.bind (String.maxLength maxLength)
             |> Result.map StoryTitle
 
         let value (StoryTitle v) : string = v
@@ -130,10 +133,11 @@ module StoryAggregate =
     type StoryDescription = StoryDescription of string
 
     module StoryDescription =
+        let maxLength = 1000
         let create value =
             value
             |> String.notNullOrWhitespace
-            |> Result.bind (String.maxLength 1000)
+            |> Result.bind (String.maxLength maxLength)
             |> Result.map StoryDescription
 
         let value (StoryDescription v) : string = v
