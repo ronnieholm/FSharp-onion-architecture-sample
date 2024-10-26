@@ -214,7 +214,7 @@ module DatabaseMigration =
 
         let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) =
             for i = applied.Length to available.Length - 1 do
-                // With a transaction as we're updating the migrations table.
+                // Within a transaction as we're updating the migrations table.
                 use tx = connection.BeginTransaction()
                 use cmd = new SQLiteCommand(available[i].Sql, connection, tx)
                 let count = cmd.ExecuteNonQuery()
@@ -306,9 +306,9 @@ module SqliteStoryRepository =
     let parseTask id (r: DbDataReader) =
         // We know tasks are unique based on the primary key constraint in
         // the database. If we wanted to assert invariants not maintained by
-        // the database, it requires explictly code. Integration tests would
-        // generally catch such issues, with the exception of the database
-        // updated by a migration.
+        // the database, it requires explicitly code. Integration tests would
+        // generally catch such issues, except when the database is updated by
+        // a migration.
         { Entity = {
             Id = id
             CreatedAt = parseCreatedAt r["t_created_at"]

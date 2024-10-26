@@ -10,8 +10,6 @@ module Seedwork =
     // Constraint validation on primitive types for reuse across value object
     // creation.
     module Validation =
-        open System
-
         module Guid =
             let notEmpty value = if value = Guid.Empty then Error "Should be non-empty" else Ok value
 
@@ -40,7 +38,7 @@ open Seedwork.Validation
 module Shared =
     // As domain code isn't referencing Paging, one could argue that Paging
     // belongs in application rather than domain. That's because with F#, we
-    // don't define a per aggregate IRepository in the domain. Instead it's
+    // don't define a per aggregate IRepository in the domain. Instead, it's
     // partial functions passed into application handlers. We keep Paging in
     // domain, though, as if it was part of an explicit aggregate data access
     // interface.
