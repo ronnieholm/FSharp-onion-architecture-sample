@@ -1,4 +1,4 @@
-﻿namespace Scrum.Tests.IntegrationTests
+﻿namespace Scrum.Tests.IntegrationTests1
 
 // TODO: Use BDD test name syntax.
 // TODO: Most of these tests can actually run in parallel, provided the database supports it.
@@ -13,9 +13,13 @@ open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Swensen.Unquote
 open Xunit
+open FsCheck
+open FsCheck.FSharp
 open Scrum.Application.Seedwork
 open Scrum.Application.StoryRequest
 open Scrum.Application.DomainEventRequest
+open Scrum.Domain.StoryAggregate
+open Scrum.Domain.StoryAggregate.TaskEntity
 open Scrum.Infrastructure
 
 module A =
@@ -352,6 +356,149 @@ type StoryRequestTests() as this =
                 |> List.length
             Assert.Equal(stories, unique)
         }
+
+    interface IDisposable with
+        member this.Dispose() =
+            this.transaction.Commit()
+            this.transaction.Dispose()
+            this.connection.Dispose()
+
+module PropertyBasedTesting =
+    // 1. Define generators for commands and queries
+    // 2. Setup state machine
+
+    module Gen =
+        let alphaNumericCharacter =
+            Gen.elements "abcdefghijklmnopqrstuvwxyz0123456789"
+
+        let alphaNumericNonEmptyString =
+            Gen.nonEmptyListOf alphaNumericCharacter |> Gen.map (List.toArray >> String)
+
+        let taskTitle =
+            alphaNumericNonEmptyString
+            |> Gen.filter (fun s ->
+                s.Length <= TaskTitle.maxLength)
+
+        let taskDescription =
+            Gen.oneof [
+                gen { return None }
+                gen {
+                    let! s =
+                        alphaNumericNonEmptyString
+                        |> Gen.filter (fun s ->
+                            s.Length <= TaskDescription.maxLength)
+                    return Some s
+                }]
+
+        let storyTitle =
+            alphaNumericNonEmptyString
+            |> Gen.filter (fun s ->
+                s.Length <= StoryTitle.maxLength)
+
+        let storyDescription =
+            Gen.oneof [
+                gen { return None }
+                gen {
+                    let! s =
+                        alphaNumericNonEmptyString
+                        |> Gen.filter (fun s ->
+                            s.Length <= StoryDescription.maxLength)
+                    return Some s
+                }]
+
+    module Arb =
+        // Marker is required to work around a deficiency in F#. For the Check.One
+        // test, where we must explicitly add arbitraries and not generators, we
+        // cannot typeof<Arb> when Arb is a module, even though a module lowers to
+        // a static class. We can, however, typeof<inner type on a module> and from
+        // there get its parent type.
+        //
+        // FsCheck reflects over the arbitrary type, building a registry of
+        // arbitraries, used with Check.One.
+        //
+        // See https://fscheck.github.io/FsCheck//RunningTests.html#Using-the-built-in-test-runner,
+        // introducing the trick.
+        type ArbMarker = interface end
+
+        let captureBasicStoryDetailsCommand =
+            gen {
+                let! title = Gen.storyTitle
+                let! description = Gen.storyDescription
+                let cmd: CaptureBasicStoryDetailsCommand = { Id = Guid.NewGuid(); Title = title; Description = description }
+                return cmd
+            } |> Arb.fromGen
+
+        let reviseBasicStoryDetailsCommand (cmd: CaptureBasicStoryDetailsCommand) =
+            gen {
+                let! title = Gen.oneof [ gen { return cmd.Title }; Gen.storyTitle ]
+                let! description = Gen.oneof [ gen { return cmd.Description }; Gen.storyDescription ]
+                let cmd: ReviseBasicStoryDetailsCommand = { Id = cmd.Id; Title = title; Description = description }
+                return cmd
+            } |> Arb.fromGen
+
+        let addBasicTaskDetailsToStoryCommand (storyId: Guid) =
+            gen {
+                let! title = Gen.taskTitle
+                let! description = Gen.taskDescription
+                let cmd: AddBasicTaskDetailsToStoryCommand = { StoryId = storyId; TaskId = Guid.NewGuid(); Title = title; Description = description }
+                return cmd
+            } |> Arb.fromGen
+
+        let reviseBasicTaskDetailsCommand (cmd: AddBasicTaskDetailsToStoryCommand) =
+            gen {
+                let! title = Gen.oneof [ gen { return cmd.Title }; Gen.taskTitle ]
+                let! description = Gen.oneof [ gen { return cmd.Description }; Gen.taskDescription ]
+                let cmd: ReviseBasicTaskDetailsCommand = { StoryId = cmd.StoryId; TaskId = cmd.TaskId; Title = title; Description = description }
+                return cmd
+            } |> Arb.fromGen
+
+open PropertyBasedTesting
+
+[<Collection(nameof DisableParallelization)>]
+type StoryRequestPropertyTests() as this =
+    [<DefaultValue>] val mutable connection: SQLiteConnection
+    [<DefaultValue>] val mutable transaction: SQLiteTransaction
+
+    do
+        reset ()
+        this.connection <- getConnection connectionString
+        this.transaction <- this.connection.BeginTransaction()
+
+    [<Fact>]
+    let ``capture basic story details`` () =
+        // Example of property based test, but deliberate not trying to
+        // replicate "capture basic story and task details" above. When a series
+        // of commands are needed, stateful property based tests are better.
+        let fns = setupRequests this.transaction
+        Prop.forAll
+            Arb.captureBasicStoryDetailsCommand
+            (fun cmd ->
+                taskResult {
+                    let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd |> failOnError
+                    let! r = fns.GetStoryById memberIdentity { Id = cmd.Id } |> failOnError
+                    let expected =
+                        { Id = cmd.Id
+                          Title = cmd.Title
+                          Description = cmd.Description
+                          CreatedAt = r.CreatedAt
+                          UpdatedAt = None
+                          Tasks = [] }
+                    test <@ r = expected @>
+                    return! Ok()
+                }
+            )
+            |> Check.QuickThrowOnFailure
+
+    [<Fact>]
+    let ``stateful property based story tests`` () =
+        let x = Arb.captureBasicStoryDetailsCommand |> Arb.toGen |> Gen.sample 1
+
+        Prop.forAll
+            Arb.captureBasicStoryDetailsCommand
+            (fun command ->
+                let x = 10
+                true)
+            |> Check.QuickThrowOnFailure
 
     interface IDisposable with
         member this.Dispose() =

@@ -139,7 +139,7 @@ module DatabaseMigration =
     type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
     type Migrate(log: LogMessage -> unit, connectionString: string) =
-        let createMigrationsSql =
+        let createMigrationsSql = // TODO:triple quote?
             "
             create table migrations(
                 name text primary key,

@@ -43,11 +43,11 @@ architecture and domain driven design. Concepts should be scaled up or down
 based on business complexity and expected evolution of the application: if core
 is expected to only ever be accessed through the web service, code from core
 handlers could be moved to HTTP handlers. On the other hand, if core is to be
-exposed through multiple of web, gRPC, console, or a long running service, the
+exposed through multiple of web, gRPC, console, or a long-running service, the
 extra indirection with core handlers becomes valuable.
 
 The sample constraints itself to The Blue Book concepts rather than cutting
-corners due to unknown unknows. That means implementing CQRS, aggregates,
+corners due to unknown unknowns. That means implementing CQRS, aggregates,
 entities, domain events, and so on. For the HTTP API, the sample adheres to the
 Zalando API guidelines. It doesn't mean The Blue Book and the Zalando API
 guidelines are the end all, be all, but it's important the sample adopts

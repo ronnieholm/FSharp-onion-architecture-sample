@@ -25,5 +25,6 @@
 - Use vscode user as with https://github.com/dotnet/orleans/blob/main/.devcontainer/devcontainer.json.
 - Create Orleans and Akka.NET branches.
 - Current database write queries are only valid with isolation level serialization (https://rfd.shared.oxide.computer/rfd/0192)
-- Simulation testing: https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=N5HyVUPuU0E
-- Investing transactions in middleware: https://blog.bencope.land/f-crud-api-with-giraffe-mysql-and-dapper-fsharp/
+- Simulation testing: https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=UZkDdQEoolo
+- Investing transactions in middleware: https://blog.bencope.land/f-crud-api-with-giraffe-mysql-and-dapper-fsharp. Intestingly, this is such example: https://www.youtube.com/watch?v=EUdhyAdYfpA
+- How to measure time the optimized way: https://www.youtube.com/watch?v=Lvdyi5DWNm4
