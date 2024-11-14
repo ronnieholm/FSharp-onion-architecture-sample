@@ -990,7 +990,7 @@ module Program =
             task {
                 let r = context.Response
                 r.GetTypedHeaders().CacheControl <-
-                    CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(0), NoCache = true, NoStore = true)
+                    CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(seconds = 0), NoCache = true, NoStore = true)
                 r.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
                 return! next.Invoke(context)
             }

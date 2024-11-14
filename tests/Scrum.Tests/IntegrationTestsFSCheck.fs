@@ -138,7 +138,7 @@ open Helpers
 // transaction will block on commit until the ongoing transaction finishes by
 // committing or rolling back.
 //
-// Commenting out the collection attribute below may results in tests
+// Commenting out the collection attribute below may result in tests
 // succeeding. But if any test assumes a reset database, tests may start failing
 // because we've introduced the possibility of a race condition. For tests not
 // to interfere with each other, and the reset, serialize test runs.
