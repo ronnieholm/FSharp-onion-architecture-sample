@@ -28,3 +28,16 @@
 - Simulation testing: https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=UZkDdQEoolo
 - Investing transactions in middleware: https://blog.bencope.land/f-crud-api-with-giraffe-mysql-and-dapper-fsharp. Intestingly, this is such example: https://www.youtube.com/watch?v=EUdhyAdYfpA
 - How to measure time the optimized way: https://www.youtube.com/watch?v=Lvdyi5DWNm4
+- Experiment with SQLite WAL feature
+- Modular monoliths offer the best of both worlds: the simplicity of monoliths with the scalability of microservices, ideal for flexible, maintainable software development.
+
+ADD MODULAR MONOLITH TERM TO ONION ARCH SAMPLES
+- Change domain events endpoint to audit endpoint
+
+Change update to modified time?
+Add time_deleted field to database?
+
+Add etag support
+
+Inspired by https://rfd.shared.oxide.computer/rfd/0004. Add to links.
+https://rfd.shared.oxide.computer/rfd/0192
