@@ -412,290 +412,312 @@ module RouteHandlers =
         cmd.ExecuteNonQuery() |> ignore
         connection
 
-    type StoryCreateRequest = { title: string; description: string }
+    module CaptureBasicStoryDetails =
+        open CaptureBasicStoryDetailsCommand
+        
+        type Request = { title: string; description: string }
 
-    let captureBasicStoryDetailsHandler : HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            // TODO: verify no query string args passed
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
+        let handler : HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                // TODO: verify no query string args passed
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
 
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let storyExist = SqliteStoryRepository.existAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let storyExist = SqliteStoryRepository.existAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<StoryCreateRequest>()
-                let cmd: CaptureBasicStoryDetailsCommand =
-                    { Id = Guid.NewGuid()
-                      Title = request.title
-                      Description = request.description |> Option.ofObj }
-                let! result =
-                    runWithMiddlewareAsync log identity cmd
-                        (fun () -> CaptureBasicStoryDetailsCommand.runAsync utcNow storyExist storyApplyEvent identity cmd)
+                    let! request = ctx.BindJsonAsync<Request>()
+                    let cmd: CaptureBasicStoryDetailsCommand =
+                        { Id = Guid.NewGuid()
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                    let! result =
+                        runWithMiddlewareAsync log identity cmd
+                            (fun () -> runAsync utcNow storyExist storyApplyEvent identity cmd)
 
-                match result with
-                | Ok id ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 201
-                    ctx.SetHttpHeader("location", $"/stories/{id}") // TODO: should headers be capitalized?
-                    return! json {| StoryId = id |} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | CaptureBasicStoryDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | CaptureBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | CaptureBasicStoryDetailsCommand.DuplicateStory id -> unreachable (string id)
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok id ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 201
+                        ctx.SetHttpHeader("location", $"/stories/{id}") // TODO: should headers be capitalized?
+                        return! json {| StoryId = id |} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | DuplicateStory id -> unreachable (string id)
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
 
-    type StoryUpdateRequest = { title: string; description: string }
+    module ReviseBasicStoryDetails =
+        open ReviseBasicStoryDetailsCommand
+        type Request = { title: string; description: string }
 
-    let reviseBasicStoryDetailsHandler storyId : HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            // TODO: verify no query string args passed
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+        let handler storyId: HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                // TODO: verify no query string args passed
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<StoryUpdateRequest>()
-                let cmd =
-                    { Id = storyId
-                      Title = request.title
-                      Description = request.description |> Option.ofObj }
-                let! result =
-                    runWithMiddlewareAsync log identity cmd
-                        (fun () -> ReviseBasicStoryDetailsCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                    let! request = ctx.BindJsonAsync<Request>()
+                    let cmd: ReviseBasicStoryDetailsCommand =
+                        { Id = storyId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                    let! result =
+                        runWithMiddlewareAsync log identity cmd
+                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
-                match result with
-                | Ok id ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 201
-                    ctx.SetHttpHeader("location", $"/stories/{id}")
-                    return! json {| StoryId = id |} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | ReviseBasicStoryDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | ReviseBasicStoryDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | ReviseBasicStoryDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok id ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 201
+                        ctx.SetHttpHeader("location", $"/stories/{id}")
+                        return! json {| StoryId = id |} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
 
-    type AddTaskToStoryRequest = { title: string; description: string }
+    module AddBasicTaskDetailsToStory =
+        open AddBasicTaskDetailsToStoryCommand
+        
+        type Request = { title: string; description: string }
 
-    let addBasicTaskDetailsToStoryHandler storyId: HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+        let handler storyId: HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<AddTaskToStoryRequest>()
-                let cmd: AddBasicTaskDetailsToStoryCommand =
-                    { TaskId = Guid.NewGuid()
-                      StoryId = storyId
-                      Title = request.title
-                      Description = request.description |> Option.ofObj }
-                let! result =
-                    runWithMiddlewareAsync log identity cmd
-                        (fun () -> AddBasicTaskDetailsToStoryCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                    let! request = ctx.BindJsonAsync<Request>()
+                    let cmd: AddBasicTaskDetailsToStoryCommand =
+                        { TaskId = Guid.NewGuid()
+                          StoryId = storyId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                    let! result =
+                        runWithMiddlewareAsync log identity cmd
+                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
-                match result with
-                | Ok taskId ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 201
-                    ctx.SetHttpHeader("location", $"/stories/{storyId}/tasks/{taskId}")
-                    return! json {| TaskId = id |} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | AddBasicTaskDetailsToStoryCommand.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | AddBasicTaskDetailsToStoryCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | AddBasicTaskDetailsToStoryCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
-                        | AddBasicTaskDetailsToStoryCommand.DuplicateTask id -> unreachable (string id)
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok taskId ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 201
+                        ctx.SetHttpHeader("location", $"/stories/{storyId}/tasks/{taskId}")
+                        return! json {| TaskId = id |} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                            | DuplicateTask id -> unreachable (string id)
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
 
-    let reviseBasicTaskDetailsHandler (storyId, taskId): HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+    module ReviseBasicTaskDetails =
+        open ReviseBasicTaskDetailsCommand
+        
+        type Request = { title: string; description: string }
+        
+        let handler (storyId, taskId): HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let! request = ctx.BindJsonAsync<AddTaskToStoryRequest>()
-                let cmd =
-                    { StoryId = storyId
-                      TaskId = taskId
-                      Title = request.title
-                      Description = request.description |> Option.ofObj }
-                let! result =
-                    runWithMiddlewareAsync log identity cmd
-                        (fun () -> ReviseBasicTaskDetailsCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                    let! request = ctx.BindJsonAsync<Request>()
+                    let cmd: ReviseBasicTaskDetailsCommand =
+                        { StoryId = storyId
+                          TaskId = taskId
+                          Title = request.title
+                          Description = request.description |> Option.ofObj }
+                    let! result =
+                        runWithMiddlewareAsync log identity cmd
+                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
-                match result with
-                | Ok taskId ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 201
-                    ctx.SetHttpHeader("location", $"/stories/{storyId}/tasks/{taskId}")
-                    return! json {| TaskId = id |} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | ReviseBasicTaskDetailsCommand.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | ReviseBasicTaskDetailsCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | ReviseBasicTaskDetailsCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
-                        | ReviseBasicTaskDetailsCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok taskId ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 201
+                        ctx.SetHttpHeader("location", $"/stories/{storyId}/tasks/{taskId}")
+                        return! json {| TaskId = id |} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                            | TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
 
-    let removeTaskHandler (storyId, taskId): HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+    module RemoveTask =
+        open RemoveTaskCommand
+    
+        let handler (storyId, taskId): HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let cmd = { StoryId = storyId; TaskId = taskId }
-                let! result =
-                    runWithMiddlewareAsync log identity cmd
-                        (fun () -> RemoveTaskCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                    let cmd: RemoveTaskCommand = { StoryId = storyId; TaskId = taskId }
+                    let! result =
+                        runWithMiddlewareAsync log identity cmd
+                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
-                match result with
-                | Ok _ ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 200
-                    return! json {||} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | RemoveTaskCommand.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | RemoveTaskCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | RemoveTaskCommand.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
-                        | RemoveTaskCommand.TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok _ ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 200
+                        return! json {||} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                            | TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
 
-    let removeStoryHandler storyId : HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+    module RemoveStory =
+        open RemoveStoryCommand
+    
+        let handler storyId : HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
-                let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = SqliteStoryRepository.applyEventAsync transaction ctx.RequestAborted
 
-                let cmd: RemoveStoryCommand = { Id = storyId }
-                let! result =
-                    runWithMiddlewareAsync log identity cmd
-                        (fun () -> RemoveStoryCommand.runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                    let cmd: RemoveStoryCommand = { Id = storyId }
+                    let! result =
+                        runWithMiddlewareAsync log identity cmd
+                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
 
-                match result with
-                | Ok _ ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 200
-                    return! json {||} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | RemoveStoryCommand.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | RemoveStoryCommand.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | RemoveStoryCommand.StoryNotFound _ -> ProblemDetails.create 404 $"Story not found: '{string id}'"
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok _ ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 200
+                        return! json {||} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | StoryNotFound _ -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
+                
+    module GetStoryById =
+        open GetStoryByIdQuery
 
-    let getStoryByIdHandler storyId : HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+        let handler storyId : HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                use connection = getConnection connectionString
-                use transaction = connection.BeginTransaction()
-                let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
+                task {
+                    use connection = getConnection connectionString
+                    use transaction = connection.BeginTransaction()
+                    let getStoryById = SqliteStoryRepository.getByIdAsync transaction ctx.RequestAborted
 
-                let qry: GetStoryByIdQuery = { Id = storyId }
-                let! result =
-                    runWithMiddlewareAsync log identity qry
-                        (fun () -> GetStoryByIdQuery.runAsync getStoryById identity qry)
+                    let qry: GetStoryByIdQuery = { Id = storyId }
+                    let! result =
+                        runWithMiddlewareAsync log identity qry
+                            (fun () -> runAsync getStoryById identity qry)
 
-                match result with
-                | Ok _ ->
-                    do! transaction.CommitAsync(ctx.RequestAborted)
-                    ctx.SetStatusCode 200
-                    return! json {||} next ctx
-                | Error e ->
-                    do! transaction.RollbackAsync(ctx.RequestAborted)
-                    let problem =
-                        match e with
-                        | GetStoryByIdQuery.AuthorizationError role -> ProblemDetails.authorizationError role
-                        | GetStoryByIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve
-                        | GetStoryByIdQuery.StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
-                    ctx.SetStatusCode problem.Status
-                    ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
-                    return! json problem next ctx
-            }
+                    match result with
+                    | Ok _ ->
+                        do! transaction.CommitAsync(ctx.RequestAborted)
+                        ctx.SetStatusCode 200
+                        return! json {||} next ctx
+                    | Error e ->
+                        do! transaction.RollbackAsync(ctx.RequestAborted)
+                        let problem =
+                            match e with
+                            | AuthorizationError role -> ProblemDetails.authorizationError role
+                            | ValidationErrors ve -> ProblemDetails.validationErrors ve
+                            | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
+                        ctx.SetStatusCode problem.Status
+                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        return! json problem next ctx
+                }
 
     let toPagedResult result (ctx: HttpContext) (next: HttpFunc) =
         task {
@@ -716,83 +738,89 @@ module RouteHandlers =
         else
            Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")
 
-    let getStoriesPagedHandler : HttpHandler =
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
+    module GetStoriesPaged =
+        open GetStoriesPagedQuery
+        
+        let handler : HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
 
-            task {
-                let! result =
-                    taskResult {
-                        let! limit =
-                            ctx.GetQueryStringValue "limit"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
-                            |> Result.bind (stringToInt32 "limit")
-                        let! cursor =
-                            ctx.GetQueryStringValue "cursor"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
-                        let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
+                task {
+                    let! result =
+                        taskResult {
+                            let! limit =
+                                ctx.GetQueryStringValue "limit"
+                                |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
+                                |> Result.bind (stringToInt32 "limit")
+                            let! cursor =
+                                ctx.GetQueryStringValue "cursor"
+                                |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
+                            let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
 
-                        use connection = getConnection connectionString
-                        use transaction = connection.BeginTransaction()
-                        let getStoriesPaged = SqliteStoryRepository.getPagedAsync transaction ctx.RequestAborted
+                            use connection = getConnection connectionString
+                            use transaction = connection.BeginTransaction()
+                            let getStoriesPaged = SqliteStoryRepository.getPagedAsync transaction ctx.RequestAborted
 
-                        let qry = { Limit = limit; Cursor = cursor |> Option.ofObj }
-                        let! result =
-                            runWithMiddlewareAsync log identity qry
-                                (fun () -> GetStoriesPagedQuery.runAsync getStoriesPaged identity qry)
-                            |> TaskResult.mapError(
+                            let qry: GetStoriesPagedQuery = { Limit = limit; Cursor = cursor |> Option.ofObj }
+                            let! result =
+                                runWithMiddlewareAsync log identity qry
+                                    (fun () -> runAsync getStoriesPaged identity qry)
+                                |> TaskResult.mapError(
+                                        function
+                                        | AuthorizationError role -> ProblemDetails.authorizationError role
+                                        | ValidationErrors ve -> ProblemDetails.validationErrors ve)
+                            do! transaction.RollbackAsync(ctx.RequestAborted)
+                            return result
+                        }
+
+                    return! toPagedResult result ctx next
+                }
+
+    module GetPersistedDomainEvents =
+        open GetByAggregateIdQuery
+    
+        let handler aggregateId: HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
+
+                task {
+                    let! result =
+                        taskResult {
+                            let! limit =
+                                ctx.GetQueryStringValue "limit"
+                                |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
+                                |> Result.bind (stringToInt32 "limit")
+                            let! cursor =
+                                ctx.GetQueryStringValue "cursor"
+                                |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
+                            let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
+
+                            use connection = getConnection connectionString
+                            use transaction = connection.BeginTransaction()
+                            let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
+
+                            let qry: GetByAggregateIdQuery = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
+                            let! result =
+                                runWithMiddlewareAsync log identity qry
+                                    (fun () -> runAsync getByAggregateId identity qry)
+                                |> TaskResult.mapError(
                                     function
-                                    | GetStoriesPagedQuery.AuthorizationError role -> ProblemDetails.authorizationError role
-                                    | GetStoriesPagedQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve)
-                        do! transaction.RollbackAsync(ctx.RequestAborted)
-                        return result
-                    }
+                                    | AuthorizationError role -> ProblemDetails.authorizationError role
+                                    | ValidationErrors ve -> ProblemDetails.validationErrors ve)
+                            do! transaction.RollbackAsync(ctx.RequestAborted)
+                            return result
+                        }
 
-                return! toPagedResult result ctx next
-            }
-
-    let getPersistedDomainEvents aggregateId : HttpHandler=
-        fun (next: HttpFunc) (ctx: HttpContext) ->
-            let configuration = ctx.GetService<IConfiguration>()
-            let logger = ctx.GetService<ILogger<_>>()
-            let connectionString = configuration.GetConnectionString("Scrum")
-            let log = ScrumLogger.log logger
-            let identity = UserIdentity.getCurrentIdentity ctx
-
-            task {
-                let! result =
-                    taskResult {
-                        let! limit =
-                            ctx.GetQueryStringValue "limit"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
-                            |> Result.bind (stringToInt32 "limit")
-                        let! cursor =
-                            ctx.GetQueryStringValue "cursor"
-                            |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
-                        let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
-
-                        use connection = getConnection connectionString
-                        use transaction = connection.BeginTransaction()
-                        let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
-
-                        let qry = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
-                        let! result =
-                            runWithMiddlewareAsync log identity qry
-                                (fun () -> GetByAggregateIdQuery.runAsync getByAggregateId identity qry)
-                            |> TaskResult.mapError(
-                                    function
-                                    | GetByAggregateIdQuery.AuthorizationError role -> ProblemDetails.authorizationError role
-                                    | GetByAggregateIdQuery.ValidationErrors ve -> ProblemDetails.validationErrors ve)
-                        do! transaction.RollbackAsync(ctx.RequestAborted)
-                        return result
-                    }
-
-                return! toPagedResult result ctx next
-            }
+                    return! toPagedResult result ctx next
+                }
 
     let introspectTestHandler : HttpHandler=
         fun (next : HttpFunc) (ctx : HttpContext) ->
@@ -821,18 +849,18 @@ module RouteHandlers =
                 route "/authentication/introspect" >=> verifyUserIsAuthenticated >=> introspectTokenHandler ]
 
             verifyUserIsAuthenticated >=> choose [
-                POST >=> route "/stories" >=> captureBasicStoryDetailsHandler
-                PUT >=> routef "/stories/%O" reviseBasicStoryDetailsHandler
-                POST >=> routef "/stories/%O/tasks" addBasicTaskDetailsToStoryHandler
-                PUT >=> routef "/stories/%O/tasks/%O" reviseBasicTaskDetailsHandler
-                DELETE >=> routef "/stories/%O/tasks/%O" removeTaskHandler
-                DELETE >=> routef "/stories/%O" removeStoryHandler
-                GET >=> routef "/stories/%O" getStoryByIdHandler
-                GET >=> route "/stories" >=> getStoriesPagedHandler
+                POST >=> route "/stories" >=> CaptureBasicStoryDetails.handler
+                PUT >=> routef "/stories/%O" ReviseBasicStoryDetails.handler
+                POST >=> routef "/stories/%O/tasks" AddBasicTaskDetailsToStory.handler
+                PUT >=> routef "/stories/%O/tasks/%O" ReviseBasicTaskDetails.handler
+                DELETE >=> routef "/stories/%O/tasks/%O" RemoveTask.handler
+                DELETE >=> routef "/stories/%O" RemoveStory.handler
+                GET >=> routef "/stories/%O" GetStoryById.handler
+                GET >=> route "/stories" >=> GetStoriesPaged.handler
             ]
 
             verifyUserIsAuthenticated >=> choose [
-                GET >=> routef "/persisted-domain-events/%O" getPersistedDomainEvents
+                GET >=> routef "/persisted-domain-events/%O" GetPersistedDomainEvents.handler
             ]
 
             GET >=> choose [
