@@ -64,6 +64,10 @@ module Application =
         open System.Diagnostics
         open FsToolkit.ErrorHandling
 
+        exception ApplicationLayerException of string
+
+        let panic message : 't = raise (ApplicationLayerException(message))
+                
         // Contrary to outer layer's Seedwork, core doesn't define a boundary
         // exception. Core communicates errors as values.
 
@@ -94,6 +98,12 @@ module Application =
             | Member
             | Admin
 
+            static member fromString s =
+                match s with
+                | "member" -> Member
+                | "admin" -> Admin
+                | unsupported -> panic $"Unsupported {nameof ScrumRole}: '{unsupported}'"            
+            
             override x.ToString() =
                 match x with
                 | Member -> "member"
@@ -127,7 +137,7 @@ module Application =
             result, elapsed
 
         // TODO: Write separate tests for the middleware.
-        let runWithMiddlewareAsync<'TResponse> (log: LogMessage -> unit) identity payload (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
+        let runWithMiddlewareAsync<'TResponse, 'TPayload> (log: LogMessage -> unit) identity (payload: 'TPayload) (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
             try
                 task {
                     let name = payload.GetType().Name
@@ -213,6 +223,8 @@ module Application =
         // Services shared across requests.
         ()
 
+open Application
+
 module Infrastructure =
     module Seedwork =
         open System
@@ -262,6 +274,15 @@ module Infrastructure =
             let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
         module Repository =
+            let utcNow () = DateTime.UtcNow
+
+            let getConnection (connectionString: string): SQLiteConnection =
+                let connection = new SQLiteConnection(connectionString)
+                connection.Open()
+                use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
+                cmd.ExecuteNonQuery() |> ignore
+                connection            
+            
             let panicOnError (datum: string) (result: Result<'t, _>) : 't =
                 match result with
                 | Ok r -> r
@@ -338,6 +359,54 @@ module Infrastructure =
                     |> panicOnError "base64"
                     |> Some
     
+        // RFC7807 problem details format per
+        // https://opensource.zalando.com/restful-api-guidelines/#176.
+        type ProblemDetails2 = { Type: string; Title: string; Status: int; Detail: string }
+
+        module ProblemDetails =
+            open System.Text.Json
+            open Microsoft.AspNetCore.Http
+            open Microsoft.AspNetCore.Mvc
+            open Microsoft.Extensions.Primitives
+            open Application.Seedwork            
+            
+            let create status detail: ProblemDetails2 = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
+
+            let inferContentType (acceptHeaders: StringValues) =
+                let ok =
+                    acceptHeaders.ToArray()
+                    |> Array.exists (fun v -> v = "application/problem+json")
+                if ok then "application/problem+json" else "application/json"
+
+            let toJsonResult acceptHeaders error : ActionResult =
+                JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
+
+            let createJsonResult acceptHeaders status detail =
+                create status detail |> toJsonResult acceptHeaders
+
+            let authorizationError (role: ScrumRole) =
+                create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
+
+            type ValidationErrorResponse = { Field: string; Message: string }
+
+            let errorMessageSerializationOptions =
+                JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
+
+            let validationErrors (errors: ValidationError list) =
+                (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
+                |> JsonSerializer.Serialize
+                |> create StatusCodes.Status400BadRequest
+
+            let missingQueryStringParameter name =
+                create StatusCodes.Status400BadRequest $"Missing query string parameter '%s{name}'"
+
+            let unexpectedQueryStringParameters names =
+                let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
+                create StatusCodes.Status400BadRequest $"Unexpected query string parameters: %s{names}"
+
+            let queryStringParameterMustBeOfType name type_ =
+                create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
+       
     module SqliteDomainEventRepository =
         open System
         open System.Threading
@@ -418,6 +487,49 @@ module Infrastructure =
             | Dbg message ->
                 logger.LogDebug(message)
     
+    // Names of claims shared between services.
+    module ScrumClaims =
+        let UserIdClaim = "userId"
+        let RolesClaim = "roles"
+        
+    // Web specific implementation of IUserIdentity. It therefore belongs in
+    // Program.fs rather than Infrastructure.fs.
+    module UserIdentity =
+        open Microsoft.AspNetCore.Http
+        open System.Security.Claims
+        open Application.Seedwork
+        
+        let getCurrentIdentity(context: HttpContext) =
+            if isNull context then
+                Anonymous
+            else
+                let claimsPrincipal = context.User
+                if isNull claimsPrincipal then
+                    Anonymous
+                else
+                    let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
+                    let claims = claimsIdentity.Claims
+                    if Seq.isEmpty claims then
+                        Anonymous
+                    else
+                        let userIdClaim =
+                            claims
+                            |> Seq.filter (fun c -> c.Type = ScrumClaims.UserIdClaim)
+                            |> Seq.map _.Value
+                            |> Seq.exactlyOne
+                        let rolesClaim =
+                            claims
+                            |> Seq.filter (fun c -> c.Type = ClaimTypes.Role)
+                            |> Seq.map (fun c -> ScrumRole.fromString c.Value)
+                            |> List.ofSeq
+
+                        // With a proper identity provider, we'd likely have
+                        // kinds of authenticated identities, and we might
+                        // use a claim's value to determine which one.
+                        match List.length rolesClaim with
+                        | 0 -> Anonymous
+                        | _ -> Authenticated(userIdClaim, rolesClaim)
+        
     
     module DatabaseMigration =
         open System
@@ -565,3 +677,148 @@ module Infrastructure =
                 let seeds = availableScripts |> Array.filter (fun s -> s.Name = "seed")
                 log (Inf $"Found {seeds.Length} seed")
                 seeds |> Array.exactlyOne |> applySeed connection
+
+    module Configuration =
+        open System
+        open System.ComponentModel.DataAnnotations
+
+        type JwtAuthenticationSettings() =
+            static member JwtAuthentication: string = nameof JwtAuthenticationSettings.JwtAuthentication
+            [<Required>]
+            member val Issuer: Uri = null with get, set
+            [<Required>]
+            member val Audience: Uri = null with get, set
+            [<Required>]
+            member val SigningKey: string = null with get, set
+            [<Range(60, 86400)>]
+            member val ExpirationInSeconds: uint = 0ul with get, set                    
+                
+    module Service =
+        open System
+        open System.IdentityModel.Tokens.Jwt
+        open System.Security.Claims
+        open System.Text
+        open Microsoft.IdentityModel.JsonWebTokens
+        open Microsoft.IdentityModel.Tokens
+        open Application.Seedwork        
+        open Configuration
+
+        module IdentityProvider =
+            let sign (settings: JwtAuthenticationSettings) (now: DateTime) claims =
+                let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey))
+                let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
+                let validUntilUtc = now.AddSeconds(int settings.ExpirationInSeconds)
+                let token =
+                    JwtSecurityToken(
+                        string settings.Issuer,
+                        string settings.Audience,
+                        claims,
+                        expires = validUntilUtc,
+                        signingCredentials = credentials
+                    )
+                JwtSecurityTokenHandler().WriteToken(token)
+
+            let issueToken (settings: JwtAuthenticationSettings) (now: DateTime) userId roles =
+                // With an actual user store, we'd validate user credentials here.
+                // But for this application, userId may be any string and role must
+                // be either "member" or "admin".
+                let roles =
+                    roles
+                    |> List.map (fun r -> Claim(ScrumClaims.RolesClaim, string r))
+                    |> List.toArray
+                let rest =
+                    [| Claim(JwtRegisteredClaimNames.Jti, string (Guid.NewGuid()))
+                       Claim(ScrumClaims.UserIdClaim, userId) |]
+                Array.concat [ roles; rest ] |> sign settings now
+
+            let renewToken settings now identity =
+                match identity with
+                | Anonymous -> Error "User is anonymous"
+                | Authenticated(id, roles) -> Ok(issueToken settings now id roles)
+
+module Web =
+    open System
+    open Microsoft.AspNetCore.Http
+    open Infrastructure.Seedwork
+    open Giraffe
+    
+    let toPagedResult result (ctx: HttpContext) (next: HttpFunc) =
+        task {
+            match result with
+            | Ok paged ->
+                ctx.SetStatusCode 200
+                return! json paged next ctx
+            | Error e ->
+                ctx.SetStatusCode e.Status
+                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                return! json e next ctx
+        }
+
+    let stringToInt32 field (value: string) =
+        let ok, value = Int32.TryParse(value)
+        if ok then
+           Ok value
+        else
+           Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")  
+    
+    let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) expectedParameters =
+        // Per design APIs conservatively:
+        // https://opensource.zalando.com/restful-api-guidelines/#109
+        let unexpected =
+            query
+            |> Seq.map _.Key
+            |> Seq.toList
+            |> List.except expectedParameters
+        if List.isEmpty unexpected then
+            Ok ()
+        else
+            Error (ProblemDetails.unexpectedQueryStringParameters unexpected)    
+    
+    module GetPersistedDomainEvents =
+        open Microsoft.Extensions.Logging
+        open Microsoft.Extensions.Configuration        
+        open FsToolkit.ErrorHandling
+        open Infrastructure
+        open Application.Seedwork
+        open Infrastructure.Seedwork.Repository
+        open Application.DomainEventRequest
+        open Application.DomainEventRequest.GetByAggregateIdQuery
+    
+        let handler aggregateId: HttpHandler =
+            fun (next: HttpFunc) (ctx: HttpContext) ->
+                let configuration = ctx.GetService<IConfiguration>()
+                let logger = ctx.GetService<ILogger<_>>()
+                let connectionString = configuration.GetConnectionString("Scrum")
+                let log = ScrumLogger.log logger
+                let identity = UserIdentity.getCurrentIdentity ctx
+
+                task {
+                    let! result =
+                        taskResult {
+                            let! limit =
+                                ctx.GetQueryStringValue "limit"
+                                |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "limit")
+                                |> Result.bind (stringToInt32 "limit")
+                            let! cursor =
+                                ctx.GetQueryStringValue "cursor"
+                                |> Result.mapError (fun _ -> ProblemDetails.missingQueryStringParameter "cursor")
+                            let! _ = verifyOnlyExpectedQueryStringParameters ctx.Request.Query [ nameof limit; nameof cursor ]
+
+                            use connection = getConnection connectionString
+                            use transaction = connection.BeginTransaction()
+                            let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
+
+                            let qry: GetByAggregateIdQuery = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
+                            let! result =
+                                runWithMiddlewareAsync log identity qry
+                                    (fun () -> runAsync getByAggregateId identity qry)
+                                |> TaskResult.mapError(
+                                    function
+                                    | AuthorizationError role -> ProblemDetails.authorizationError role
+                                    | ValidationErrors ve -> ProblemDetails.validationErrors ve)
+                            do! transaction.RollbackAsync(ctx.RequestAborted)
+                            return result
+                        }
+
+                    return! toPagedResult result ctx next
+                }
