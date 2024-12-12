@@ -13,10 +13,11 @@ open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Swensen.Unquote
 open Xunit
-open Scrum.Application.Seedwork
-open Scrum.Application.StoryRequest
-open Scrum.Application.DomainEventRequest
-open Scrum.Infrastructure
+open Scrum.Shared.Application.Seedwork
+open Scrum.Story.Application.StoryRequest
+open Scrum.Shared.Application.DomainEventRequest
+open Scrum.Shared.Infrastructure
+open Scrum.Story.Infrastructure
 
 module A =
     let captureBasicStoryDetailsCommand () : CaptureBasicStoryDetailsCommand =

@@ -7,8 +7,8 @@ module Seedwork =
     open Microsoft.AspNetCore.Http
     open Microsoft.AspNetCore.Mvc
     open Microsoft.Extensions.Primitives
-    open Scrum.Application.Seedwork
-    open Scrum.Infrastructure.Seedwork
+    open Scrum.Shared.Application.Seedwork
+    open Scrum.Shared.Infrastructure.Seedwork
 
     exception WebException of string
 
@@ -119,7 +119,7 @@ module Service =
     open Microsoft.AspNetCore.Http
     open Microsoft.IdentityModel.JsonWebTokens
     open Microsoft.IdentityModel.Tokens
-    open Scrum.Application.Seedwork
+    open Scrum.Shared.Application.Seedwork
     open Seedwork
     open Configuration
 
@@ -203,7 +203,7 @@ module HealthCheck =
     open System.Data.SQLite
     open System.Threading.Tasks
     open Microsoft.Extensions.Diagnostics.HealthChecks
-    open Scrum.Application.Seedwork
+    open Scrum.Shared.Application.Seedwork
 
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
         let mb = 1024 * 2024
@@ -258,7 +258,7 @@ module Filter =
     open Microsoft.AspNetCore.Mvc.Filters
     open Microsoft.Extensions.Hosting
     open Microsoft.AspNetCore.Mvc
-    open Scrum.Infrastructure.Seedwork
+    open Scrum.Shared.Infrastructure.Seedwork
     open Seedwork
 
     type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
@@ -296,11 +296,10 @@ module RouteHandlers =
     open Giraffe
     open FsToolkit.ErrorHandling
     open Seedwork
-    open Scrum.Application.Seedwork
-    open Scrum.Application.StoryRequest
-    open Scrum.Application.DomainEventRequest
-    open Scrum.Infrastructure
-    open Scrum.Infrastructure.Seedwork
+    open Scrum.Shared.Application.Seedwork
+    open Scrum.Story.Application.StoryRequest
+    open Scrum.Shared.Application.DomainEventRequest
+    open Scrum.Shared.Infrastructure.Seedwork
     open Configuration
 
     let errorMessageSerializationOptions =
@@ -413,6 +412,8 @@ module RouteHandlers =
         connection
 
     module CaptureBasicStoryDetails =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open CaptureBasicStoryDetailsCommand
         
         type Request = { title: string; description: string }
@@ -461,6 +462,8 @@ module RouteHandlers =
                 }
 
     module ReviseBasicStoryDetails =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open ReviseBasicStoryDetailsCommand
         type Request = { title: string; description: string }
 
@@ -507,6 +510,8 @@ module RouteHandlers =
                 }
 
     module AddBasicTaskDetailsToStory =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open AddBasicTaskDetailsToStoryCommand
         
         type Request = { title: string; description: string }
@@ -555,6 +560,8 @@ module RouteHandlers =
                 }
 
     module ReviseBasicTaskDetails =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open ReviseBasicTaskDetailsCommand
         
         type Request = { title: string; description: string }
@@ -603,6 +610,8 @@ module RouteHandlers =
                 }
 
     module RemoveTask =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open RemoveTaskCommand
     
         let handler (storyId, taskId): HttpHandler =
@@ -643,6 +652,8 @@ module RouteHandlers =
                 }
 
     module RemoveStory =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open RemoveStoryCommand
     
         let handler storyId : HttpHandler =
@@ -682,6 +693,8 @@ module RouteHandlers =
                 }
                 
     module GetStoryById =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open GetStoryByIdQuery
 
         let handler storyId : HttpHandler =
@@ -739,6 +752,8 @@ module RouteHandlers =
            Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")
 
     module GetStoriesPaged =
+        open Scrum.Shared.Infrastructure
+        open Scrum.Story.Infrastructure
         open GetStoriesPagedQuery
         
         let handler : HttpHandler =
@@ -781,6 +796,7 @@ module RouteHandlers =
                 }
 
     module GetPersistedDomainEvents =
+        open Scrum.Shared.Infrastructure
         open GetByAggregateIdQuery
     
         let handler aggregateId: HttpHandler =
@@ -893,8 +909,7 @@ module Program =
     open Microsoft.Extensions.Diagnostics.HealthChecks
     open Microsoft.AspNetCore.ResponseCompression
     open Giraffe
-    open Scrum.Infrastructure
-    open Scrum.Infrastructure.Seedwork.Json
+    open Scrum.Shared.Infrastructure.Seedwork.Json
     open Seedwork
     open HealthCheck
     open Filter
@@ -1060,6 +1075,8 @@ module Program =
         app.UseGiraffe RouteHandlers.webApp
         app
 
+    open Scrum.Shared.Infrastructure
+    
     [<EntryPoint>]
     let main args =
         let webApplicationBuilder = WebApplication.CreateBuilder(args)

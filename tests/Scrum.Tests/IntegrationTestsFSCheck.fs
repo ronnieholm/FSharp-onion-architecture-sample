@@ -15,12 +15,13 @@ open Swensen.Unquote
 open Xunit
 open FsCheck
 open FsCheck.FSharp
-open Scrum.Application.Seedwork
-open Scrum.Application.StoryRequest
-open Scrum.Application.DomainEventRequest
-open Scrum.Domain.StoryAggregate
-open Scrum.Domain.StoryAggregate.TaskEntity
-open Scrum.Infrastructure
+open Scrum.Shared.Application.Seedwork
+open Scrum.Story.Application.StoryRequest
+open Scrum.Shared.Application.DomainEventRequest
+open Scrum.Story.Domain.StoryAggregate
+open Scrum.Story.Domain.StoryAggregate.TaskEntity
+open Scrum.Shared.Infrastructure
+open Scrum.Story.Infrastructure
 
 module A =
     let captureBasicStoryDetailsCommand () : CaptureBasicStoryDetailsCommand =

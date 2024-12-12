@@ -10,9 +10,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="Domain.fs" />
-    <Compile Include="Application.fs" />
-    <Compile Include="Infrastructure.fs" />
+    <Compile Include="Shared.fs" />
+    <Compile Include="Story.fs" />
     <Compile Include="Program.fs" />
     <EmbeddedResource Include="Sql\202310051903-initial.sql" />
     <EmbeddedResource Include="Sql\seed.sql" />
