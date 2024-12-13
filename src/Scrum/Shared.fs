@@ -205,7 +205,7 @@ module Application =
                       EventPayload = event.EventPayload
                       CreatedAt = event.CreatedAt }
 
-            type GetStoryEventsByIdError =
+            type GetByAggregateIdError =
                 | AuthorizationError of ScrumRole
                 | ValidationErrors of ValidationError list
 
@@ -220,10 +220,7 @@ module Application =
                 }
 
     module Service =
-        // Services shared across requests.
         ()
-
-open Application
 
 module Infrastructure =
     module Seedwork =
@@ -240,7 +237,8 @@ module Infrastructure =
 
         let panic message : 't = raise (InfrastructureException(message))
         let unreachable message : 't = raise (UnreachableException(message))
-
+        let utcNow () = DateTime.UtcNow
+        
         module Json =
             type DateTimeJsonConverter() =
                 inherit JsonConverter<DateTime>()
@@ -269,13 +267,47 @@ module Infrastructure =
                          |> String.Concat)
                             .ToUpperInvariant()
                         |> writer.WriteStringValue
+                        
+            // System.Text.Json cannot serialize an exception without throwing
+            // an exception: "System.NotSupportedException: Serialization and
+            // deserialization of 'System.Reflection.MethodBase' instances are
+            // not supported. Path: $.Result.Exception.TargetSite.". This
+            // converter works around the issue by limiting serialization to
+            // the most relevant parts of the exception.
+            type ExceptionJsonConverter() =
+                inherit JsonConverter<Exception>()
+
+                override _.Read(_, _, _) = unreachable "Never called"
+
+                override x.Write(writer, value, options) =
+                    writer.WriteStartObject()
+                    writer.WriteString(nameof value.Message, value.Message)
+
+                    if not (isNull value.InnerException) then
+                        writer.WriteStartObject(nameof value.InnerException)
+                        x.Write(writer, value.InnerException, options)
+                        writer.WriteEndObject()
+
+                    if not (isNull value.TargetSite) then
+                        writer.WriteStartObject(nameof value.TargetSite)
+                        writer.WriteString(nameof value.TargetSite.Name, value.TargetSite.Name)
+                        writer.WriteString(nameof value.TargetSite.DeclaringType, value.TargetSite.DeclaringType.FullName)
+                        writer.WriteEndObject()
+
+                    if not (isNull value.StackTrace) then
+                        writer.WriteString(nameof value.StackTrace, value.StackTrace)
+
+                    writer.WriteString(nameof Type, value.GetType().FullName)
+                    writer.WriteEndObject()
 
         module Option =
-            let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
+            let ofDBNull (value: obj) : obj option =
+                if value = DBNull.Value then
+                    None
+                else
+                    Some value
 
         module Repository =
-            let utcNow () = DateTime.UtcNow
-
             let getConnection (connectionString: string): SQLiteConnection =
                 let connection = new SQLiteConnection(connectionString)
                 connection.Open()
@@ -287,9 +319,9 @@ module Infrastructure =
                 match result with
                 | Ok r -> r
                 | Error e ->
-                    // Value object create functions return string as their error
-                    // and entity create functions return a union member. To
-                    // accomodate both, we print the error using %A.
+                    // Value object create functions return string as their
+                    // error and entity create functions return a union
+                    // member. To accomodate both, we print the error using %A.
                     panic $"Deserialization failed for '{datum}': '%A{e}'"
 
             let parseCreatedAt (value: obj) = DateTime(value :?> int64, DateTimeKind.Utc)
@@ -309,8 +341,7 @@ module Infrastructure =
                 (createdAt: DateTime)
                 =
                 task {
-                    let sql =
-                        "insert into domain_events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
+                    let sql = "insert into domain_events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
                     let cmd = new SQLiteCommand(sql, transaction.Connection, transaction)
                     let p = cmd.Parameters
                     p.AddWithValue("@id", Guid.NewGuid() |> string) |> ignore
@@ -359,6 +390,7 @@ module Infrastructure =
                     |> panicOnError "base64"
                     |> Some
     
+        // TODO: use new framework type.
         // RFC7807 problem details format per
         // https://opensource.zalando.com/restful-api-guidelines/#176.
         type ProblemDetails2 = { Type: string; Title: string; Status: int; Detail: string }
@@ -376,7 +408,10 @@ module Infrastructure =
                 let ok =
                     acceptHeaders.ToArray()
                     |> Array.exists (fun v -> v = "application/problem+json")
-                if ok then "application/problem+json" else "application/json"
+                if ok then
+                    "application/problem+json"
+                else
+                    "application/json"
 
             let toJsonResult acceptHeaders error : ActionResult =
                 JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
@@ -407,7 +442,7 @@ module Infrastructure =
             let queryStringParameterMustBeOfType name type_ =
                 create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
        
-    module SqliteDomainEventRepository =
+    module DomainEventRepository =
         open System
         open System.Threading
         open System.Data.SQLite
@@ -487,13 +522,12 @@ module Infrastructure =
             | Dbg message ->
                 logger.LogDebug(message)
     
-    // Names of claims shared between services.
+    // Claims shared between services.
     module ScrumClaims =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
         
-    // Web specific implementation of IUserIdentity. It therefore belongs in
-    // Program.fs rather than Infrastructure.fs.
+    // Web specific implementation of IUserIdentity.
     module UserIdentity =
         open Microsoft.AspNetCore.Http
         open System.Security.Claims
@@ -545,8 +579,7 @@ module Infrastructure =
         type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
         type Migrate(log: LogMessage -> unit, connectionString: string) =
-            let createMigrationsSql = // TODO:triple quote?
-                "
+            let createMigrationsSql = "
                 create table migrations(
                     name text primary key,
                     hash text not null,
@@ -611,14 +644,14 @@ module Infrastructure =
                         migrations.Add(m)
                     migrations |> Seq.toArray
 
-            let verifyAppliedMigrations (available: AvailableScript array) (applied: AppliedMigration array) =
+            let verifyAppliedMigrations (available: AvailableScript[]) (applied: AppliedMigration[]) =
                 for i = 0 to applied.Length - 1 do
                     if applied[i].Name <> available[i].Name then
                         panic $"Mismatch in applied name '{applied[i].Name}' and available name '{available[i].Name}'"
                     if applied[i].Hash <> available[i].Hash then
                         panic $"Mismatch in applied hash '{applied[i].Hash}' and available hash '{available[i].Hash}'"
 
-            let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript array) (applied: AppliedMigration array) =
+            let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript[]) (applied: AppliedMigration[]) =
                 for i = applied.Length to available.Length - 1 do
                     // Within a transaction as we're updating the migrations table.
                     use tx = connection.BeginTransaction()
@@ -626,8 +659,7 @@ module Infrastructure =
                     let count = cmd.ExecuteNonQuery()
                     assert (count >= 0)
 
-                    let sql =
-                        $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{available[i].Name}', '{available[i].Hash}', '{available[i].Sql}', {DateTime.UtcNow.Ticks})"
+                    let sql = $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{available[i].Name}', '{available[i].Hash}', '{available[i].Sql}', {DateTime.UtcNow.Ticks})"
                     let cmd = new SQLiteCommand(sql, connection, tx)
 
                     try
@@ -659,7 +691,7 @@ module Infrastructure =
                     tx.Rollback()
                     reraise ()
 
-            member _.Apply() : unit =
+            member _.Apply() =
                 use connection = new SQLiteConnection(connectionString)
                 connection.Open()
 
@@ -683,7 +715,7 @@ module Infrastructure =
         open System.ComponentModel.DataAnnotations
 
         type JwtAuthenticationSettings() =
-            static member JwtAuthentication: string = nameof JwtAuthenticationSettings.JwtAuthentication
+            static member JwtAuthentication = nameof JwtAuthenticationSettings.JwtAuthentication
             [<Required>]
             member val Issuer: Uri = null with get, set
             [<Required>]
@@ -707,21 +739,21 @@ module Infrastructure =
             let sign (settings: JwtAuthenticationSettings) (now: DateTime) claims =
                 let securityKey = SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.SigningKey))
                 let credentials = SigningCredentials(securityKey, SecurityAlgorithms.HmacSha256)
-                let validUntilUtc = now.AddSeconds(int settings.ExpirationInSeconds)
+                let validUntil = now.AddSeconds(int settings.ExpirationInSeconds)
                 let token =
                     JwtSecurityToken(
                         string settings.Issuer,
                         string settings.Audience,
                         claims,
-                        expires = validUntilUtc,
+                        expires = validUntil,
                         signingCredentials = credentials
                     )
                 JwtSecurityTokenHandler().WriteToken(token)
 
             let issueToken (settings: JwtAuthenticationSettings) (now: DateTime) userId roles =
-                // With an actual user store, we'd validate user credentials here.
-                // But for this application, userId may be any string and role must
-                // be either "member" or "admin".
+                // With an actual user store, we'd validate user credentials
+                // here. But for this application, userId may be any string and
+                // role must be either "member" or "admin".
                 let roles =
                     roles
                     |> List.map (fun r -> Claim(ScrumClaims.RolesClaim, string r))
@@ -736,11 +768,11 @@ module Infrastructure =
                 | Anonymous -> Error "User is anonymous"
                 | Authenticated(id, roles) -> Ok(issueToken settings now id roles)
 
-module Web =
+module RouteHandler =
     open System
     open Microsoft.AspNetCore.Http
-    open Infrastructure.Seedwork
     open Giraffe
+    open Infrastructure.Seedwork
     
     let toPagedResult result (ctx: HttpContext) (next: HttpFunc) =
         task {
@@ -784,7 +816,7 @@ module Web =
         open Application.DomainEventRequest
         open Application.DomainEventRequest.GetByAggregateIdQuery
     
-        let handler aggregateId: HttpHandler =
+        let handle aggregateId: HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
                 let logger = ctx.GetService<ILogger<_>>()
@@ -806,7 +838,7 @@ module Web =
 
                             use connection = getConnection connectionString
                             use transaction = connection.BeginTransaction()
-                            let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
+                            let getByAggregateId = DomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
 
                             let qry: GetByAggregateIdQuery = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
                             let! result =

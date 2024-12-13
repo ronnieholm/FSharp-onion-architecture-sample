@@ -87,11 +87,11 @@ module Setup =
         connection
 
     let setupRequests (transaction: SQLiteTransaction) =
-        let exist = SqliteStoryRepository.existAsync transaction ct
-        let getById = SqliteStoryRepository.getByIdAsync transaction ct
-        let getPaged = SqliteStoryRepository.getPagedAsync transaction ct
-        let applyEvent = SqliteStoryRepository.applyEventAsync transaction ct
-        let getByAggregateId = SqliteDomainEventRepository.getByAggregateIdAsync transaction ct
+        let exist = StoryRepository.existAsync transaction ct
+        let getById = StoryRepository.getByIdAsync transaction ct
+        let getPaged = StoryRepository.getPagedAsync transaction ct
+        let applyEvent = StoryRepository.applyEventAsync transaction ct
+        let getByAggregateId = DomainEventRepository.getByAggregateIdAsync transaction ct
 
         {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync clock exist applyEvent
            AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync clock getById applyEvent

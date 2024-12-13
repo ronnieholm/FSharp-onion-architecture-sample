@@ -1,44 +1,4 @@
-﻿namespace Scrum.Web
-
-module Seedwork =
-    open System
-    open System.Text.Json.Serialization
-    open Scrum.Shared.Infrastructure.Seedwork
-
-    module Json =
-        // System.Text.Json cannot serialize an exception without itself
-        // throwing an exception: "System.NotSupportedException: Serialization
-        // and deserialization of 'System.Reflection.MethodBase' instances are
-        // not supported. Path: $.Result.Exception.TargetSite.". This converter
-        // works around the issue by limiting serialization to the most relevant
-        // parts of the exception.
-        type ExceptionJsonConverter() =
-            inherit JsonConverter<Exception>()
-
-            override _.Read(_, _, _) = unreachable "Never called"
-
-            override x.Write(writer, value, options) =
-                writer.WriteStartObject()
-                writer.WriteString(nameof value.Message, value.Message)
-
-                if not (isNull value.InnerException) then
-                    writer.WriteStartObject(nameof value.InnerException)
-                    x.Write(writer, value.InnerException, options)
-                    writer.WriteEndObject()
-
-                if not (isNull value.TargetSite) then
-                    writer.WriteStartObject(nameof value.TargetSite)
-                    writer.WriteString(nameof value.TargetSite.Name, value.TargetSite.Name)
-                    writer.WriteString(nameof value.TargetSite.DeclaringType, value.TargetSite.DeclaringType.FullName)
-                    writer.WriteEndObject()
-
-                if not (isNull value.StackTrace) then
-                    writer.WriteString(nameof value.StackTrace, value.StackTrace)
-
-                writer.WriteString(nameof Type, value.GetType().FullName)
-                writer.WriteEndObject()
-
-open Scrum.Shared.Infrastructure.Service
+﻿namespace Scrum.WebHost
 
 module HealthCheck =
     open System
@@ -125,7 +85,7 @@ module Filter =
                 context.HttpContext.Response.StatusCode <- code
                 context.Result <- JsonResult(ProblemDetails.create code message)
 
-module RouteHandlers =
+module RouteHandler =
     open System
     open System.Security.Claims
     open System.Collections.Generic
@@ -134,25 +94,28 @@ module RouteHandlers =
     open Microsoft.Extensions.Options
     open Giraffe
     open FsToolkit.ErrorHandling
+    open Scrum.Shared.Infrastructure
     open Scrum.Shared.Application.Seedwork
     open Scrum.Shared.Infrastructure.Seedwork
     open Scrum.Shared.Infrastructure.Configuration
-    open Scrum.Shared.Infrastructure
-    open Scrum.Shared.Web
+    open Scrum.Shared.Infrastructure.Service
+    open Scrum.Shared.RouteHandler
+    open Scrum.Story.RouteHandler
 
     let errorMessageSerializationOptions =
         JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
-    let verifyUserIsAuthenticated : HttpHandler =
+    let verifyUserIsAuthenticated: HttpHandler =
         // TODO: this function comes part of Giraffe.
-        fun (next : HttpFunc) (ctx : HttpContext) ->
-            if isNotNull ctx.User && ctx.User.Identity.IsAuthenticated
-            then next ctx
-            else setStatusCode 401 earlyReturn ctx
+        fun (next: HttpFunc) (ctx: HttpContext) ->
+            if isNotNull ctx.User && ctx.User.Identity.IsAuthenticated then
+                next ctx
+            else
+                setStatusCode 401 earlyReturn ctx
 
-    let issueTokenHandler : HttpHandler =
+    let issueTokenHandler: HttpHandler =
         // TODO: Fail if token is provided and/or user isn't anonymous
-        fun (next : HttpFunc) (ctx : HttpContext) ->
+        fun (next: HttpFunc) (ctx: HttpContext) ->
             let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
             let settings = settings.Value
             let response =
@@ -177,14 +140,14 @@ module RouteHandlers =
             match response with
             | Ok r ->
                 ctx.SetStatusCode 201
-                ctx.SetHttpHeader("location", "/authentication/introspect")
+                ctx.SetHttpHeader("Location", "/authentication/introspect")
                 json r next ctx
             | Error e ->
                 ctx.SetStatusCode 400
-                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                 json e next ctx
 
-    let renewTokenHandler : HttpHandler =
+    let renewTokenHandler: HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let settings = ctx.GetService<IOptions<JwtAuthenticationSettings>>()
             let settings = settings.Value
@@ -193,14 +156,14 @@ module RouteHandlers =
             match result with
             | Ok token ->
                 ctx.SetStatusCode 201
-                ctx.SetHttpHeader("location", "/authentication/introspect")
+                ctx.SetHttpHeader("Location", "/authentication/introspect")
                 json {| Token = token |} next ctx
             | Error e ->
                 ctx.SetStatusCode 400
-                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                 json e next ctx
 
-    let introspectTokenHandler : HttpHandler =
+    let introspectTokenHandler: HttpHandler =
         fun (next: HttpFunc) (ctx: HttpContext) ->
             let claimsPrincipal = ctx.User
             let claimsIdentity = claimsPrincipal.Identity :?> ClaimsIdentity
@@ -227,59 +190,62 @@ module RouteHandlers =
 
             json map next ctx
 
-    let introspectTestHandler : HttpHandler=
-        fun (next : HttpFunc) (ctx : HttpContext) ->
+    let introspectTestHandler: HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
             // API gateways and other proxies between the client and the service
             // tag on extra information to the request. This endpoint allows a
             // client to see what the request looked like from the server's
             // point of view.
-            let headers = ctx.Request.Headers |> Seq.map (fun h -> KeyValuePair(h.Key, string h.Value))
+            let headers =
+                ctx.Request.Headers |> Seq.map (fun h -> KeyValuePair(h.Key, string h.Value))
             ctx.SetStatusCode 200
             json headers next ctx
 
-    let currentTimeTestHandler : HttpHandler =
-        fun (next : HttpFunc) (ctx : HttpContext) ->
+    let currentTimeTestHandler: HttpHandler =
+        fun (next: HttpFunc) (ctx: HttpContext) ->
             // Useful for establishing baseline performance numbers and testing
             // rate limits. Because this action doesn't perform significant
             // work, it provides an upper bound for requests/second given a
             // response time distribution.
             text (string DateTime.UtcNow) next ctx
 
-    open Scrum.Story.Web
-    
     let webApp =
-        choose [
-            // Loosely modeled after the corresponding OAuth2 endpoints.
-            POST >=> choose [
-                route "/authentication/issue-token" >=> issueTokenHandler
-                route "/authentication/renew-token" >=> verifyUserIsAuthenticated >=> renewTokenHandler
-                route "/authentication/introspect" >=> verifyUserIsAuthenticated >=> introspectTokenHandler ]
+        choose
+            [
+              // Loosely modeled after OAuth2 endpoints.
+              POST
+              >=> choose
+                  [ route "/authentication/issue-token" >=> issueTokenHandler
+                    route "/authentication/renew-token"
+                    >=> verifyUserIsAuthenticated
+                    >=> renewTokenHandler
+                    route "/authentication/introspect"
+                    >=> verifyUserIsAuthenticated
+                    >=> introspectTokenHandler ]
 
-            // Could be included in Story.fs, but kept in Program.fs because
-            // it's helpful in understanding and debugging the app to have all
-            // endpoints defined in a single location.
-            verifyUserIsAuthenticated >=> choose [
-                POST >=> route "/stories" >=> CaptureBasicStoryDetails.handler
-                PUT >=> routef "/stories/%O" ReviseBasicStoryDetails.handler
-                POST >=> routef "/stories/%O/tasks" AddBasicTaskDetailsToStory.handler
-                PUT >=> routef "/stories/%O/tasks/%O" ReviseBasicTaskDetails.handler
-                DELETE >=> routef "/stories/%O/tasks/%O" RemoveTask.handler
-                DELETE >=> routef "/stories/%O" RemoveStory.handler
-                GET >=> routef "/stories/%O" GetStoryById.handler
-                GET >=> route "/stories" >=> GetStoriesPaged.handler
-            ]
+              // Could be included in Story.fs, but kept in Program.fs because
+              // having endpoints defined in a central location helps understand
+              // the app and makes it easier to spot API inconsistencies.
+              verifyUserIsAuthenticated
+              >=> choose
+                  [ POST >=> route "/stories" >=> CaptureBasicStoryDetails.handle
+                    PUT >=> routef "/stories/%O" ReviseBasicStoryDetails.handle
+                    POST >=> routef "/stories/%O/tasks" AddBasicTaskDetailsToStory.handle
+                    PUT >=> routef "/stories/%O/tasks/%O" ReviseBasicTaskDetails.handle
+                    DELETE >=> routef "/stories/%O/tasks/%O" RemoveTask.handle
+                    DELETE >=> routef "/stories/%O" RemoveStory.handle
+                    GET >=> routef "/stories/%O" GetStoryById.handle
+                    GET >=> route "/stories" >=> GetStoriesPaged.handle ]
 
-            verifyUserIsAuthenticated >=> choose [
-                GET >=> routef "/persisted-domain-events/%O" GetPersistedDomainEvents.handler
-            ]
+              verifyUserIsAuthenticated
+              >=> choose [ GET >=> routef "/persisted-domain-events/%O" GetPersistedDomainEvents.handle ]
 
-            GET >=> choose [
-                route "/tests/introspect" >=> introspectTestHandler
-                route "/tests/current-time" >=> currentTimeTestHandler
-            ]
+              GET
+              >=> choose
+                  [ route "/tests/introspect" >=> introspectTestHandler
+                    route "/tests/current-time" >=> currentTimeTestHandler ]
 
-            RequestErrors.NOT_FOUND "Not Found"
-        ]
+              RequestErrors.NOT_FOUND "Not Found" ]
 
 module Program =
     open System
@@ -303,11 +269,12 @@ module Program =
     open Microsoft.Extensions.Diagnostics.HealthChecks
     open Microsoft.AspNetCore.ResponseCompression
     open Giraffe
+    open Scrum.Shared.Infrastructure    
     open Scrum.Shared.Infrastructure.Seedwork.Json
+    open Scrum.Shared.Infrastructure.Configuration
     open Seedwork
     open HealthCheck
     open Filter
-    open Scrum.Shared.Infrastructure.Configuration
 
     // Avoid the application using the host's (unexpected) culture. This can
     // make parsing unexpectedly go wrong.
@@ -384,12 +351,7 @@ module Program =
         services
             .AddHealthChecks()
             .AddTypeActivatedCheck<MemoryHealthCheck>("Memory", HealthStatus.Degraded, Seq.empty, args = [| int64 (5 * 1024) |])
-            .AddTypeActivatedCheck<SQLiteHealthCheck>(
-                "Database",
-                HealthStatus.Degraded,
-                Seq.empty,
-                args = [| connectionString |]
-            )
+            .AddTypeActivatedCheck<SQLiteHealthCheck>("Database", HealthStatus.Degraded, Seq.empty, args = [| connectionString |])
         |> ignore
 
         services.AddControllers() |> ignore
@@ -427,7 +389,12 @@ module Program =
             task {
                 let r = context.Response
                 r.GetTypedHeaders().CacheControl <-
-                    CacheControlHeaderValue(MustRevalidate = true, MaxAge = TimeSpan.FromSeconds(seconds = 0), NoCache = true, NoStore = true)
+                    CacheControlHeaderValue(
+                        MustRevalidate = true,
+                        MaxAge = TimeSpan.FromSeconds(seconds = 0),
+                        NoCache = true,
+                        NoStore = true
+                    )
                 r.Headers[HeaderNames.Vary] <- [| "Accept, Accept-Encoding" |] |> StringValues.op_Implicit
                 return! next.Invoke(context)
             }
@@ -466,16 +433,14 @@ module Program =
         app.UseAuthentication() |> ignore
         app.UseAuthorization() |> ignore
         app.UseMvcWithDefaultRoute() |> ignore
-        app.UseGiraffe RouteHandlers.webApp
+        app.UseGiraffe RouteHandler.webApp
         app
 
-    open Scrum.Shared.Infrastructure
-    
     [<EntryPoint>]
     let main args =
         let webApplicationBuilder = WebApplication.CreateBuilder(args)
 
-        configureServices(webApplicationBuilder.Services) |> ignore
+        configureServices (webApplicationBuilder.Services) |> ignore
         let webApplication = webApplicationBuilder.Build()
         configureApplication webApplication |> ignore
 
