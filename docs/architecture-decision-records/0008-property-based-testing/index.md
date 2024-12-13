@@ -1,4 +1,4 @@
-# 0008: Property based testing
+# ADR0008: Property based testing
 
 Status: Accepted and active.
 

@@ -7,17 +7,13 @@ libraries and frameworks. It substitutes .NET dependency injection container,
 FluentValidation, MediatR, Entity Framework, Moq, Respawn, and a migration tool
 for custom constructs.
 
-It's imperative shell, functional core illustrated. Specifically, `Program.fs`
-and `Infrastructure.fs` make up the shell while `Application.fs` and `Domain.fs`
-make up the core.
-
-Where F# shines is in the core and `IntegrationTest.fs`. The shell is similar in
-nature to many C# applications.
+It's imperative shell, functional core illustrated.
 
 <img src="./docs/onion-architecture.png" width="550px" />
 
 The sample includes the following features:
 
+- Vertical slice architecture, with Story being the only slice.
 - REST API adhering to the [Zalando API
 guidelines](https://opensource.zalando.com/restful-api-guidelines/) with JWTs
 supporting role-based security.
@@ -50,8 +46,8 @@ The sample constraints itself to The Blue Book concepts rather than cutting
 corners due to unknown unknowns. That means implementing CQRS, aggregates,
 entities, domain events, and so on. For the HTTP API, the sample adheres to the
 Zalando API guidelines. It doesn't mean The Blue Book and the Zalando API
-guidelines are the end all, be all, but it's important the sample adopts
-constraints reflecting a larger real-world application.
+guidelines are the end all, be all, but the sample should adopt constraints
+reflecting a larger real-world application.
 
 ## Getting started
 
@@ -109,3 +105,4 @@ curl https://localhost:5000/health --insecure
 - [Uncle Bob: Architecture the Lost Years](https://www.youtube.com/watch?v=WpkDN78P884).
 - [.NET Microservices: Architecture for Containerized .NET Applications](https://docs.microsoft.com/en-us/dotnet/architecture/microservices), specifically the chapter on [Tackling Business Complexity in a Microservice with DDD and CQRS Patterns](https://docs.microsoft.com/en-us/dotnet/architecture/microservices/microservice-ddd-cqrs-patterns).
 - [F# units of measure for primitive non-numeric types](https://github.com/fsprojects/FSharp.UMX)
+- [Thoughts on Code Organization in a Post-Hexagonal World](https://jeremydmiller.com/2023/08/08/thoughts-on-code-organization-in-a-post-hexagonal-world)

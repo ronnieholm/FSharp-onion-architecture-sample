@@ -16,36 +16,34 @@ File ordering matters to the F# compiler, so `Domain.fs` depends on nothing,
 `Application.fs` depends on `Domain.fs`, and so on. Similarly, within each
 source file, definition must precede use.
 
-For larger applications, switching to vertical slice architecture may be
-preferred. With vertical slice architecture, `Story.fs` (or a variation thereof)
-would contain domain, application, infrastructure, web, and maybe even test
-code:
+For larger applications, switching to vertical slice architecture is preferred
+as related code is typically read or modified together rather than someone
+reading domain or application top to buttom. With vertical slice architecture,
+`Story.fs` (or a variation thereof) would contain domain, application,
+infrastructure, web:
 
 - Shared.fs
 - Story.fs (domain + application + infrastructure + ASP.NET handlers + test)
 - Program.fs
 
 `Story.fs` could also be a folder with multiple files or its own assembly for
-faster compile times.
-
-Vertical slice architecture potentially improves compile times. The F# compiler
-is mostly sequential across an assembly with multiple assemblies compiled in
-parallel. For this reason, organizing code into dependent assemblies for domain,
-application, integration, web, unit test, and integration test is a bad idea.
-Compilation becomes sequential across the solution.
+faster fan-out compile times across slices. The F# compiler is mostly sequential
+across an assembly, so slices depending on each other would make compilation
+sequential.
 
 ## Decision
 
-To best illustrate the concepts, and until the sample grows sufficiently large,
-we use horizontal architecture. We also stick with one F# file per layer of the
-onion, even though compared to typical C# files, F# files are large. Roughly
-speaking, each module within each file would correspond to a class in F# (and
-nested modules to subfolders). With types defined in dependency order and a
-reasonable IDE, navigating large files is a non-issue.
+To illustrate the concepts as if it was a larger application, we use vertical
+slice architecture with one F# file per vertical slice. It makes files larger,
+but keeps code changing together next to each other. Roughly speaking, each
+module within such file corresponds to a class in C# (and nested modules to
+subfolders). With types defined in dependency order and a reasonable IDE,
+navigating large files is a non-issue.
 
 ## Consequences
 
-Compile time is starting to become a concern.
+Compile time is starting to become a concern with sequential ordering of layers
+in horizontal architecture.
 
 ## See also
 

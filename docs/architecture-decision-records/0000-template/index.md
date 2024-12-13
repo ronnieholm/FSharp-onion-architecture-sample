@@ -1,4 +1,4 @@
-# 0000: xxx
+# ADR0000: xxx
 
 Status: Accepted and active.
 
