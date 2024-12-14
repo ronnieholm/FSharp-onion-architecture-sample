@@ -11,7 +11,8 @@ It's imperative shell, functional core illustrated.
 
 <img src="./docs/onion-architecture.png" width="550px" />
 
-The sample includes the following features:
+The sample is a modular monolith which offers the simplicity of a monolith and
+the scalability of microservices. It includes the following features:
 
 - Vertical slice architecture, with Story being the only slice.
 - REST API adhering to the [Zalando API
