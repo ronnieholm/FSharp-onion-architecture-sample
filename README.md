@@ -53,39 +53,6 @@ sample adheres to the Zalando API guidelines. It doesn't mean The Blue Book and
 the Zalando API guidelines are the end all, be all, but the sample strives to
 reflect constraints of a larger real-world application.
 
-## Reflections
-
-The onion architecture is good at separating functionality into testable layers,
-more so than the classic three-layer architecture, but at the cost of ceremony:
-
-- Mapping logic is needed at each layer, such as DTO to/from domain, database
-  to/from domain, and value types to wrap primitive types.
-- Re-implementation of a request pipeline in Application layer rather than
-  re-using what ASP.NET offers out of the box. It enables the Application layer
-  to be re-used across ASP.NET, console, or service hosts, but sometimes those
-  hosts might internally go through the HTTP interface.
-- Using a document database could alleviate a lot of complex, repetitive mapping
-  in repositories. Like
-  [PostgreSQL](https://www.postgresql.org/docs/current/functions-json.html),
-  such database should support queries/indices on JSON documents. Alternatively,
-  queries on separate read model projections as relational tables or JSON
-  documents. At this point, looking into [Marten](https://martendb.io) and
-  [Wolverine](https://wolverinefx.net) may be preferred over home grown
-  solutions.
-- F#'s type system is superior to C#'s, but increased compile times make F# less
-  attractive. A 2.5 kloc codebase shouldn't take 15-20 seconds to compile. By
-  copying `Story.fs` and updating the namespaces, we can extrapolate that a 10
-  kloc codebase would have a 1+ minute compile time.
-- The actor model, implemented by something like
-  [Orleans](https://learn.microsoft.com/en-us/dotnet/orleans), would be
-  well-suited for applications where the same aggregate is often requested (as
-  actors are stateful). Each aggregate becomes an actor with commands and
-  queries becoming actor methods. Inside each method would be command/query
-  handler code and Orleans would serve as mediator with its request pipeline. In
-  principle, an actor framework could replay events and generate projections,
-  though switching to a document database and a non-actor approach, the
-  stateless Application layer may be performant enough.
-
 ## Getting started
 
 Running the tests or the web app creates the SQLite databases in the Git root as
@@ -133,6 +100,39 @@ curl "https://localhost:5000/persisted-domain-events/<aggregateId>?limit=<limit>
 ## Get
 curl https://localhost:5000/health --insecure
 ```
+
+## Reflections
+
+The onion architecture is good at separating functionality into testable layers,
+more so than the classic three-layer architecture, but at the cost of ceremony:
+
+- Mapping logic is needed at each layer, such as DTO to/from domain, database
+  to/from domain, and value types to wrap primitive types.
+- Re-implementation of a request pipeline in Application layer rather than
+  re-using what ASP.NET offers out of the box. It enables the Application layer
+  to be re-used across ASP.NET, console, or service hosts, but sometimes those
+  hosts might internally go through the HTTP interface.
+- Using a document database could alleviate a lot of complex, repetitive mapping
+  in repositories. Like
+  [PostgreSQL](https://www.postgresql.org/docs/current/functions-json.html),
+  such database should support queries/indices on JSON documents. Alternatively,
+  queries on separate read model projections as relational tables or JSON
+  documents. At this point, looking into [Marten](https://martendb.io) and
+  [Wolverine](https://wolverinefx.net) may be preferred over home grown
+  solutions.
+- F#'s type system is superior to C#'s, but increased compile times make F# less
+  attractive. A 2.5 kloc codebase shouldn't take 15-20 seconds to compile. By
+  copying `Story.fs` and updating the namespaces, we can extrapolate that a 10
+  kloc codebase would have a 1+ minute compile time.
+- The actor model, implemented by something like
+  [Orleans](https://learn.microsoft.com/en-us/dotnet/orleans), would be
+  well-suited for applications where the same aggregate is often requested (as
+  actors are stateful). Each aggregate becomes an actor with commands and
+  queries becoming actor methods. Inside each method would be command/query
+  handler code and Orleans would serve as mediator with its request pipeline. In
+  principle, an actor framework could replay events and generate projections,
+  though switching to a document database and a non-actor approach, the
+  stateless Application layer may be performant enough.
 
 ## See also
 
