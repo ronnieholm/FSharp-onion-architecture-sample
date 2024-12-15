@@ -64,12 +64,14 @@ more so than the classic three-layer architecture, but at the cost of ceremony:
   re-using what ASP.NET offers out of the box. It enables the Application layer
   to be re-used across ASP.NET, console, or service hosts, but sometimes those
   hosts might internally go through the HTTP interface.
-- Using a document database could alleviate a lot of complex, repetitive
-  mappings in repositories. Such database should support direct queries on
-  aggregates as JSON documents. Alternatively, queries on separate read model
-  projections as relational tables or JSON documents. At this point, looking
-  into [Marten](https://martendb.io) and [Wolverine](https://wolverinefx.net)
-  may be preferred over home grown solutions.
+- Using a document database could alleviate a lot of complex, repetitive mapping
+  in repositories. Like
+  [PostgreSQL](https://www.postgresql.org/docs/current/functions-json.html),
+  such database should support queries/indices on JSON documents. Alternatively,
+  queries on separate read model projections as relational tables or JSON
+  documents. At this point, looking into [Marten](https://martendb.io) and
+  [Wolverine](https://wolverinefx.net) may be preferred over home grown
+  solutions.
 - F#'s type system is superior to C#'s, but increased compile times make F# less
   attractive. A 2.5 kloc codebase shouldn't take 15-20 seconds to compile. By
   copying `Story.fs` and updating the namespaces, we can extrapolate that a 10
