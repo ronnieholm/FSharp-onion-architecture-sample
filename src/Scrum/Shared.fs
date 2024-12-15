@@ -57,7 +57,7 @@ module Domain =
                 let value (Cursor v) : string = v
 
             type Paged<'t> = { Cursor: Cursor option; Items: 't list }
-            
+
 module Application =
     module Seedwork =
         open System
@@ -67,7 +67,7 @@ module Application =
         exception ApplicationLayerException of string
 
         let panic message : 't = raise (ApplicationLayerException(message))
-                
+
         // Contrary to outer layer's Seedwork, core doesn't define a boundary
         // exception. Core communicates errors as values.
 
@@ -102,8 +102,8 @@ module Application =
                 match s with
                 | "member" -> Member
                 | "admin" -> Admin
-                | unsupported -> panic $"Unsupported {nameof ScrumRole}: '{unsupported}'"            
-            
+                | unsupported -> panic $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+
             override x.ToString() =
                 match x with
                 | Member -> "member"
@@ -159,9 +159,9 @@ module Application =
 
     module Models =
         // Per Zalando API guidelines:
-        // https://opensource.zalando.com/restful-api-guidelines/#137)
+        // https://opensource.zalando.com/restful-api-guidelines/#137
         type PagedDto<'t> = { Cursor: string option; Items: 't list }
-        
+
     module DomainEventRequest =
         open System
         open FsToolkit.ErrorHandling
@@ -238,7 +238,7 @@ module Infrastructure =
         let panic message : 't = raise (InfrastructureException(message))
         let unreachable message : 't = raise (UnreachableException(message))
         let utcNow () = DateTime.UtcNow
-        
+
         module Json =
             type DateTimeJsonConverter() =
                 inherit JsonConverter<DateTime>()
@@ -267,7 +267,7 @@ module Infrastructure =
                          |> String.Concat)
                             .ToUpperInvariant()
                         |> writer.WriteStringValue
-                        
+
             // System.Text.Json cannot serialize an exception without throwing
             // an exception: "System.NotSupportedException: Serialization and
             // deserialization of 'System.Reflection.MethodBase' instances are
@@ -313,8 +313,8 @@ module Infrastructure =
                 connection.Open()
                 use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
                 cmd.ExecuteNonQuery() |> ignore
-                connection            
-            
+                connection
+
             let panicOnError (datum: string) (result: Result<'t, _>) : 't =
                 match result with
                 | Ok r -> r
@@ -389,7 +389,7 @@ module Infrastructure =
                     |> Cursor.create
                     |> panicOnError "base64"
                     |> Some
-    
+
         // TODO: use new framework type.
         // RFC7807 problem details format per
         // https://opensource.zalando.com/restful-api-guidelines/#176.
@@ -400,8 +400,8 @@ module Infrastructure =
             open Microsoft.AspNetCore.Http
             open Microsoft.AspNetCore.Mvc
             open Microsoft.Extensions.Primitives
-            open Application.Seedwork            
-            
+            open Application.Seedwork
+
             let create status detail: ProblemDetails2 = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
             let inferContentType (acceptHeaders: StringValues) =
@@ -441,7 +441,7 @@ module Infrastructure =
 
             let queryStringParameterMustBeOfType name type_ =
                 create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
-       
+
     module DomainEventRepository =
         open System
         open System.Threading
@@ -521,18 +521,18 @@ module Infrastructure =
                 logger.LogInformation(message)
             | Dbg message ->
                 logger.LogDebug(message)
-    
+
     // Claims shared between services.
     module ScrumClaims =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
-        
+
     // Web specific implementation of IUserIdentity.
     module UserIdentity =
         open Microsoft.AspNetCore.Http
         open System.Security.Claims
         open Application.Seedwork
-        
+
         let getCurrentIdentity(context: HttpContext) =
             if isNull context then
                 Anonymous
@@ -563,8 +563,8 @@ module Infrastructure =
                         match List.length rolesClaim with
                         | 0 -> Anonymous
                         | _ -> Authenticated(userIdClaim, rolesClaim)
-        
-    
+
+
     module DatabaseMigration =
         open System
         open System.Data.SQLite
@@ -723,8 +723,8 @@ module Infrastructure =
             [<Required>]
             member val SigningKey: string = null with get, set
             [<Range(60, 86400)>]
-            member val ExpirationInSeconds: uint = 0ul with get, set                    
-                
+            member val ExpirationInSeconds: uint = 0ul with get, set
+
     module Service =
         open System
         open System.IdentityModel.Tokens.Jwt
@@ -732,7 +732,7 @@ module Infrastructure =
         open System.Text
         open Microsoft.IdentityModel.JsonWebTokens
         open Microsoft.IdentityModel.Tokens
-        open Application.Seedwork        
+        open Application.Seedwork
         open Configuration
 
         module IdentityProvider =
@@ -773,7 +773,7 @@ module RouteHandler =
     open Microsoft.AspNetCore.Http
     open Giraffe
     open Infrastructure.Seedwork
-    
+
     let toPagedResult result (ctx: HttpContext) (next: HttpFunc) =
         task {
             match result with
@@ -791,8 +791,8 @@ module RouteHandler =
         if ok then
            Ok value
         else
-           Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")  
-    
+           Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")
+
     let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) expectedParameters =
         // Per design APIs conservatively:
         // https://opensource.zalando.com/restful-api-guidelines/#109
@@ -804,18 +804,18 @@ module RouteHandler =
         if List.isEmpty unexpected then
             Ok ()
         else
-            Error (ProblemDetails.unexpectedQueryStringParameters unexpected)    
-    
+            Error (ProblemDetails.unexpectedQueryStringParameters unexpected)
+
     module GetPersistedDomainEvents =
         open Microsoft.Extensions.Logging
-        open Microsoft.Extensions.Configuration        
+        open Microsoft.Extensions.Configuration
         open FsToolkit.ErrorHandling
         open Infrastructure
         open Application.Seedwork
         open Infrastructure.Seedwork.Repository
         open Application.DomainEventRequest
         open Application.DomainEventRequest.GetByAggregateIdQuery
-    
+
         let handle aggregateId: HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
