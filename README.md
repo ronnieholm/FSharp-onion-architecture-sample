@@ -76,6 +76,15 @@ more so than the classic three-layer architecture, but at the cost of ceremony:
   attractive. A 2.5 kloc codebase shouldn't take 15-20 seconds to compile. By
   copying `Story.fs` and updating the namespaces, we can extrapolate that a 10
   kloc codebase would have a 1+ minute compile time.
+- The actor model, implemented by something like
+  [Orleans](https://learn.microsoft.com/en-us/dotnet/orleans), would be
+  well-suited for applications where the same aggregate is often requested (as
+  actors are stateful). Each aggregate becomes an actor with commands and
+  queries becoming actor methods. Inside each method would be command/query
+  handler code and Orleans would serve as mediator with its request pipeline. In
+  principle, an actor framework could replay events and generate projections,
+  though switching to a document database and a non-actor approach, the
+  stateless Application layer may be performant enough.
 
 ## Getting started
 
