@@ -272,7 +272,6 @@ module Program =
     open Scrum.Shared.Infrastructure    
     open Scrum.Shared.Infrastructure.Seedwork.Json
     open Scrum.Shared.Infrastructure.Configuration
-    open Seedwork
     open HealthCheck
     open Filter
 
