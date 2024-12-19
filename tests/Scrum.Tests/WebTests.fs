@@ -5,17 +5,10 @@ namespace Scrum.Tests.WebTests
 //
 // See https://learn.microsoft.com/en-us/aspnet/core/test/integration-tests
 //
-// It's most useful with simple, single layer C# services.
+// It's most useful with C# services.
 //
-// Our solution only makes minimal use of the dependency injection container, so
-// TestServer doesn't provide a way to mock most dependencies. Only for
-// solutions with simple dependencies, such as a database, is the TestServer
-// useful.
-//
-// Another downside is that for payloads the tests operate at the  textual
-// level, whereas traditional integration tests stay in object world. The tests
-// are therefore most useful for verifying aspects of HTTP, such as HTTP status
-// code, not payload.
+// The F# solution only makes minimal use of the dependency injection
+// container, so TestServer doesn't provide a way to mock most dependencies.
 
 open Xunit
 
