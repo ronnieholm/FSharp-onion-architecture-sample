@@ -72,29 +72,29 @@ configuration.
 # Authentication (supported roles: member and/or admin)
 ## Post
 curl "https://localhost:5000/authentication/issue-token?userId=1&roles=member,admin" --insecure --request POST
-curl https://localhost:5000/authentication/renew-token --insecure --request POST -H "Authorization: Bearer <token>"
-curl https://localhost:5000/authentication/introspect --insecure --request POST -H "Authorization: Bearer <token>"
+curl https://localhost:5000/authentication/renew-token --insecure --request POST --header "Authorization: Bearer <token>"
+curl https://localhost:5000/authentication/introspect --insecure --request POST --header "Authorization: Bearer <token>"
 
 # Stories
 ## Post
-curl https://localhost:5000/stories --insecure --request POST -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title", "description": "description"}'
-curl https://localhost:5000/stories/<storyId>/tasks --insecure --request POST -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title","description": "description"}'
+curl https://localhost:5000/stories --insecure --request POST --header 'Content-Type: application/json' --header 'Authorization: Bearer <token>' --data '{"title": "title", "description": "description"}'
+curl https://localhost:5000/stories/<storyId>/tasks --insecure --request POST --header 'Content-Type: application/json' --header 'Authorization: Bearer <token>' --data '{"title": "title","description": "description"}'
 
 ## Put
-curl https://localhost:5000/stories/<storyId> --insecure --request PUT -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
-curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request PUT -H 'Content-Type: application/json' -H 'Authorization: Bearer <token>' -d '{"title": "title1","description": "description1"}'
+curl https://localhost:5000/stories/<storyId> --insecure --request PUT --header 'Content-Type: application/json' --header 'Authorization: Bearer <token>' --data '{"title": "title1","description": "description1"}'
+curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request PUT --header 'Content-Type: application/json' --header 'Authorization: Bearer <token>' --data '{"title": "title1","description": "description1"}'
 
 ## Delete
-curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request DELETE -H 'Authorization: Bearer <token>'
-curl https://localhost:5000/stories/<storyId> --insecure --request DELETE -H 'Authorization: Bearer <token>'
+curl https://localhost:5000/stories/<storyId>/tasks/<taskId> --insecure --request DELETE --header 'Authorization: Bearer <token>'
+curl https://localhost:5000/stories/<storyId> --insecure --request DELETE --header 'Authorization: Bearer <token>'
 
 ## Get
-curl https://localhost:5000/stories/<storyId> --insecure -H 'Authorization: Bearer <token>'
-curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>'
+curl https://localhost:5000/stories/<storyId> --insecure --header 'Authorization: Bearer <token>'
+curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure --header 'Authorization: Bearer <token>'
 
 # PersistedDomainEvents
 ## Get
-curl "https://localhost:5000/persisted-domain-events/<aggregateId>?limit=<limit>&cursor=<cursor>" --insecure -H 'Authorization: Bearer <token>'
+curl "https://localhost:5000/persisted-domain-events/<aggregateId>?limit=<limit>&cursor=<cursor>" --insecure --header 'Authorization: Bearer <token>'
 
 # Health
 ## Get
@@ -144,3 +144,4 @@ more so than the classic three-layer architecture, but at the cost of ceremony:
 - [F# units of measure for primitive non-numeric types](https://github.com/fsprojects/FSharp.UMX).
 - [Jeremy Miller: Thoughts on Code Organization in a Post-Hexagonal World](https://jeremydmiller.com/2023/08/08/thoughts-on-code-organization-in-a-post-hexagonal-world).
 - [Jeremy Miller: Efficient Web Services with Marten V4](https://jeremydmiller.com/2021/09/28/efficient-web-services-with-marten-v4).
+- [Jeremy Miller: Why you should give Marten a look before adopting an ORM like EF](https://jeremydmiller.com/2016/09/23/why-you-should-give-marten-a-look-before-adopting-an-orm).

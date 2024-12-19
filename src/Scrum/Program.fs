@@ -404,7 +404,7 @@ module Program =
         let healthCheckOptions =
             let jsonOptions =
                 JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, WriteIndented = true)
-            jsonOptions.Converters.Add(Json.ExceptionJsonConverter())
+            jsonOptions.Converters.Add(ExceptionJsonConverter())
             HealthCheckOptions(
                 ResponseWriter =
                     fun context report ->
@@ -440,7 +440,7 @@ module Program =
     let main args =
         let webApplicationBuilder = WebApplication.CreateBuilder(args)
 
-        configureServices (webApplicationBuilder.Services) |> ignore
+        configureServices webApplicationBuilder.Services |> ignore
         let webApplication = webApplicationBuilder.Build()
         configureApplication webApplication |> ignore
 

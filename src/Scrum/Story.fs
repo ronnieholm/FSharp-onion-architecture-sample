@@ -351,7 +351,7 @@ module Application =
                     let! story =
                         getStoryById cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                    let event = StoryAggregate.removeStory story (now ())
+                    let event = removeStory story (now ())
                     do! storyApplyEvent event
                     return StoryId.value story.Aggregate.Id
                 }
