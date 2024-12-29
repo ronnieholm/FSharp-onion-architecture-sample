@@ -152,6 +152,7 @@ module Domain =
             | Ok zero -> zero
             | Error _ -> unreachable "Invalid zero story"
 
+        // The decider pattern per https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider.
         let apply story =
             function
             | BasicStoryDetailsCaptured e ->
@@ -262,7 +263,7 @@ module Application =
         open Scrum.Shared.Application.Models
         open Scrum.Shared.Application.Seedwork
 
-        type SaveStoryFromEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
+        type SaveRelationalStoryFromEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
         type GetPaged = Limit -> Cursor option -> Threading.Tasks.Task<Paged<Story>>
 
         type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
@@ -289,7 +290,7 @@ module Application =
                 | ValidationErrors of ValidationError list
                 | DuplicateStory of Guid
 
-            let runAsync now storyExist (saveStory: SaveStoryFromEvent) identity cmd =
+            let runAsync now storyExist (saveStory: SaveRelationalStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -334,7 +335,7 @@ module Application =
                 | ValidationErrors of ValidationError list
                 | StoryNotFound of Guid
 
-            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveRelationalStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -363,7 +364,7 @@ module Application =
                 | ValidationErrors of ValidationError list
                 | StoryNotFound of Guid
 
-            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveRelationalStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -409,7 +410,7 @@ module Application =
                 function
                 | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveRelationalStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -461,7 +462,7 @@ module Application =
                 function
                 | StoryAggregate.ReviseBasicTaskDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveRelationalStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -498,7 +499,7 @@ module Application =
                 function
                 | StoryAggregate.RemoveTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveRelationalStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
