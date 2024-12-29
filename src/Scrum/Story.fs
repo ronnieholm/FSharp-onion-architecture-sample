@@ -5,6 +5,7 @@ module Domain =
 
     module StoryAggregate =
         open System
+        open FsToolkit.ErrorHandling
         open Scrum.Shared.Domain.Seedwork
 
         module TaskEntity =
@@ -44,12 +45,7 @@ module Domain =
                   Title: TaskTitle
                   Description: TaskDescription option }
 
-            let create
-                (id: TaskId)
-                (title: TaskTitle)
-                (description: TaskDescription option)
-                (createdAt: DateTime)
-                : Task =
+            let create id title description createdAt =
                 { Entity = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
                   Title = title
                   Description = description }
@@ -97,36 +93,39 @@ module Domain =
         // concepts in the business domain. StoryCreated doesn't capture business
         // intent.
         type BasicStoryDetailsCaptured =
-            { DomainEvent: DomainEvent
+            { OccurredAt: DateTime
               StoryId: StoryId
               StoryTitle: StoryTitle
               StoryDescription: StoryDescription option }
 
         type BasicStoryDetailsRevised =
-            { DomainEvent: DomainEvent
+            { OccurredAt: DateTime
               StoryId: StoryId
               StoryTitle: StoryTitle
               StoryDescription: StoryDescription option }
 
         type StoryRemoved =
-            { DomainEvent: DomainEvent
+            { OccurredAt: DateTime
               StoryId: StoryId }
 
         type BasicTaskDetailsAddedToStory =
-            { DomainEvent: DomainEvent
+            { OccurredAt: DateTime
               StoryId: StoryId
               TaskId: TaskEntity.TaskId
               TaskTitle: TaskEntity.TaskTitle
               TaskDescription: TaskEntity.TaskDescription option }
 
         type BasicTaskDetailsRevised =
-            { DomainEvent: DomainEvent
+            { OccurredAt: DateTime
               StoryId: StoryId
               TaskId: TaskEntity.TaskId
               TaskTitle: TaskEntity.TaskTitle
               TaskDescription: TaskEntity.TaskDescription option }
 
-        type TaskRemoved = { DomainEvent: DomainEvent; StoryId: StoryId; TaskId: TaskEntity.TaskId }
+        type TaskRemoved =
+            { OccurredAt: DateTime
+              StoryId: StoryId
+              TaskId: TaskEntity.TaskId }
 
         type StoryDomainEvent =
             | BasicStoryDetailsCaptured of BasicStoryDetailsCaptured
@@ -138,26 +137,62 @@ module Domain =
 
         open TaskEntity
 
+        let zeroStory =
+            let zero =
+                result {
+                    let! storyId = StoryId.create (Guid.NewGuid())
+                    let! storyTitle = StoryTitle.create "empty"
+                    return
+                        { Aggregate = { Id = storyId; CreatedAt = DateTime.MinValue; UpdatedAt = None }
+                          Title = storyTitle
+                          Description = None
+                          Tasks = [] }              
+                }
+            match zero with
+            | Ok zero -> zero
+            | Error _ -> unreachable "Invalid zero story"
+
+        let apply story =
+            function
+            | BasicStoryDetailsCaptured e ->
+                { Aggregate = { Id = e.StoryId; CreatedAt = e.OccurredAt; UpdatedAt = None }
+                  Title = e.StoryTitle
+                  Description = e.StoryDescription
+                  Tasks = [] }
+            | BasicStoryDetailsRevised e ->
+                let root = { story.Aggregate with UpdatedAt = Some e.OccurredAt }
+                { story with Aggregate = root; Title = e.StoryTitle; Description = e.StoryDescription }                
+            | StoryRemoved _ ->
+                story
+            | BasicTaskDetailsAddedToStory e ->
+                let task = create e.TaskId e.TaskTitle e.TaskDescription e.OccurredAt
+                { story with Tasks = task :: story.Tasks }
+            | BasicTaskDetailsRevised e ->
+                let idx = story.Tasks |> List.findIndex (fun t -> t.Entity.Id = e.TaskId)
+                let task = story.Tasks[idx]
+                let tasks = story.Tasks |> List.removeAt idx
+                let entity = { task.Entity with UpdatedAt = Some e.OccurredAt }
+                let updatedTask = { Entity = entity; Title = e.TaskTitle; Description = e.TaskDescription }
+                { story with Tasks = updatedTask :: tasks }
+            | TaskRemoved e ->
+                let idx = story.Tasks |> List.findIndex (fun t -> t.Entity.Id = e.TaskId)
+                let tasks = story.Tasks |> List.removeAt idx
+                { story with Tasks = tasks }
+
         // A list of tasks could be part of the initial story. Then after
         // creation, addBasicTaskDetailsToStory could be called for each. It
         // would make captureBasicStoryDetails return a list of events: one for
         // the story and one for each task. For simplicity, tasks are left out.
         let captureBasicStoryDetails id title description createdAt =
-            { Aggregate = { Id = id; CreatedAt = createdAt; UpdatedAt = None }
-              Title = title
-              Description = description
-              Tasks = [] },
             BasicStoryDetailsCaptured
-                { DomainEvent = { OccurredAt = createdAt }
+                { OccurredAt = createdAt
                   StoryId = id
                   StoryTitle = title
                   StoryDescription = description }
 
         let reviseBasicStoryDetails story title description updatedAt =
-            let root = { story.Aggregate with UpdatedAt = Some updatedAt }
-            { story with Aggregate = root; Title = title; Description = description },
             BasicStoryDetailsRevised
-                { DomainEvent = { OccurredAt = updatedAt }
+                { OccurredAt = updatedAt
                   StoryId = story.Aggregate.Id
                   StoryTitle = title
                   StoryDescription = description }
@@ -167,7 +202,7 @@ module Domain =
             // explicitly delete the story's tasks and emit task deleted
             // events. In this case, we leave cascade delete to the store.
             StoryRemoved
-                { DomainEvent = { OccurredAt = occurredAt }
+                { OccurredAt = occurredAt
                   StoryId = story.Aggregate.Id }
 
         type AddBasicTaskDetailsToStoryError = DuplicateTask of TaskId
@@ -180,55 +215,38 @@ module Domain =
             if duplicate then
                 Error(DuplicateTask task.Entity.Id)
             else
-                Ok(
-                    { story with Tasks = task :: story.Tasks },
-                    BasicTaskDetailsAddedToStory
-                        { DomainEvent = { OccurredAt = createdAt }
-                          StoryId = story.Aggregate.Id
-                          TaskId = task.Entity.Id
-                          TaskTitle = task.Title
-                          TaskDescription = task.Description }
-                )
+                BasicTaskDetailsAddedToStory
+                    { OccurredAt = createdAt
+                      StoryId = story.Aggregate.Id
+                      TaskId = task.Entity.Id
+                      TaskTitle = task.Title
+                      TaskDescription = task.Description } |> Ok
 
         type ReviseBasicTaskDetailsError = TaskNotFound of TaskId
 
         let reviseBasicTaskDetails story taskId title description updatedAt =
-            let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
-            match idx with
-            | Some idx ->
-                let task = story.Tasks[idx]
-                let tasks = story.Tasks |> List.removeAt idx
-                let entity = { task.Entity with UpdatedAt = Some updatedAt }
-                let updatedTask = { Entity = entity; Title = title; Description = description }
-                let story = { story with Tasks = updatedTask :: tasks }
-                Ok(
-                    story,
-                    BasicTaskDetailsRevised
-                        { DomainEvent = { OccurredAt = updatedAt }
-                          StoryId = story.Aggregate.Id
-                          TaskId = taskId
-                          TaskTitle = title
-                          TaskDescription = description }
-                )
-
-            | None -> Error(TaskNotFound taskId)
+            let exists = story.Tasks |> List.exists (fun t -> t.Entity.Id = taskId)
+            match exists with
+            | true ->
+                BasicTaskDetailsRevised
+                    { OccurredAt = updatedAt
+                      StoryId = story.Aggregate.Id
+                      TaskId = taskId
+                      TaskTitle = title
+                      TaskDescription = description } |> Ok
+            | false -> Error (TaskNotFound taskId)
 
         type RemoveTaskError = TaskNotFound of TaskId
 
         let removeTask story taskId occurredAt =
-            let idx = story.Tasks |> List.tryFindIndex (fun t -> t.Entity.Id = taskId)
-            match idx with
-            | Some idx ->
-                let tasks = story.Tasks |> List.removeAt idx
-                let story = { story with Tasks = tasks }
-                Ok(
-                    story,
-                    TaskRemoved
-                        { DomainEvent = { OccurredAt = occurredAt }
-                          StoryId = story.Aggregate.Id
-                          TaskId = taskId }
-                )
-            | None -> Error(TaskNotFound taskId)
+            let exists = story.Tasks |> List.exists (fun t -> t.Entity.Id = taskId)
+            match exists with
+            | true ->
+                TaskRemoved
+                    { OccurredAt = occurredAt
+                      StoryId = story.Aggregate.Id
+                      TaskId = taskId } |> Ok
+            | false -> Error (TaskNotFound taskId)
 
     module Service =
         ()
@@ -244,7 +262,7 @@ module Application =
         open Scrum.Shared.Application.Models
         open Scrum.Shared.Application.Seedwork
 
-        type ApplyEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
+        type SaveStoryFromEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
         type GetPaged = Limit -> Cursor option -> Threading.Tasks.Task<Paged<Story>>
 
         type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
@@ -271,15 +289,16 @@ module Application =
                 | ValidationErrors of ValidationError list
                 | DuplicateStory of Guid
 
-            let runAsync now storyExist (storyApplyEvent: ApplyEvent) identity cmd =
+            let runAsync now storyExist (saveStory: SaveStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     do!
                         storyExist cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
-                    let story, event = captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (now ())
-                    do! storyApplyEvent event
+                    let event = captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (now ())                    
+                    let story = apply zeroStory event
+                    do! saveStory event
                     // Example of publishing the StoryBasicDetailsCaptured domain
                     // event to another aggregate:
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
@@ -315,16 +334,16 @@ module Application =
                 | ValidationErrors of ValidationError list
                 | StoryNotFound of Guid
 
-            let runAsync now getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         getStoryById cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
-                    let story, event =
-                        reviseBasicStoryDetails story cmd.Title cmd.Description (now ())
-                    do! storyApplyEvent event
+                    let event = reviseBasicStoryDetails story cmd.Title cmd.Description (now ())
+                    let story = apply story event
+                    do! saveStory event
                     return StoryId.value story.Aggregate.Id
                 }
 
@@ -344,7 +363,7 @@ module Application =
                 | ValidationErrors of ValidationError list
                 | StoryNotFound of Guid
 
-            let runAsync now getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
@@ -352,7 +371,7 @@ module Application =
                         getStoryById cmd.Id
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.Id))
                     let event = removeStory story (now ())
-                    do! storyApplyEvent event
+                    do! saveStory event
                     return StoryId.value story.Aggregate.Id
                 }
 
@@ -390,17 +409,18 @@ module Application =
                 function
                 | StoryAggregate.AddBasicTaskDetailsToStoryError.DuplicateTask id -> DuplicateTask(TaskId.value id)
 
-            let runAsync now getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         getStoryById cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! _, event =
+                    let! event =
                         addBasicTaskDetailsToStory story cmd.TaskId cmd.Title cmd.Description (now ())
                         |> Result.mapError fromDomainError
-                    do! storyApplyEvent event
+                    let _ = apply story event
+                    do! saveStory event
                     return TaskId.value cmd.TaskId
                 }
 
@@ -441,17 +461,18 @@ module Application =
                 function
                 | StoryAggregate.ReviseBasicTaskDetailsError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-            let runAsync now getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         getStoryById cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! _, event =
+                    let! event =
                         reviseBasicTaskDetails story cmd.TaskId cmd.Title cmd.Description (now ())
                         |> Result.mapError fromDomainError
-                    do! storyApplyEvent event
+                    let _ = apply story event
+                    do! saveStory event
                     return TaskId.value cmd.TaskId
                 }
 
@@ -477,15 +498,16 @@ module Application =
                 function
                 | StoryAggregate.RemoveTaskError.TaskNotFound id -> TaskNotFound(TaskId.value id)
 
-            let runAsync now getStoryById (storyApplyEvent: ApplyEvent) identity cmd =
+            let runAsync now getStoryById (saveStory: SaveStoryFromEvent) identity cmd =
                 taskResult {
                     do! isInRole identity Member |> Result.requireTrue (AuthorizationError Member)
                     let! cmd = validate cmd |> Result.mapError ValidationErrors
                     let! story =
                         getStoryById cmd.StoryId
                         |> TaskResult.requireSome (StoryNotFound(StoryId.value cmd.StoryId))
-                    let! _, event = removeTask story cmd.TaskId (now ()) |> Result.mapError fromDomainError
-                    do! storyApplyEvent event
+                    let! event = removeTask story cmd.TaskId (now ()) |> Result.mapError fromDomainError
+                    let _ = apply story event
+                    do! saveStory event
                     return TaskId.value cmd.TaskId
                 }
 
@@ -768,9 +790,9 @@ module Infrastructure =
                         p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
                         p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                         |> ignore
-                        p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                        p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
                         task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
-                        storyId, e.DomainEvent.OccurredAt
+                        storyId, e.OccurredAt
                     | BasicStoryDetailsRevised e ->
                         let sql = "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -779,17 +801,17 @@ module Infrastructure =
                         p.AddWithValue("@title", e.StoryTitle |> StoryTitle.value) |> ignore
                         p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                         |> ignore
-                        p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                        p.AddWithValue("@updatedAt", e.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", storyId |> string) |> ignore
                         task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
-                        storyId, e.DomainEvent.OccurredAt
+                        storyId, e.OccurredAt
                     | StoryRemoved e ->
                         let sql = "delete from stories where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
                         task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
-                        storyId, e.DomainEvent.OccurredAt
+                        storyId, e.OccurredAt
                     | BasicTaskDetailsAddedToStory e ->
                         let sql = "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -800,9 +822,9 @@ module Infrastructure =
                         p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
                         p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                         |> ignore
-                        p.AddWithValue("@createdAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                        p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
                         task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
-                        storyId, e.DomainEvent.OccurredAt
+                        storyId, e.OccurredAt
                     | BasicTaskDetailsRevised e ->
                         let sql = "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -811,11 +833,11 @@ module Infrastructure =
                         p.AddWithValue("@title", e.TaskTitle |> TaskTitle.value) |> ignore
                         p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                         |> ignore
-                        p.AddWithValue("@updatedAt", e.DomainEvent.OccurredAt.Ticks) |> ignore
+                        p.AddWithValue("@updatedAt", e.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
                         task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
-                        storyId, e.DomainEvent.OccurredAt
+                        storyId, e.OccurredAt
                     | TaskRemoved e ->
                         let sql = "delete from tasks where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
@@ -824,7 +846,7 @@ module Infrastructure =
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
                         task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
-                        storyId, e.DomainEvent.OccurredAt
+                        storyId, e.OccurredAt
 
                 // We don't serialize an event to JSON because F# discriminated
                 // unions aren't supported by System.Text.Json

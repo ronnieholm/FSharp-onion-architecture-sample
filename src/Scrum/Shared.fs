@@ -3,10 +3,12 @@ namespace Scrum.Shared
 module Domain =
     module Seedwork =
         open System
+        open System.Diagnostics
 
+        let unreachable message : 't = raise (UnreachableException(message))        
+        
         type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
         type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
-        type DomainEvent = { OccurredAt: DateTime }
 
         // Constraint validation on primitive types for reuse across value object
         // creation.
@@ -116,8 +118,7 @@ module Application =
         let isInRole identity role =
             match identity with
             | Anonymous -> false
-            | Authenticated(_, roles) ->
-                if List.contains role roles then true else false
+            | Authenticated(_, roles) -> List.contains role roles
 
         type LogMessage =
             // Application specific logging.
