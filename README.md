@@ -145,3 +145,4 @@ more so than the classic three-layer architecture, but at the cost of ceremony:
 - [Jeremy Miller: Thoughts on Code Organization in a Post-Hexagonal World](https://jeremydmiller.com/2023/08/08/thoughts-on-code-organization-in-a-post-hexagonal-world).
 - [Jeremy Miller: Efficient Web Services with Marten V4](https://jeremydmiller.com/2021/09/28/efficient-web-services-with-marten-v4).
 - [Jeremy Miller: Why you should give Marten a look before adopting an ORM like EF](https://jeremydmiller.com/2016/09/23/why-you-should-give-marten-a-look-before-adopting-an-orm).
+- [Jeremie Chassaing: Functional Event Sourcing Decider](https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider).

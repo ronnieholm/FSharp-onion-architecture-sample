@@ -151,8 +151,7 @@ module Domain =
             match zero with
             | Ok zero -> zero
             | Error _ -> unreachable "Invalid zero story"
-
-        // The decider pattern per https://thinkbeforecoding.com/post/2021/12/17/functional-event-sourcing-decider.
+        
         let apply story =
             function
             | BasicStoryDetailsCaptured e ->
@@ -302,7 +301,7 @@ module Application =
                     do! saveStory event
                     // Example of publishing the StoryBasicDetailsCaptured domain
                     // event to another aggregate:
-                    // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies ct event
+                    // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies event ct
                     // Integration events may be generated here and persisted.
                     return StoryId.value story.Aggregate.Id
                 }
