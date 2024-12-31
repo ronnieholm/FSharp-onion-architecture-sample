@@ -776,7 +776,7 @@ module Infrastructure =
         // Compared to event sourcing we aren't storing commands, but events
         // from applying the commands. We don't have to worry about the shape
         // of events evolving over time; only to keep the store up to date.
-        let applyEventAsync (transaction: SQLiteTransaction) (ct: CancellationToken) event =
+        let applyAsync (transaction: SQLiteTransaction) (ct: CancellationToken) event =
             let connection = transaction.Connection
             task {
                 let aggregateId, occuredAt =
@@ -927,7 +927,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let storyExist = StoryRepository.existAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyEventAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: CaptureBasicStoryDetailsCommand =
@@ -973,7 +973,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyEventAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: ReviseBasicStoryDetailsCommand =
@@ -1019,7 +1019,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyEventAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: AddBasicTaskDetailsToStoryCommand =
@@ -1067,7 +1067,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyEventAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: ReviseBasicTaskDetailsCommand =
@@ -1113,7 +1113,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyEventAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let cmd: RemoveTaskCommand = { StoryId = storyId; TaskId = taskId }
                     let! result =
@@ -1153,7 +1153,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyEventAsync transaction ctx.RequestAborted
+                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let cmd: RemoveStoryCommand = { Id = storyId }
                     let! result =

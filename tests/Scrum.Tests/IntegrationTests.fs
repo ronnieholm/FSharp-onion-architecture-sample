@@ -86,7 +86,7 @@ module Setup =
         let exist = StoryRepository.existAsync transaction ct
         let getById = StoryRepository.getByIdAsync transaction ct
         let getPaged = StoryRepository.getPagedAsync transaction ct
-        let applyEvent = StoryRepository.applyEventAsync transaction ct
+        let applyEvent = StoryRepository.applyAsync transaction ct
         let getByAggregateId = DomainEventRepository.getByAggregateIdAsync transaction ct
 
         {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync clock exist applyEvent
