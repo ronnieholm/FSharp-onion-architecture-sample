@@ -791,7 +791,7 @@ module Infrastructure =
                         p.AddWithValue("@description", e.StoryDescription |> Option.map StoryDescription.value |> Option.toObj)
                         |> ignore
                         p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
-                        task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
+                        task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | BasicStoryDetailsRevised e ->
                         let sql = "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
@@ -803,14 +803,14 @@ module Infrastructure =
                         |> ignore
                         p.AddWithValue("@updatedAt", e.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", storyId |> string) |> ignore
-                        task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
+                        task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | StoryRemoved e ->
                         let sql = "delete from stories where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
-                        task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
+                        task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | BasicTaskDetailsAddedToStory e ->
                         let sql = "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
@@ -823,7 +823,7 @@ module Infrastructure =
                         p.AddWithValue("@description", e.TaskDescription |> Option.map TaskDescription.value |> Option.toObj)
                         |> ignore
                         p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
-                        task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
+                        task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | BasicTaskDetailsRevised e ->
                         let sql = "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
@@ -836,7 +836,7 @@ module Infrastructure =
                         p.AddWithValue("@updatedAt", e.OccurredAt.Ticks) |> ignore
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
-                        task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
+                        task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | TaskRemoved e ->
                         let sql = "delete from tasks where id = @id and story_id = @storyId"
@@ -845,7 +845,7 @@ module Infrastructure =
                         let storyId = e.StoryId |> StoryId.value
                         p.AddWithValue("@id", e.TaskId |> TaskId.value |> string) |> ignore
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
-                        task { do! applyEventExecuteNonQueryAsync cmd ct } |> ignore
+                        task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
 
                 // We don't serialize an event to JSON because F# discriminated

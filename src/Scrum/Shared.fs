@@ -355,7 +355,7 @@ module Infrastructure =
                     assert (count = 1)
                 }
 
-            let applyEventExecuteNonQueryAsync (cmd: SQLiteCommand) ct =
+            let applyExecuteNonQueryAsync (cmd: SQLiteCommand) ct =
                 task {
                     let! count = cmd.ExecuteNonQueryAsync(ct)
                     assert (count = 1)
