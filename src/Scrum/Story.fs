@@ -927,7 +927,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let storyExist = StoryRepository.existAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
+                    let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: CaptureBasicStoryDetailsCommand =
@@ -936,7 +936,7 @@ module RouteHandler =
                           Description = request.description |> Option.ofObj }
                     let! result =
                         runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow storyExist storyApplyEvent identity cmd)
+                            (fun () -> runAsync utcNow storyExist storyApply identity cmd)
 
                     match result with
                     | Ok id ->
@@ -973,7 +973,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
+                    let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: ReviseBasicStoryDetailsCommand =
@@ -982,7 +982,7 @@ module RouteHandler =
                           Description = request.description |> Option.ofObj }
                     let! result =
                         runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok id ->
@@ -1019,7 +1019,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
+                    let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: AddBasicTaskDetailsToStoryCommand =
@@ -1029,7 +1029,7 @@ module RouteHandler =
                           Description = request.description |> Option.ofObj }
                     let! result =
                         runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok taskId ->
@@ -1067,7 +1067,7 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
+                    let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let! request = ctx.BindJsonAsync<Request>()
                     let cmd: ReviseBasicTaskDetailsCommand =
@@ -1077,7 +1077,7 @@ module RouteHandler =
                           Description = request.description |> Option.ofObj }
                     let! result =
                         runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok taskId ->
@@ -1113,12 +1113,12 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
+                    let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let cmd: RemoveTaskCommand = { StoryId = storyId; TaskId = taskId }
                     let! result =
                         runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok _ ->
@@ -1153,12 +1153,12 @@ module RouteHandler =
                     use connection = getConnection connectionString
                     use transaction = connection.BeginTransaction()
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
-                    let storyApplyEvent = StoryRepository.applyAsync transaction ctx.RequestAborted
+                    let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let cmd: RemoveStoryCommand = { Id = storyId }
                     let! result =
                         runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApplyEvent identity cmd)
+                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok _ ->

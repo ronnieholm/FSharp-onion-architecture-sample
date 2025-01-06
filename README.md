@@ -1,4 +1,4 @@
-# F# Scrum onion architecture sample
+# F# onion architecture Scrum sample
 
 *Got a comment or a question? Don't hesitate to drop me an email or open an issue.*
 
