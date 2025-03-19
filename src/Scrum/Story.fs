@@ -89,8 +89,8 @@ module Domain =
               Description: StoryDescription option
               Tasks: TaskEntity.Task list }
 
-        // Instead of naming events after CRUD operations, name events after
-        // concepts in the business domain. StoryCreated doesn't capture business
+        // Instead of naming events after CRUD operations, name after concepts
+        // in the business domain. StoryCreated doesn't capture business
         // intent.
         type BasicStoryDetailsCaptured =
             { OccurredAt: DateTime
