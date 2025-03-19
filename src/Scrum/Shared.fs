@@ -30,9 +30,9 @@ module Domain =
                         Ok value
 
             module Int =
-                let between from to_ value =
-                    if value < from && value > to_ then
-                        Error $"Should be between {from} and {to_}, both inclusive"
+                let between lower upper value =
+                    if value < lower && value > upper then
+                        Error $"Should be between {lower} and {upper}, both inclusive"
                     else
                         Ok value
 
@@ -137,7 +137,6 @@ module Application =
             let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
             result, elapsed
 
-        // TODO: Write separate tests for the middleware.
         let runWithMiddlewareAsync<'TResponse, 'TPayload> (log: LogMessage -> unit) identity (payload: 'TPayload) (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
             try
                 task {
@@ -148,11 +147,10 @@ module Application =
                             // sure elapsed is correct.
                             log (Workflow(identity, name, payload))
                             fn ())
-                    let! result = result
-                    // Don't log errors from evaluating fn as these are expected
-                    // errors. We don't want those to pollute the log with.
+                    // Don't log errors from evaluating fn as errors are expected.
+                    // We don't want those to pollute the log with.
                     log (WorkflowDuration(name, elapsed))
-                    return result
+                    return! result
                 }
             with e ->
                 log (Exception(e))
@@ -302,7 +300,7 @@ module Infrastructure =
                     writer.WriteEndObject()
 
         module Option =
-            let ofDBNull (value: obj) : obj option =
+            let ofDBNull (value: obj): obj option =
                 if value = DBNull.Value then
                     None
                 else
@@ -414,7 +412,7 @@ module Infrastructure =
                 else
                     "application/json"
 
-            let toJsonResult acceptHeaders error : ActionResult =
+            let toJsonResult acceptHeaders error: ActionResult =
                 JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
 
             let createJsonResult acceptHeaders status detail =
@@ -528,7 +526,7 @@ module Infrastructure =
         let UserIdClaim = "userId"
         let RolesClaim = "roles"
 
-    // Web specific implementation of IUserIdentity.
+    // Web app specific implementation of IUserIdentity.
     module UserIdentity =
         open Microsoft.AspNetCore.Http
         open System.Security.Claims
@@ -591,7 +589,8 @@ module Infrastructure =
             let getAvailableScripts () =
                 let hasher = SHA1.Create()
                 let assembly = Assembly.GetExecutingAssembly()
-                let prefix = "Scrum.Sql."
+                let assemblyNameWithoutSuffix = assembly.ManifestModule.Name.Replace(".dll", "")
+                let prefix = $"{assemblyNameWithoutSuffix}.Sql."
 
                 assembly.GetManifestResourceNames()
                 |> Array.filter _.StartsWith(prefix)
@@ -599,8 +598,7 @@ module Infrastructure =
                     let sql =
                         use stream = assembly.GetManifestResourceStream(path)
                         if isNull stream then
-                            // On the SQL file, did you set Build action to
-                            // EmbeddedResource?
+                            // Ensure SQL file use Build action EmbeddedResource.
                             panic $"Embedded resource not found: '{path}'"
                         use reader = new StreamReader(stream)
                         reader.ReadToEnd()
@@ -654,7 +652,9 @@ module Infrastructure =
 
             let applyNewMigrations (connection: SQLiteConnection) (available: AvailableScript[]) (applied: AppliedMigration[]) =
                 for i = applied.Length to available.Length - 1 do
-                    // Within a transaction as we're updating the migrations table.
+                    // In a transaction as we're updating the migrations table
+                    // and possibly other tables as well from inside each
+                    // migration script.
                     use tx = connection.BeginTransaction()
                     use cmd = new SQLiteCommand(available[i].Sql, connection, tx)
                     let count = cmd.ExecuteNonQuery()
@@ -669,7 +669,7 @@ module Infrastructure =
                         assert (count = 1)
 
                         // Schema upgrade per migration code. Downgrading is
-                        // unsupported.
+                        // unsupported. Always roll forward.
                         match available[i].Name with
                         | "202310051903-initial" -> ()
                         | _ -> ()
@@ -680,7 +680,8 @@ module Infrastructure =
                         reraise ()
 
             let applySeed (connection: SQLiteConnection) (seed: AvailableScript) =
-                // A pseudo-migration. We don't record it in the migrations table.
+                // A pseudo-migration. We don't record it in the migrations
+                // table as seeding is expected to be idempotent.
                 use tx = connection.BeginTransaction()
                 use cmd = new SQLiteCommand(seed.Sql, connection, tx)
                 try

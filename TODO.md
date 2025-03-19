@@ -40,3 +40,4 @@
   - https://briandouglas.ie/sqlite-defaults
 - Store command requests with correlation IDs and add same correlation ID to events for tracability.
 - Setup code coverage report.
+- Add Fable frontend
