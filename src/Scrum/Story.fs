@@ -13,7 +13,7 @@ module Domain =
 
             module TaskId =
                 let create value = value |> Guid.notEmpty |> Result.map TaskId
-                let value (TaskId v) : Guid = v
+                let value (TaskId v) = v
 
             type TaskTitle = private TaskTitle of string
 
@@ -25,7 +25,7 @@ module Domain =
                     |> Result.bind (String.maxLength maxLength)
                     |> Result.map TaskTitle
 
-                let value (TaskTitle v) : string = v
+                let value (TaskTitle v) = v
 
             type TaskDescription = private TaskDescription of string
 
@@ -56,7 +56,7 @@ module Domain =
 
         module StoryId =
             let create value = value |> Guid.notEmpty |> Result.map StoryId
-            let value (StoryId v) : Guid = v
+            let value (StoryId v) = v
 
         type StoryTitle = StoryTitle of string
 
@@ -68,7 +68,7 @@ module Domain =
                 |> Result.bind (String.maxLength maxLength)
                 |> Result.map StoryTitle
 
-            let value (StoryTitle v) : string = v
+            let value (StoryTitle v) = v
 
         type StoryDescription = StoryDescription of string
 
@@ -80,7 +80,7 @@ module Domain =
                 |> Result.bind (String.maxLength maxLength)
                 |> Result.map StoryDescription
 
-            let value (StoryDescription v) : string = v
+            let value (StoryDescription v) = v
 
         [<NoComparison; NoEquality>]
         type Story =
@@ -89,51 +89,57 @@ module Domain =
               Description: StoryDescription option
               Tasks: TaskEntity.Task list }
 
-        // Instead of naming events after CRUD operations, name after concepts
-        // in the business domain. StoryCreated doesn't capture business
-        // intent.
-        type BasicStoryDetailsCaptured =
+        // Rather than naming events after CRUD operations, they're after
+        // concepts in the business domain, i.e., CreateStory doesn't capture
+        // business intent well.
+        type CaptureBasicStoryDetails =
             { OccurredAt: DateTime
               StoryId: StoryId
               StoryTitle: StoryTitle
               StoryDescription: StoryDescription option }
 
-        type BasicStoryDetailsRevised =
+        type ReviseBasicStoryDetails =
             { OccurredAt: DateTime
               StoryId: StoryId
               StoryTitle: StoryTitle
               StoryDescription: StoryDescription option }
 
-        type StoryRemoved =
+        type RemoveStory =
             { OccurredAt: DateTime
               StoryId: StoryId }
 
-        type BasicTaskDetailsAddedToStory =
+        type AddBasicTaskDetailsToStory =
             { OccurredAt: DateTime
               StoryId: StoryId
               TaskId: TaskEntity.TaskId
               TaskTitle: TaskEntity.TaskTitle
               TaskDescription: TaskEntity.TaskDescription option }
 
-        type BasicTaskDetailsRevised =
+        type ReviseBasicTaskDetails =
             { OccurredAt: DateTime
               StoryId: StoryId
               TaskId: TaskEntity.TaskId
               TaskTitle: TaskEntity.TaskTitle
               TaskDescription: TaskEntity.TaskDescription option }
 
-        type TaskRemoved =
+        type RemoveTask =
             { OccurredAt: DateTime
               StoryId: StoryId
               TaskId: TaskEntity.TaskId }
 
-        type StoryDomainEvent =
-            | BasicStoryDetailsCaptured of BasicStoryDetailsCaptured
-            | BasicStoryDetailsRevised of BasicStoryDetailsRevised
-            | StoryRemoved of StoryRemoved
-            | BasicTaskDetailsAddedToStory of BasicTaskDetailsAddedToStory
-            | BasicTaskDetailsRevised of BasicTaskDetailsRevised
-            | TaskRemoved of TaskRemoved
+        // These aren't domain event in the DDD sense. Domain events describe
+        // something that has already happened, hence they're named in past
+        // tense. These events on the other hand drive changes to the domain.
+        //
+        // When we have a need for a domain event, say for one aggregate to
+        // notify another, we create such StoryDomainEvent upon demand.
+        type StoryEvent =
+            | CaptureBasicStoryDetails of CaptureBasicStoryDetails
+            | ReviseBasicStoryDetails of ReviseBasicStoryDetails
+            | RemoveStory of RemoveStory
+            | AddBasicTaskDetailsToStory of AddBasicTaskDetailsToStory
+            | ReviseBasicTaskDetails of ReviseBasicTaskDetails
+            | RemoveTask of RemoveTask
 
         open TaskEntity
 
@@ -154,27 +160,27 @@ module Domain =
         
         let apply story =
             function
-            | BasicStoryDetailsCaptured e ->
+            | CaptureBasicStoryDetails e ->
                 { Aggregate = { Id = e.StoryId; CreatedAt = e.OccurredAt; UpdatedAt = None }
                   Title = e.StoryTitle
                   Description = e.StoryDescription
                   Tasks = [] }
-            | BasicStoryDetailsRevised e ->
+            | ReviseBasicStoryDetails e ->
                 let root = { story.Aggregate with UpdatedAt = Some e.OccurredAt }
                 { story with Aggregate = root; Title = e.StoryTitle; Description = e.StoryDescription }                
-            | StoryRemoved _ ->
+            | RemoveStory _ ->
                 story
-            | BasicTaskDetailsAddedToStory e ->
+            | AddBasicTaskDetailsToStory e ->
                 let task = create e.TaskId e.TaskTitle e.TaskDescription e.OccurredAt
                 { story with Tasks = task :: story.Tasks }
-            | BasicTaskDetailsRevised e ->
+            | ReviseBasicTaskDetails e ->
                 let idx = story.Tasks |> List.findIndex (fun t -> t.Entity.Id = e.TaskId)
                 let task = story.Tasks[idx]
                 let tasks = story.Tasks |> List.removeAt idx
                 let entity = { task.Entity with UpdatedAt = Some e.OccurredAt }
                 let updatedTask = { Entity = entity; Title = e.TaskTitle; Description = e.TaskDescription }
                 { story with Tasks = updatedTask :: tasks }
-            | TaskRemoved e ->
+            | RemoveTask e ->
                 let idx = story.Tasks |> List.findIndex (fun t -> t.Entity.Id = e.TaskId)
                 let tasks = story.Tasks |> List.removeAt idx
                 { story with Tasks = tasks }
@@ -184,14 +190,16 @@ module Domain =
         // would make captureBasicStoryDetails return a list of events: one for
         // the story and one for each task. For simplicity, tasks are left out.
         let captureBasicStoryDetails id title description createdAt =
-            BasicStoryDetailsCaptured
+            // Where single field validation is performed by creating value
+            // objects, inter-field validation can be performed here.
+            CaptureBasicStoryDetails
                 { OccurredAt = createdAt
                   StoryId = id
                   StoryTitle = title
                   StoryDescription = description }
 
         let reviseBasicStoryDetails story title description updatedAt =
-            BasicStoryDetailsRevised
+            ReviseBasicStoryDetails
                 { OccurredAt = updatedAt
                   StoryId = story.Aggregate.Id
                   StoryTitle = title
@@ -201,7 +209,7 @@ module Domain =
             // Depending on the specifics of a domain, we might want to
             // explicitly delete the story's tasks and emit task deleted
             // events. In this case, we leave cascade delete to the store.
-            StoryRemoved
+            RemoveStory
                 { OccurredAt = occurredAt
                   StoryId = story.Aggregate.Id }
 
@@ -215,7 +223,7 @@ module Domain =
             if duplicate then
                 Error(DuplicateTask task.Entity.Id)
             else
-                BasicTaskDetailsAddedToStory
+                AddBasicTaskDetailsToStory
                     { OccurredAt = createdAt
                       StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
@@ -228,7 +236,7 @@ module Domain =
             let exists = story.Tasks |> List.exists (fun t -> t.Entity.Id = taskId)
             match exists with
             | true ->
-                BasicTaskDetailsRevised
+                ReviseBasicTaskDetails
                     { OccurredAt = updatedAt
                       StoryId = story.Aggregate.Id
                       TaskId = taskId
@@ -242,7 +250,7 @@ module Domain =
             let exists = story.Tasks |> List.exists (fun t -> t.Entity.Id = taskId)
             match exists with
             | true ->
-                TaskRemoved
+                RemoveTask
                     { OccurredAt = occurredAt
                       StoryId = story.Aggregate.Id
                       TaskId = taskId } |> Ok
@@ -262,7 +270,7 @@ module Application =
         open Scrum.Seedwork.Application.Models
         open Scrum.Seedwork.Application
 
-        type SaveRelationalStoryFromEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
+        type SaveRelationalStoryFromEvent = StoryEvent -> Threading.Tasks.Task<unit>
         type GetPaged = Limit -> Cursor option -> Threading.Tasks.Task<Paged<Story>>
 
         type CaptureBasicStoryDetailsCommand = { Id: Guid; Title: string; Description: string option }
@@ -298,11 +306,14 @@ module Application =
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
                     let event = captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (now ())                    
                     let story = apply zeroStory event
+                    // saveStory can be thought of as synchronously updating
+                    // the read model based on generated events.
                     do! saveStory event
                     // Example of publishing the StoryBasicDetailsCaptured domain
                     // event to another aggregate:
                     // do! SomeOtherAggregate.SomeEventNotificationAsync dependencies event ct
-                    // Integration events may be generated here and persisted.
+                    //
+                    // Integration events may be generated here and persisted, too.
                     return StoryId.value story.Aggregate.Id
                 }
 
@@ -781,7 +792,7 @@ module Infrastructure =
             task {
                 let aggregateId, occuredAt =
                     match event with
-                    | BasicStoryDetailsCaptured e ->
+                    | CaptureBasicStoryDetails e ->
                         let sql = "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
@@ -793,7 +804,7 @@ module Infrastructure =
                         p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
-                    | BasicStoryDetailsRevised e ->
+                    | ReviseBasicStoryDetails e ->
                         let sql = "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
@@ -805,14 +816,14 @@ module Infrastructure =
                         p.AddWithValue("@id", storyId |> string) |> ignore
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
-                    | StoryRemoved e ->
+                    | RemoveStory e ->
                         let sql = "delete from stories where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let storyId = e.StoryId |> StoryId.value
                         cmd.Parameters.AddWithValue("@id", storyId |> string) |> ignore
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
-                    | BasicTaskDetailsAddedToStory e ->
+                    | AddBasicTaskDetailsToStory e ->
                         let sql = "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
@@ -825,7 +836,7 @@ module Infrastructure =
                         p.AddWithValue("@createdAt", e.OccurredAt.Ticks) |> ignore
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
-                    | BasicTaskDetailsRevised e ->
+                    | ReviseBasicTaskDetails e ->
                         let sql = "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
@@ -838,7 +849,7 @@ module Infrastructure =
                         p.AddWithValue("@storyId", storyId |> string) |> ignore
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
-                    | TaskRemoved e ->
+                    | RemoveTask e ->
                         let sql = "delete from tasks where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
@@ -858,6 +869,7 @@ module Infrastructure =
                 // the printer suffices for persisting domain event for
                 // troubleshooting.
                 do!
+                    // TODO: should no longer be called persisted domain events, as what we're persisting aren't domain events.
                     persistDomainEventAsync
                         transaction
                         ct
