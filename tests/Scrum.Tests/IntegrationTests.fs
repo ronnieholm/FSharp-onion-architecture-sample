@@ -13,10 +13,10 @@ open System.Data.SQLite
 open FsToolkit.ErrorHandling
 open Swensen.Unquote
 open Xunit
-open Scrum.Shared.Application.Seedwork
+open Scrum.Seedwork.Application
 open Scrum.Story.Application.StoryRequest
-open Scrum.Shared.Application.DomainEventRequest
-open Scrum.Shared.Infrastructure
+open Scrum.Seedwork.Application.DomainEventRequest
+open Scrum.Seedwork.Infrastructure
 open Scrum.Story.Infrastructure
 
 module A =

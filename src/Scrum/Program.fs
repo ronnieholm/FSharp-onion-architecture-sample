@@ -6,7 +6,7 @@ module HealthCheck =
     open System.Data.SQLite
     open System.Threading.Tasks
     open Microsoft.Extensions.Diagnostics.HealthChecks
-    open Scrum.Shared.Application.Seedwork
+    open Scrum.Seedwork.Application
 
     type MemoryHealthCheck(allocatedThresholdInMb: int64) =
         let mb = 1024 * 2024
@@ -61,7 +61,7 @@ module Filter =
     open Microsoft.AspNetCore.Mvc.Filters
     open Microsoft.Extensions.Hosting
     open Microsoft.AspNetCore.Mvc
-    open Scrum.Shared.Infrastructure.Seedwork
+    open Scrum.Seedwork.Infrastructure
 
     type WebExceptionFilterAttribute(hostEnvironment: IHostEnvironment) =
         inherit ExceptionFilterAttribute()
@@ -94,12 +94,11 @@ module RouteHandler =
     open Microsoft.Extensions.Options
     open Giraffe
     open FsToolkit.ErrorHandling
-    open Scrum.Shared.Infrastructure
-    open Scrum.Shared.Application.Seedwork
-    open Scrum.Shared.Infrastructure.Seedwork
-    open Scrum.Shared.Infrastructure.Configuration
-    open Scrum.Shared.Infrastructure.Service
-    open Scrum.Shared.RouteHandler
+    open Scrum.Seedwork.Infrastructure
+    open Scrum.Seedwork.Application
+    open Scrum.Seedwork.Infrastructure.Configuration
+    open Scrum.Seedwork.Infrastructure.Service
+    open Scrum.Seedwork.RouteHandler
     open Scrum.Story.RouteHandler
 
     let errorMessageSerializationOptions =
@@ -269,9 +268,9 @@ module Program =
     open Microsoft.Extensions.Diagnostics.HealthChecks
     open Microsoft.AspNetCore.ResponseCompression
     open Giraffe
-    open Scrum.Shared.Infrastructure    
-    open Scrum.Shared.Infrastructure.Seedwork.Json
-    open Scrum.Shared.Infrastructure.Configuration
+    open Scrum.Seedwork.Infrastructure    
+    open Scrum.Seedwork.Infrastructure.Json
+    open Scrum.Seedwork.Infrastructure.Configuration
     open HealthCheck
     open Filter
 

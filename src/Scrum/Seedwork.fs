@@ -1,160 +1,160 @@
-namespace Scrum.Shared
+namespace Scrum.Seedwork
 
 module Domain =
-    module Seedwork =
-        open System
-        open System.Diagnostics
+    open System
+    open System.Diagnostics
 
-        let unreachable message : 't = raise (UnreachableException(message))        
+    let unreachable message : 't = raise (UnreachableException(message))        
+    
+    type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
+    type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
+
+    // Constraint validation on primitive types for reuse across value object
+    // creation.
+    module Validation =
+        module Guid =
+            let notEmpty value = if value = Guid.Empty then Error "Should be non-empty" else Ok value
+
+        module String =
+            let notNullOrWhitespace value =
+                if String.IsNullOrWhiteSpace(value) then
+                    Error "Should be non-null, non-empty or non-whitespace"
+                else
+                    Ok value
+
+            let maxLength length (value: string) =
+                if value.Length > length then
+                    Error $"Should contain less than or equal to {length} characters"
+                else
+                    Ok value
+
+        module Int =
+            let between lower upper value =
+                if value < lower && value > upper then
+                    Error $"Should be between {lower} and {upper}, both inclusive"
+                else
+                    Ok value
+
+    open Validation
+
+    // As domain code isn't referencing Paging, one could argue that Paging
+    // belongs in application rather than domain. That's because with F#, we
+    // don't define a per aggregate IRepository in the domain. Instead, it's
+    // partial functions passed into application handlers. We keep Paging in
+    // domain, though, as if it was part of an explicit aggregate data access
+    // interface.
+    module Paging =
+        type Limit = private Limit of int
+
+        module Limit =
+            let create value = value |> Int.between 1 100 |> Result.map Limit
+            let value (Limit v) : int = v
+
+        type Cursor = private Cursor of string
+
+        module Cursor =
+            let create value = value |> String.notNullOrWhitespace |> Result.map Cursor
+            let value (Cursor v) : string = v
+
+        type Paged<'t> = { Cursor: Cursor option; Items: 't list }
         
-        type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
-        type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
-
-        // Constraint validation on primitive types for reuse across value object
-        // creation.
-        module Validation =
-            module Guid =
-                let notEmpty value = if value = Guid.Empty then Error "Should be non-empty" else Ok value
-
-            module String =
-                let notNullOrWhitespace value =
-                    if String.IsNullOrWhiteSpace(value) then
-                        Error "Should be non-null, non-empty or non-whitespace"
-                    else
-                        Ok value
-
-                let maxLength length (value: string) =
-                    if value.Length > length then
-                        Error $"Should contain less than or equal to {length} characters"
-                    else
-                        Ok value
-
-            module Int =
-                let between lower upper value =
-                    if value < lower && value > upper then
-                        Error $"Should be between {lower} and {upper}, both inclusive"
-                    else
-                        Ok value
-
-    open Seedwork.Validation
-
-    module Shared =
-        // As domain code isn't referencing Paging, one could argue that Paging
-        // belongs in application rather than domain. That's because with F#, we
-        // don't define a per aggregate IRepository in the domain. Instead, it's
-        // partial functions passed into application handlers. We keep Paging in
-        // domain, though, as if it was part of an explicit aggregate data access
-        // interface.
-        module Paging =
-            type Limit = private Limit of int
-
-            module Limit =
-                let create value = value |> Int.between 1 100 |> Result.map Limit
-                let value (Limit v) : int = v
-
-            type Cursor = private Cursor of string
-
-            module Cursor =
-                let create value = value |> String.notNullOrWhitespace |> Result.map Cursor
-                let value (Cursor v) : string = v
-
-            type Paged<'t> = { Cursor: Cursor option; Items: 't list }
+    module Service =
+        ()       
 
 module Application =
-    module Seedwork =
-        open System
-        open System.Diagnostics
-        open FsToolkit.ErrorHandling
+    open System
+    open System.Diagnostics
+    open FsToolkit.ErrorHandling
 
-        exception ApplicationLayerException of string
+    exception ApplicationLayerException of string
 
-        let panic message : 't = raise (ApplicationLayerException(message))
+    let panic message : 't = raise (ApplicationLayerException(message))
 
-        // Contrary to outer layer's Seedwork, core doesn't define a boundary
-        // exception. Core communicates errors as values.
+    // Contrary to outer layer's Seedwork, core doesn't define a boundary
+    // exception. Core communicates errors as values.
 
-        [<Measure>]
-        type ms
+    [<Measure>]
+    type ms
 
-        type ValidationError = { Field: string; Message: string }
+    type ValidationError = { Field: string; Message: string }
 
-        module ValidationError =
-            let create field message = { Field = field; Message = message }
-            let mapError field = Result.mapError (create field)
+    module ValidationError =
+        let create field message = { Field = field; Message = message }
+        let mapError field = Result.mapError (create field)
 
-        // A pseudo-aggregate or an aggregate in the application layer. In
-        // principle, we could define value types similar to those making up
-        // aggregates in the domain, but for this case it's overkill. Prefixed with
-        // "Persisted" to avoid confusion with domain's DomainEvent.
-        type PersistedDomainEvent =
-            { Id: Guid
-              AggregateId: Guid
-              AggregateType: string
-              EventType: string
-              EventPayload: string
-              CreatedAt: DateTime }
+    // A pseudo-aggregate or an aggregate in the application layer. In
+    // principle, we could define value types similar to those making up
+    // aggregates in the domain, but for this case it's overkill. Prefixed with
+    // "Persisted" to avoid confusion with domain's DomainEvent.
+    type PersistedDomainEvent =
+        { Id: Guid
+          AggregateId: Guid
+          AggregateType: string
+          EventType: string
+          EventPayload: string
+          CreatedAt: DateTime }
 
-        // Roles a user may possess in the application, not in Scrum as a process.
-        // We're in the application layer, not domain layer, after all.
-        type ScrumRole =
-            | Member
-            | Admin
+    // Roles a user may possess in the application, not in Scrum as a process.
+    // We're in the application layer, not domain layer, after all.
+    type ScrumRole =
+        | Member
+        | Admin
 
-            static member fromString s =
-                match s with
-                | "member" -> Member
-                | "admin" -> Admin
-                | unsupported -> panic $"Unsupported {nameof ScrumRole}: '{unsupported}'"
+        static member fromString s =
+            match s with
+            | "member" -> Member
+            | "admin" -> Admin
+            | unsupported -> panic $"Unsupported {nameof ScrumRole}: '{unsupported}'"
 
-            override x.ToString() =
-                match x with
-                | Member -> "member"
-                | Admin -> "admin"
+        override x.ToString() =
+            match x with
+            | Member -> "member"
+            | Admin -> "admin"
 
-        type ScrumIdentity =
-            | Anonymous
-            | Authenticated of UserId: string * Roles: ScrumRole list
+    type ScrumIdentity =
+        | Anonymous
+        | Authenticated of UserId: string * Roles: ScrumRole list
 
-        let isInRole identity role =
-            match identity with
-            | Anonymous -> false
-            | Authenticated(_, roles) -> List.contains role roles
+    let isInRole identity role =
+        match identity with
+        | Anonymous -> false
+        | Authenticated(_, roles) -> List.contains role roles
 
-        type LogMessage =
-            // Application specific logging.
-            | Workflow of ScrumIdentity * name: string * payload: obj
-            | WorkflowDuration of name: string * duration: uint<ms>
-            | Exception of exn
-            // Delegate to .NET ILogger.
-            | Err of string
-            | Inf of string
-            | Dbg of string
+    type LogMessage =
+        // Application specific logging.
+        | Workflow of ScrumIdentity * name: string * payload: obj
+        | WorkflowDuration of name: string * duration: uint<ms>
+        | Exception of exn
+        // Delegate to .NET ILogger.
+        | Err of string
+        | Inf of string
+        | Dbg of string
 
-        let time (fn: unit -> 't) : 't * uint<ms> =
-            let sw = Stopwatch()
-            sw.Start()
-            let result = fn ()
-            let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
-            result, elapsed
+    let time (fn: unit -> 't) : 't * uint<ms> =
+        let sw = Stopwatch()
+        sw.Start()
+        let result = fn ()
+        let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
+        result, elapsed
 
-        let runWithMiddlewareAsync<'TResponse, 'TPayload> (log: LogMessage -> unit) identity (payload: 'TPayload) (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
-            try
-                task {
-                    let name = payload.GetType().Name
-                    let result, elapsed =
-                        time (fun _ ->
-                            // TODO: Write test with fn that waits for x ms to make
-                            // sure elapsed is correct.
-                            log (Workflow(identity, name, payload))
-                            fn ())
-                    // Don't log errors from evaluating fn as errors are expected.
-                    // We don't want those to pollute the log with.
-                    log (WorkflowDuration(name, elapsed))
-                    return! result
-                }
-            with e ->
-                log (Exception(e))
-                reraise ()
+    let runWithMiddlewareAsync<'TResponse, 'TPayload> (log: LogMessage -> unit) identity (payload: 'TPayload) (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
+        try
+            task {
+                let name = payload.GetType().Name
+                let result, elapsed =
+                    time (fun _ ->
+                        // TODO: Write test with fn that waits for x ms to make
+                        // sure elapsed is correct.
+                        log (Workflow(identity, name, payload))
+                        fn ())
+                // Don't log errors from evaluating fn as errors are expected.
+                // We don't want those to pollute the log with.
+                log (WorkflowDuration(name, elapsed))
+                return! result
+            }
+        with e ->
+            log (Exception(e))
+            reraise ()
 
     module Models =
         // Per Zalando API guidelines:
@@ -162,12 +162,9 @@ module Application =
         type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
     module DomainEventRequest =
-        open System
-        open FsToolkit.ErrorHandling
-        open Domain.Seedwork
-        open Domain.Shared.Paging
+        open Domain
+        open Domain.Paging
         open Models
-        open Seedwork
 
         type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
 
@@ -222,233 +219,227 @@ module Application =
         ()
 
 module Infrastructure =
-    module Seedwork =
-        open System
-        open System.Diagnostics
-        open System.Text
-        open System.Text.Json.Serialization
-        open System.Threading
-        open System.Data.SQLite
-        open FsToolkit.ErrorHandling
-        open Domain.Shared.Paging
+    open System
+    open System.Diagnostics
+    open System.Text
+    open System.Text.Json.Serialization
+    open System.Threading
+    open System.Data.SQLite
+    open FsToolkit.ErrorHandling
+    open Domain.Paging
 
-        exception InfrastructureException of string
+    exception InfrastructureException of string
 
-        let panic message : 't = raise (InfrastructureException(message))
-        let unreachable message : 't = raise (UnreachableException(message))
-        let utcNow () = DateTime.UtcNow
+    let panic message : 't = raise (InfrastructureException(message))
+    let unreachable message : 't = raise (UnreachableException(message))
+    let utcNow () = DateTime.UtcNow
 
-        module Json =
-            type DateTimeJsonConverter() =
-                inherit JsonConverter<DateTime>()
+    module Json =
+        type DateTimeJsonConverter() =
+            inherit JsonConverter<DateTime>()
 
-                override _.Read(_, _, _) = unreachable "Never called"
+            override _.Read(_, _, _) = unreachable "Never called"
 
-                override _.Write(writer, value, _) =
-                    value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
+            override _.Write(writer, value, _) =
+                value.ToUniversalTime().ToString("yyy-MM-ddTHH:mm:ss.fffZ")
+                |> writer.WriteStringValue
+
+        type EnumJsonConverter() =
+            inherit JsonConverter<ValueType>()
+
+            override _.Read(_, _, _) = unreachable "Never called"
+
+            override _.Write(writer, value, _) =
+                let t = value.GetType()
+                if
+                    t.IsEnum
+                    || (t.IsGenericType
+                        && t.GenericTypeArguments.Length = 1
+                        && t.GenericTypeArguments[0].IsEnum)
+                then
+                    (string value
+                     |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
+                     |> String.Concat)
+                        .ToUpperInvariant()
                     |> writer.WriteStringValue
 
-            type EnumJsonConverter() =
-                inherit JsonConverter<ValueType>()
+        // System.Text.Json cannot serialize an exception without throwing
+        // an exception: "System.NotSupportedException: Serialization and
+        // deserialization of 'System.Reflection.MethodBase' instances are
+        // not supported. Path: $.Result.Exception.TargetSite.". This
+        // converter works around the issue by limiting serialization to
+        // the most relevant parts of the exception.
+        type ExceptionJsonConverter() =
+            inherit JsonConverter<Exception>()
 
-                override _.Read(_, _, _) = unreachable "Never called"
+            override _.Read(_, _, _) = unreachable "Never called"
 
-                override _.Write(writer, value, _) =
-                    let t = value.GetType()
-                    if
-                        t.IsEnum
-                        || (t.IsGenericType
-                            && t.GenericTypeArguments.Length = 1
-                            && t.GenericTypeArguments[0].IsEnum)
-                    then
-                        (string value
-                         |> Seq.mapi (fun i c -> if i > 0 && Char.IsUpper(c) then $"_{c}" else $"{c}")
-                         |> String.Concat)
-                            .ToUpperInvariant()
-                        |> writer.WriteStringValue
+            override x.Write(writer, value, options) =
+                writer.WriteStartObject()
+                writer.WriteString(nameof value.Message, value.Message)
 
-            // System.Text.Json cannot serialize an exception without throwing
-            // an exception: "System.NotSupportedException: Serialization and
-            // deserialization of 'System.Reflection.MethodBase' instances are
-            // not supported. Path: $.Result.Exception.TargetSite.". This
-            // converter works around the issue by limiting serialization to
-            // the most relevant parts of the exception.
-            type ExceptionJsonConverter() =
-                inherit JsonConverter<Exception>()
-
-                override _.Read(_, _, _) = unreachable "Never called"
-
-                override x.Write(writer, value, options) =
-                    writer.WriteStartObject()
-                    writer.WriteString(nameof value.Message, value.Message)
-
-                    if not (isNull value.InnerException) then
-                        writer.WriteStartObject(nameof value.InnerException)
-                        x.Write(writer, value.InnerException, options)
-                        writer.WriteEndObject()
-
-                    if not (isNull value.TargetSite) then
-                        writer.WriteStartObject(nameof value.TargetSite)
-                        writer.WriteString(nameof value.TargetSite.Name, value.TargetSite.Name)
-                        writer.WriteString(nameof value.TargetSite.DeclaringType, value.TargetSite.DeclaringType.FullName)
-                        writer.WriteEndObject()
-
-                    if not (isNull value.StackTrace) then
-                        writer.WriteString(nameof value.StackTrace, value.StackTrace)
-
-                    writer.WriteString(nameof Type, value.GetType().FullName)
+                if not (isNull value.InnerException) then
+                    writer.WriteStartObject(nameof value.InnerException)
+                    x.Write(writer, value.InnerException, options)
                     writer.WriteEndObject()
 
-        module Option =
-            let ofDBNull (value: obj): obj option =
-                if value = DBNull.Value then
-                    None
-                else
-                    Some value
+                if not (isNull value.TargetSite) then
+                    writer.WriteStartObject(nameof value.TargetSite)
+                    writer.WriteString(nameof value.TargetSite.Name, value.TargetSite.Name)
+                    writer.WriteString(nameof value.TargetSite.DeclaringType, value.TargetSite.DeclaringType.FullName)
+                    writer.WriteEndObject()
 
-        module Repository =
-            let getConnection (connectionString: string): SQLiteConnection =
-                let connection = new SQLiteConnection(connectionString)
-                connection.Open()
-                use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
-                cmd.ExecuteNonQuery() |> ignore
-                connection
+                if not (isNull value.StackTrace) then
+                    writer.WriteString(nameof value.StackTrace, value.StackTrace)
 
-            let panicOnError (datum: string) (result: Result<'t, _>) : 't =
-                match result with
-                | Ok r -> r
-                | Error e ->
-                    // Value object create functions return string as their
-                    // error and entity create functions return a union
-                    // member. To accomodate both, we print the error using %A.
-                    panic $"Deserialization failed for '{datum}': '%A{e}'"
+                writer.WriteString(nameof Type, value.GetType().FullName)
+                writer.WriteEndObject()
 
-            let parseCreatedAt (value: obj) = DateTime(value :?> int64, DateTimeKind.Utc)
+    module Option =
+        let ofDBNull (value: obj): obj option =
+            if value = DBNull.Value then
+                None
+            else
+                Some value
 
-            let parseUpdatedAt value =
-                value
-                |> Option.ofDBNull
-                |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
+    module Repository =
+        let getConnection (connectionString: string): SQLiteConnection =
+            let connection = new SQLiteConnection(connectionString)
+            connection.Open()
+            use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
+            cmd.ExecuteNonQuery() |> ignore
+            connection
 
-            let persistDomainEventAsync
-                (transaction: SQLiteTransaction)
-                (ct: CancellationToken)
-                (aggregateType: string)
-                (aggregateId: Guid)
-                (eventType: string)
-                (payload: 't)
-                (createdAt: DateTime)
-                =
-                task {
-                    let sql = "insert into domain_events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
-                    let cmd = new SQLiteCommand(sql, transaction.Connection, transaction)
-                    let p = cmd.Parameters
-                    p.AddWithValue("@id", Guid.NewGuid() |> string) |> ignore
-                    p.AddWithValue("@aggregateType", aggregateType) |> ignore
-                    p.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
-                    p.AddWithValue("@eventType", eventType) |> ignore
-                    p.AddWithValue("@eventPayload", payload) |> ignore
-                    p.AddWithValue("@createdAt", createdAt.Ticks) |> ignore
-                    let! count = cmd.ExecuteNonQueryAsync(ct)
-                    assert (count = 1)
-                }
+        let panicOnError (datum: string) (result: Result<'t, _>) : 't =
+            match result with
+            | Ok r -> r
+            | Error e ->
+                // Value object create functions return string as their
+                // error and entity create functions return a union
+                // member. To accomodate both, we print the error using %A.
+                panic $"Deserialization failed for '{datum}': '%A{e}'"
 
-            let applyExecuteNonQueryAsync (cmd: SQLiteCommand) ct =
-                task {
-                    let! count = cmd.ExecuteNonQueryAsync(ct)
-                    assert (count = 1)
-                    return ()
-                }
+        let parseCreatedAt (value: obj) = DateTime(value :?> int64, DateTimeKind.Utc)
 
-            let getLargestCreatedAtAsync table (connection: SQLiteConnection) (transaction: SQLiteTransaction) ct =
-                task {
-                    let sql = $"select created_at from {table} order by created_at desc limit 1"
-                    use cmd = new SQLiteCommand(sql, connection, transaction)
-                    let! last = cmd.ExecuteScalarAsync(ct)
-                    // ExecuteScalarAsync returns null on zero rows returned.
-                    return if last = null then 0L else last :?> int64
-                }
+        let parseUpdatedAt value =
+            value
+            |> Option.ofDBNull
+            |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
 
-            let cursorToOffset cursor =
-                match cursor with
-                | Some c ->
-                    Convert.FromBase64String(Cursor.value c)
-                    |> Encoding.UTF8.GetString
-                    |> Int64.Parse
-                | None -> 0
+        let persistDomainEventAsync
+            (transaction: SQLiteTransaction)
+            (ct: CancellationToken)
+            (aggregateType: string)
+            (aggregateId: Guid)
+            (eventType: string)
+            (payload: 't)
+            (createdAt: DateTime)
+            =
+            task {
+                let sql = "insert into domain_events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
+                let cmd = new SQLiteCommand(sql, transaction.Connection, transaction)
+                let p = cmd.Parameters
+                p.AddWithValue("@id", Guid.NewGuid() |> string) |> ignore
+                p.AddWithValue("@aggregateType", aggregateType) |> ignore
+                p.AddWithValue("@aggregateId", aggregateId |> string) |> ignore
+                p.AddWithValue("@eventType", eventType) |> ignore
+                p.AddWithValue("@eventPayload", payload) |> ignore
+                p.AddWithValue("@createdAt", createdAt.Ticks) |> ignore
+                let! count = cmd.ExecuteNonQueryAsync(ct)
+                assert (count = 1)
+            }
 
-            let offsetsToCursor pageEndOffset globalEndOffset =
-                if pageEndOffset = globalEndOffset then
-                    None
-                else
-                    pageEndOffset
-                    |> string
-                    |> Encoding.UTF8.GetBytes
-                    |> Convert.ToBase64String
-                    |> Cursor.create
-                    |> panicOnError "base64"
-                    |> Some
+        let applyExecuteNonQueryAsync (cmd: SQLiteCommand) ct =
+            task {
+                let! count = cmd.ExecuteNonQueryAsync(ct)
+                assert (count = 1)
+                return ()
+            }
 
-        // TODO: use new framework type.
-        // RFC7807 problem details format per
-        // https://opensource.zalando.com/restful-api-guidelines/#176.
-        type ProblemDetails2 = { Type: string; Title: string; Status: int; Detail: string }
+        let getLargestCreatedAtAsync table (connection: SQLiteConnection) (transaction: SQLiteTransaction) ct =
+            task {
+                let sql = $"select created_at from {table} order by created_at desc limit 1"
+                use cmd = new SQLiteCommand(sql, connection, transaction)
+                let! last = cmd.ExecuteScalarAsync(ct)
+                // ExecuteScalarAsync returns null on zero rows returned.
+                return if last = null then 0L else last :?> int64
+            }
 
-        module ProblemDetails =
-            open System.Text.Json
-            open Microsoft.AspNetCore.Http
-            open Microsoft.AspNetCore.Mvc
-            open Microsoft.Extensions.Primitives
-            open Application.Seedwork
+        let cursorToOffset cursor =
+            match cursor with
+            | Some c ->
+                Convert.FromBase64String(Cursor.value c)
+                |> Encoding.UTF8.GetString
+                |> Int64.Parse
+            | None -> 0
 
-            let create status detail: ProblemDetails2 = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
+        let offsetsToCursor pageEndOffset globalEndOffset =
+            if pageEndOffset = globalEndOffset then
+                None
+            else
+                pageEndOffset
+                |> string
+                |> Encoding.UTF8.GetBytes
+                |> Convert.ToBase64String
+                |> Cursor.create
+                |> panicOnError "base64"
+                |> Some
 
-            let inferContentType (acceptHeaders: StringValues) =
-                let ok =
-                    acceptHeaders.ToArray()
-                    |> Array.exists (fun v -> v = "application/problem+json")
-                if ok then
-                    "application/problem+json"
-                else
-                    "application/json"
+    // TODO: use new framework type.
+    // RFC7807 problem details format per
+    // https://opensource.zalando.com/restful-api-guidelines/#176.
+    type ProblemDetails2 = { Type: string; Title: string; Status: int; Detail: string }
 
-            let toJsonResult acceptHeaders error: ActionResult =
-                JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
+    module ProblemDetails =
+        open System.Text.Json
+        open Microsoft.AspNetCore.Http
+        open Microsoft.AspNetCore.Mvc
+        open Microsoft.Extensions.Primitives
+        open Application
 
-            let createJsonResult acceptHeaders status detail =
-                create status detail |> toJsonResult acceptHeaders
+        let create status detail: ProblemDetails2 = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
-            let authorizationError (role: ScrumRole) =
-                create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
+        let inferContentType (acceptHeaders: StringValues) =
+            let ok =
+                acceptHeaders.ToArray()
+                |> Array.exists (fun v -> v = "application/problem+json")
+            if ok then
+                "application/problem+json"
+            else
+                "application/json"
 
-            type ValidationErrorResponse = { Field: string; Message: string }
+        let toJsonResult acceptHeaders error: ActionResult =
+            JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
 
-            let errorMessageSerializationOptions =
-                JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
+        let createJsonResult acceptHeaders status detail =
+            create status detail |> toJsonResult acceptHeaders
 
-            let validationErrors (errors: ValidationError list) =
-                (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
-                |> JsonSerializer.Serialize
-                |> create StatusCodes.Status400BadRequest
+        let authorizationError (role: ScrumRole) =
+            create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
 
-            let missingQueryStringParameter name =
-                create StatusCodes.Status400BadRequest $"Missing query string parameter '%s{name}'"
+        type ValidationErrorResponse = { Field: string; Message: string }
 
-            let unexpectedQueryStringParameters names =
-                let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
-                create StatusCodes.Status400BadRequest $"Unexpected query string parameters: %s{names}"
+        let errorMessageSerializationOptions =
+            JsonSerializerOptions(PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower)
 
-            let queryStringParameterMustBeOfType name type_ =
-                create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
+        let validationErrors (errors: ValidationError list) =
+            (errors |> List.map (fun e -> { Field = e.Field; Message = e.Message }), errorMessageSerializationOptions)
+            |> JsonSerializer.Serialize
+            |> create StatusCodes.Status400BadRequest
+
+        let missingQueryStringParameter name =
+            create StatusCodes.Status400BadRequest $"Missing query string parameter '%s{name}'"
+
+        let unexpectedQueryStringParameters names =
+            let names = String.Join(", ", names |> List.map (fun s -> $"'%s{s}'"))
+            create StatusCodes.Status400BadRequest $"Unexpected query string parameters: %s{names}"
+
+        let queryStringParameterMustBeOfType name type_ =
+            create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
 
     module DomainEventRepository =
-        open System
-        open System.Threading
-        open System.Data.SQLite
-        open Domain
-        open Domain.Shared.Paging
-        open Application.Seedwork
-        open Seedwork.Repository
+        open Application
+        open Repository
 
         let getByAggregateIdAsync
                 (transaction: SQLiteTransaction)
@@ -495,8 +486,7 @@ module Infrastructure =
     module ScrumLogger =
         open System.Text.Json
         open Microsoft.Extensions.Logging
-        open Application.Seedwork
-        open Seedwork
+        open Application
 
         let jsonSerializationOptions =
             let o =
@@ -530,7 +520,7 @@ module Infrastructure =
     module UserIdentity =
         open Microsoft.AspNetCore.Http
         open System.Security.Claims
-        open Application.Seedwork
+        open Application
 
         let getCurrentIdentity(context: HttpContext) =
             if isNull context then
@@ -565,14 +555,10 @@ module Infrastructure =
 
 
     module DatabaseMigration =
-        open System
-        open System.Data.SQLite
         open System.IO
-        open System.Text
         open System.Reflection
         open System.Security.Cryptography
-        open Application.Seedwork
-        open Seedwork
+        open Application
 
         type AvailableScript = { Name: string; Hash: string; Sql: string }
         type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
@@ -713,7 +699,6 @@ module Infrastructure =
                 seeds |> Array.exactlyOne |> applySeed connection
 
     module Configuration =
-        open System
         open System.ComponentModel.DataAnnotations
 
         type JwtAuthenticationSettings() =
@@ -728,13 +713,11 @@ module Infrastructure =
             member val ExpirationInSeconds: uint = 0ul with get, set
 
     module Service =
-        open System
         open System.IdentityModel.Tokens.Jwt
         open System.Security.Claims
-        open System.Text
         open Microsoft.IdentityModel.JsonWebTokens
         open Microsoft.IdentityModel.Tokens
-        open Application.Seedwork
+        open Application
         open Configuration
 
         module IdentityProvider =
@@ -774,7 +757,7 @@ module RouteHandler =
     open System
     open Microsoft.AspNetCore.Http
     open Giraffe
-    open Infrastructure.Seedwork
+    open Infrastructure
 
     let toPagedResult result (ctx: HttpContext) (next: HttpFunc) =
         task {
@@ -812,9 +795,8 @@ module RouteHandler =
         open Microsoft.Extensions.Logging
         open Microsoft.Extensions.Configuration
         open FsToolkit.ErrorHandling
-        open Infrastructure
-        open Application.Seedwork
-        open Infrastructure.Seedwork.Repository
+        open Application
+        open Infrastructure.Repository
         open Application.DomainEventRequest
         open Application.DomainEventRequest.GetByAggregateIdQuery
 

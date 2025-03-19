@@ -1,12 +1,12 @@
 namespace Scrum.Story
 
 module Domain =
-    open Scrum.Shared.Domain.Seedwork.Validation
+    open Scrum.Seedwork.Domain.Validation
 
     module StoryAggregate =
         open System
         open FsToolkit.ErrorHandling
-        open Scrum.Shared.Domain.Seedwork
+        open Scrum.Seedwork.Domain
 
         module TaskEntity =
             type TaskId = private TaskId of Guid
@@ -256,11 +256,11 @@ module Application =
         open System
         open FsToolkit.ErrorHandling
         open Domain
-        open Scrum.Shared.Domain.Shared.Paging
+        open Scrum.Seedwork.Domain.Paging
         open Domain.StoryAggregate
         open Domain.StoryAggregate.TaskEntity
-        open Scrum.Shared.Application.Models
-        open Scrum.Shared.Application.Seedwork
+        open Scrum.Seedwork.Application.Models
+        open Scrum.Seedwork.Application
 
         type SaveRelationalStoryFromEvent = StoryDomainEvent -> Threading.Tasks.Task<unit>
         type GetPaged = Limit -> Cursor option -> Threading.Tasks.Task<Paged<Story>>
@@ -622,11 +622,11 @@ module Infrastructure =
         open System.Collections.Generic
         open System.Data.SQLite
         open FsToolkit.ErrorHandling
-        open Scrum.Shared.Domain.Shared.Paging
+        open Scrum.Seedwork.Domain.Paging
         open Domain.StoryAggregate
         open Domain.StoryAggregate.TaskEntity
-        open Scrum.Shared.Infrastructure.Seedwork
-        open Scrum.Shared.Infrastructure.Seedwork.Repository
+        open Scrum.Seedwork.Infrastructure
+        open Scrum.Seedwork.Infrastructure.Repository
 
         let parseStory id (r: DbDataReader) =
             // Don't parse by calling StoryAggregate.captureBasicStoryDetails
@@ -901,11 +901,10 @@ module RouteHandler =
     open Microsoft.Extensions.Logging
     open Microsoft.Extensions.Configuration
     open Giraffe
-    open Scrum.Shared.Infrastructure.Seedwork
-    open Scrum.Shared.Infrastructure.Seedwork.Repository
-    open Scrum.Shared.Application.Seedwork
+    open Scrum.Seedwork.Infrastructure
+    open Scrum.Seedwork.Infrastructure.Repository
+    open Scrum.Seedwork.Application
     open Application.StoryRequest
-    open Scrum.Shared.Infrastructure
     open Infrastructure
 
     module CaptureBasicStoryDetails =
@@ -1217,7 +1216,7 @@ module RouteHandler =
 
     module GetStoriesPaged =
         open FsToolkit.ErrorHandling        
-        open Scrum.Shared.RouteHandler
+        open Scrum.Seedwork.RouteHandler
         open Application.StoryRequest.GetStoriesPagedQuery
         
         let handle : HttpHandler =

@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Compile Include="Shared.fs" />
+    <Compile Include="Seedwork.fs" />
     <Compile Include="Story.fs" />
     <Compile Include="Program.fs" />
     <EmbeddedResource Include="Sql\202310051903-initial.sql" />
