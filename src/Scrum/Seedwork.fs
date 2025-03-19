@@ -336,7 +336,7 @@ module Infrastructure =
             (createdAt: DateTime)
             =
             task {
-                let sql = "insert into domain_events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
+                let sql = "insert into events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
                 let cmd = new SQLiteCommand(sql, transaction.Connection, transaction)
                 let p = cmd.Parameters
                 p.AddWithValue("@id", Guid.NewGuid() |> string) |> ignore
@@ -451,7 +451,7 @@ module Infrastructure =
                 let connection = transaction.Connection
                 let sql =
                     "select id, aggregate_id, aggregate_type, event_type, event_payload, created_at
-                     from domain_events
+                     from events
                      where aggregate_id = @aggregateId
                      and created_at > @cursor
                      order by created_at
@@ -478,7 +478,7 @@ module Infrastructure =
                     return { Cursor = None; Items = [] }
                 else
                     let pageEndOffset = events[events.Count - 1].CreatedAt.Ticks
-                    let! globalEndOffset = getLargestCreatedAtAsync "domain_events" connection transaction ct
+                    let! globalEndOffset = getLargestCreatedAtAsync "events" connection transaction ct
                     let cursor = offsetsToCursor pageEndOffset globalEndOffset
                     return { Cursor = cursor; Items = events |> Seq.toList }
             }

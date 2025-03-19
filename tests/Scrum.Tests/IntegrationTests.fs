@@ -54,7 +54,7 @@ module Database =
         let sql =
             [| "delete from tasks"
                "delete from stories"
-               "delete from domain_events" |]
+               "delete from events" |]
         use connection = new SQLiteConnection(connectionString)
         connection.Open()
         use transaction = connection.BeginTransaction()

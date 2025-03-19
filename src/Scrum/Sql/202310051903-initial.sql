@@ -39,7 +39,7 @@ create table tasks
 create index tasks_id_asc_story_id_asc_index on tasks (id asc, story_id asc);
 create index tasks_created_at_asc on stories (created_at asc);
 
-create table domain_events
+create table events
 (
     id             text primary key,
     aggregate_type text    not null,
@@ -47,8 +47,8 @@ create table domain_events
     event_type     text    not null,
     event_payload  text    not null,
     created_at     integer not null,
-    constraint domain_events_created_at_unique unique (created_at)
+    constraint events_created_at_unique unique (created_at)
 ) strict;
 
-create index domain_events_aggregate_id_asc_created_at_asc_index on domain_events (aggregate_id asc, created_at asc);
-create index domain_events_created_at_asc on stories (created_at asc);
+create index events_aggregate_id_asc_created_at_asc_index on events (aggregate_id asc, created_at asc);
+create index events_created_at_asc on events (created_at asc);
