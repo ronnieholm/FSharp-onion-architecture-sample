@@ -237,7 +237,7 @@ module RouteHandler =
                     GET >=> route "/stories" >=> GetStoriesPaged.handle ]
 
               verifyUserIsAuthenticated
-              >=> choose [ GET >=> routef "/persisted-domain-events/%O" GetPersistedDomainEvents.handle ]
+              >=> choose [ GET >=> routef "/events/%O" GetEvents.handle ]
 
               GET
               >=> choose

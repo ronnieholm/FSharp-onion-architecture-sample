@@ -132,7 +132,7 @@ module Domain =
         // tense. These events on the other hand drive changes to the domain.
         //
         // When we have a need for a domain event, say for one aggregate to
-        // notify another, we create such StoryDomainEvent upon demand.
+        // notify another, we create such domain event upon demand.
         type StoryEvent =
             | CaptureBasicStoryDetails of CaptureBasicStoryDetails
             | ReviseBasicStoryDetails of ReviseBasicStoryDetails
@@ -866,11 +866,9 @@ module Infrastructure =
                 // https://github.com/Tarmil/FSharp.SystemTextJson), we use the
                 // F# type printer. This wouldn't work in a pure event sourced
                 // system where we'd read back the event for processing, but
-                // the printer suffices for persisting domain event for
-                // troubleshooting.
+                // the printer suffices for persisting event for troubleshooting.
                 do!
-                    // TODO: should no longer be called persisted domain events, as what we're persisting aren't domain events.
-                    persistDomainEventAsync
+                    persistEventAsync
                         transaction
                         ct
                         (nameof Story)

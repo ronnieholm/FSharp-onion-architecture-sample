@@ -85,8 +85,8 @@ module Application =
     // A pseudo-aggregate or an aggregate in the application layer. In
     // principle, we could define value types similar to those making up
     // aggregates in the domain, but for this case it's overkill. Prefixed with
-    // "Persisted" to avoid confusion with domain's DomainEvent.
-    type PersistedDomainEvent =
+    // "Persisted" to avoid confusion with domain's event.
+    type PersistedEvent =
         { Id: Guid
           AggregateId: Guid
           AggregateType: string
@@ -161,12 +161,12 @@ module Application =
         // https://opensource.zalando.com/restful-api-guidelines/#137
         type PagedDto<'t> = { Cursor: string option; Items: 't list }
 
-    module DomainEventRequest =
+    module EventRequest =
         open Domain
         open Domain.Paging
         open Models
 
-        type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedDomainEvent>>
+        type GetByAggregateId = Guid -> Limit -> Cursor option -> System.Threading.Tasks.Task<Paged<PersistedEvent>>
 
         type GetByAggregateIdQuery = { Id: Guid; Limit: int; Cursor: string option }
 
@@ -184,7 +184,7 @@ module Application =
                     return { Id = id; Limit = limit; Cursor = cursor }
                 }
 
-            type PersistedDomainEventDto =
+            type PersistedEventDto =
                 { Id: Guid
                   AggregateId: Guid
                   AggregateType: string
@@ -192,8 +192,8 @@ module Application =
                   EventPayload: string
                   CreatedAt: DateTime }
 
-            module PersistedDomainEventDto =
-                let from (event: PersistedDomainEvent) =
+            module PersistedEventDto =
+                let from (event: PersistedEvent) =
                     { Id = event.Id
                       AggregateId = event.AggregateId
                       AggregateType = event.AggregateType
@@ -212,7 +212,7 @@ module Application =
                     let! eventsPage = getByAggregateId qry.Id qry.Limit qry.Cursor
                     return
                         { PagedDto.Cursor = eventsPage.Cursor |> Option.map Cursor.value
-                          Items = eventsPage.Items |> List.map PersistedDomainEventDto.from }
+                          Items = eventsPage.Items |> List.map PersistedEventDto.from }
                 }
 
     module Service =
@@ -326,7 +326,7 @@ module Infrastructure =
             |> Option.ofDBNull
             |> Option.map (fun v -> DateTime(v :?> int64, DateTimeKind.Utc))
 
-        let persistDomainEventAsync
+        let persistEventAsync
             (transaction: SQLiteTransaction)
             (ct: CancellationToken)
             (aggregateType: string)
@@ -437,7 +437,7 @@ module Infrastructure =
         let queryStringParameterMustBeOfType name type_ =
             create StatusCodes.Status400BadRequest $"Query string parameter '%s{name}' must be an %s{type_}"
 
-    module DomainEventRepository =
+    module EventRepository =
         open Application
         open Repository
 
@@ -462,7 +462,7 @@ module Infrastructure =
                 cmd.Parameters.AddWithValue("@cursor", cursor) |> ignore
                 cmd.Parameters.AddWithValue("@limit", Limit.value limit) |> ignore
                 let! r = cmd.ExecuteReaderAsync(ct)
-                let events = ResizeArray<PersistedDomainEvent>()
+                let events = ResizeArray<PersistedEvent>()
 
                 while! r.ReadAsync(ct) do
                     let e =
@@ -791,14 +791,14 @@ module RouteHandler =
         else
             Error (ProblemDetails.unexpectedQueryStringParameters unexpected)
 
-    module GetPersistedDomainEvents =
+    module GetEvents =
         open Microsoft.Extensions.Logging
         open Microsoft.Extensions.Configuration
         open FsToolkit.ErrorHandling
         open Application
         open Infrastructure.Repository
-        open Application.DomainEventRequest
-        open Application.DomainEventRequest.GetByAggregateIdQuery
+        open Application.EventRequest
+        open Application.EventRequest.GetByAggregateIdQuery
 
         let handle aggregateId: HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
@@ -822,7 +822,7 @@ module RouteHandler =
 
                             use connection = getConnection connectionString
                             use transaction = connection.BeginTransaction()
-                            let getByAggregateId = DomainEventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
+                            let getByAggregateId = EventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
 
                             let qry: GetByAggregateIdQuery = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
                             let! result =

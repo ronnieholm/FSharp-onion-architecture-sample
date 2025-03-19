@@ -48,10 +48,10 @@ exposed through multiple of web, gRPC, console, or a long-running service, the
 extra indirection with core handlers becomes valuable.
 
 The sample constraints itself to The Blue Book concepts. That means implementing
-CQRS, aggregates, entities, domain events, and so on. For the HTTP API, the
-sample adheres to the Zalando API guidelines. It doesn't mean The Blue Book and
-the Zalando API guidelines are the end all, be all, but the sample strives to
-reflect constraints of a larger real-world application.
+CQRS, aggregates, entities, events, and so on. For the HTTP API, the sample
+adheres to the Zalando API guidelines. It doesn't mean The Blue Book and the
+Zalando API guidelines are the end all, be all, but the sample strives to reflect
+constraints of a larger real-world application.
 
 ## Getting started
 
@@ -92,9 +92,9 @@ curl https://localhost:5000/stories/<storyId> --insecure --request DELETE --head
 curl https://localhost:5000/stories/<storyId> --insecure --header 'Authorization: Bearer <token>'
 curl "https://localhost:5000/stories?limit=<limit>&cursor=<cursor>" --insecure --header 'Authorization: Bearer <token>'
 
-# PersistedDomainEvents
+# Events
 ## Get
-curl "https://localhost:5000/persisted-domain-events/<aggregateId>?limit=<limit>&cursor=<cursor>" --insecure --header 'Authorization: Bearer <token>'
+curl "https://localhost:5000/events/<aggregateId>?limit=<limit>&cursor=<cursor>" --insecure --header 'Authorization: Bearer <token>'
 
 # Health
 ## Get

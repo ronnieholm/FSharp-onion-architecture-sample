@@ -17,7 +17,7 @@ open FsCheck
 open FsCheck.FSharp
 open Scrum.Seedwork.Application
 open Scrum.Story.Application.StoryRequest
-open Scrum.Seedwork.Application.DomainEventRequest
+open Scrum.Seedwork.Application.EventRequest
 open Scrum.Story.Domain.StoryAggregate
 open Scrum.Story.Domain.StoryAggregate.TaskEntity
 open Scrum.Seedwork.Infrastructure
@@ -91,7 +91,7 @@ module Setup =
         let getById = StoryRepository.getByIdAsync transaction ct
         let getPaged = StoryRepository.getPagedAsync transaction ct
         let applyEvent = StoryRepository.applyAsync transaction ct
-        let getByAggregateId = DomainEventRepository.getByAggregateIdAsync transaction ct
+        let getByAggregateId = EventRepository.getByAggregateIdAsync transaction ct
 
         {| CaptureBasicStoryDetails = CaptureBasicStoryDetailsCommand.runAsync clock exist applyEvent
            AddBasicTaskDetailsToStory = AddBasicTaskDetailsToStoryCommand.runAsync clock getById applyEvent
@@ -508,7 +508,7 @@ type StoryRequestPropertyTests() as this =
             this.connection.Dispose()
 
 [<Collection(nameof DisableParallelization)>]
-type DomainEventRequestTests()  as this =
+type EventRequestTests()  as this =
     [<DefaultValue>] val mutable connection: SQLiteConnection
     [<DefaultValue>] val mutable transaction: SQLiteTransaction
 
