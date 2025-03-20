@@ -784,9 +784,6 @@ module Infrastructure =
                      | _ -> panic $"Invalid database. {count} instances with story Id: '{StoryId.value id}'")
             }
 
-        // Compared to event sourcing we aren't storing commands, but events
-        // from applying the commands. We don't have to worry about the shape
-        // of events evolving over time; only to keep the store up to date.
         let applyAsync (transaction: SQLiteTransaction) (ct: CancellationToken) event =
             let connection = transaction.Connection
             task {
@@ -917,6 +914,8 @@ module RouteHandler =
     open Application.StoryRequest
     open Infrastructure
 
+    let x = HttpContextAccessor.
+    
     module CaptureBasicStoryDetails =
         open Application.StoryRequest.CaptureBasicStoryDetailsCommand
         
