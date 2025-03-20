@@ -387,7 +387,8 @@ module Program =
             .WithMetrics(fun metrics ->
                 metrics
                     .AddAspNetCoreInstrumentation()
-                    .AddConsoleExporter() |> ignore
+                    .AddConsoleExporter()
+                    .AddOtlpExporter() |> ignore
             ) |> ignore      
                
         services.AddGiraffe()
