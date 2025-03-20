@@ -267,6 +267,9 @@ module Program =
     open Microsoft.AspNetCore.Diagnostics.HealthChecks
     open Microsoft.Extensions.Diagnostics.HealthChecks
     open Microsoft.AspNetCore.ResponseCompression
+    open OpenTelemetry.Metrics
+    open OpenTelemetry.Resources
+    open OpenTelemetry.Trace
     open Giraffe
     open Scrum.Seedwork.Infrastructure    
     open Scrum.Seedwork.Infrastructure.Json
@@ -371,7 +374,22 @@ module Program =
             .Configure<BrotliCompressionProviderOptions>(fun (options: BrotliCompressionProviderOptions) ->
                 options.Level <- CompressionLevel.SmallestSize)
         |> ignore
-
+        
+        services
+            .AddOpenTelemetry()
+            .ConfigureResource(fun resource -> resource.AddService("Scrum") |> ignore)
+            .WithTracing(fun tracing ->
+                tracing
+                    .AddAspNetCoreInstrumentation()
+                    .AddConsoleExporter()
+                    .AddOtlpExporter() |> ignore            
+             )
+            .WithMetrics(fun metrics ->
+                metrics
+                    .AddAspNetCoreInstrumentation()
+                    .AddConsoleExporter() |> ignore
+            ) |> ignore      
+               
         services.AddGiraffe()
 
     let configureApplication (app: IApplicationBuilder) =

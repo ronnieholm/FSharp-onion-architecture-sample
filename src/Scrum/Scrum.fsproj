@@ -21,6 +21,11 @@
     <PackageReference Include="FsToolkit.ErrorHandling.TaskResult" />
     <PackageReference Include="Giraffe" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" />
+    <PackageReference Include="OpenTelemetry.Exporter.Jaeger" />
+    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" />
     <PackageReference Include="System.Data.SQLite.Core" />
   </ItemGroup>
 

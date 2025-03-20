@@ -66,6 +66,16 @@ Running the tests or the web app creates the SQLite databases in the Git root as
 Opening the Git repository with VSCode will make it pick up the DevContainer
 configuration.
 
+For OpenTelemetry, install and run Jaeger:
+
+    $ docker run --name jaeger -p 16686:16686 -p 4316:4316 -p 4317:4317 -d jaegertracing/opentelemetry-all-in-one
+
+Or run if the image is already installed:
+
+    $ docker start jaeger
+
+The Jaeger web interface is at http://localhost:16686.
+
 ## Operations
 
 ```bash

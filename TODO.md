@@ -32,12 +32,11 @@
 - Experiment with SQLite WAL feature.
 - Try out https://sqlitestudio.pl/
 - Try out https://github.com/xoofx/ultra
-- Change domain events endpoint to audit endpoint
 - Change update time field to modified time field.
 - Add deleted time field to database.
 - Add etag support.
 - Use sensible SQLite defaults, such as WAL mode.
   - https://briandouglas.ie/sqlite-defaults
-- Store command requests with correlation IDs and add same correlation ID to events for tracability.
 - Setup code coverage report.
-- Add Fable frontend
+- Add Fable frontend.
+- Add Docker compose file.

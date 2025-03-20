@@ -7,6 +7,11 @@
     <PackageVersion Include="FsToolkit.ErrorHandling.TaskResult" Version="4.18.0" />
     <PackageVersion Include="Giraffe" Version="7.0.2" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.0" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Console" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Exporter.Jaeger" Version="1.5.1" />
+    <PackageVersion Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Extensions.Hosting" Version="1.11.2" />
+    <PackageVersion Include="OpenTelemetry.Instrumentation.AspNetCore" Version="1.11.1" />
     <PackageVersion Include="System.Data.SQLite.Core" Version="1.0.117" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
     <PackageVersion Include="Unquote" Version="7.0.0" />
