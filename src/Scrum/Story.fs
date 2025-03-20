@@ -913,8 +913,6 @@ module RouteHandler =
     open Scrum.Seedwork.Application
     open Application.StoryRequest
     open Infrastructure
-
-    let x = HttpContextAccessor.
     
     module CaptureBasicStoryDetails =
         open Application.StoryRequest.CaptureBasicStoryDetailsCommand
