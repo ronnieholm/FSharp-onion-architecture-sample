@@ -919,7 +919,7 @@ module RouteHandler =
         
         type Request = { title: string; description: string }
 
-        let handle : HttpHandler =
+        let handle: HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 // TODO: verify no query string args passed
                 let configuration = ctx.GetService<IConfiguration>()
@@ -1226,7 +1226,7 @@ module RouteHandler =
         open Scrum.Seedwork.RouteHandler
         open Application.StoryRequest.GetStoriesPagedQuery
         
-        let handle : HttpHandler =
+        let handle: HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
                 let logger = ctx.GetService<ILogger<_>>()
@@ -1255,9 +1255,9 @@ module RouteHandler =
                                 runWithMiddlewareAsync log identity qry
                                     (fun () -> runAsync getStoriesPaged identity qry)
                                 |> TaskResult.mapError(
-                                        function
-                                        | AuthorizationError role -> ProblemDetails.authorizationError role
-                                        | ValidationErrors ve -> ProblemDetails.validationErrors ve)
+                                    function
+                                    | AuthorizationError role -> ProblemDetails.authorizationError role
+                                    | ValidationErrors ve -> ProblemDetails.validationErrors ve)
                             do! transaction.RollbackAsync(ctx.RequestAborted)
                             return result
                         }
