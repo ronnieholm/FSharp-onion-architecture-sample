@@ -9,6 +9,7 @@
 - Use given (class), then (method) pattern in tests?
 - Create assert helpers for comparing composite types?
 - Add OpenTelemetry
+  - https://www.youtube.com/watch?v=hkPMtIyI3OI (F# test specific)
   - https://www.youtube.com/watch?v=tctadmNTHfU
   - https://www.youtube.com/watch?v=nFU-hcHyl2s
   - https://www.youtube.com/watch?v=MHJ0BHfWhRw

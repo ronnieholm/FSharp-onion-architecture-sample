@@ -6,10 +6,10 @@ Status: Accepted and active.
 
 Thin events contain essential fields only: typically Ids and not title,
 description, and so on, so they aren't self-contained. An event processor would
-have to query the aggregate by Id to get at the information it needs.
+usually have to query the aggregate by Id to get at the information it needs.
 
-Alternatively, we could pass the aggregate as part of the event, but if the
-event is preserved in an log, entries could grow large. Which aggregate fields
+Alternatively, we could make the aggregate as part of the event, but if the
+event is preserved in a log, entries could grow large. Which aggregate fields
 changed as part of the event would also become implicit per event.
 
 So instead of
@@ -19,7 +19,7 @@ type DomainEvent =
     | StoryCreated of Story
 ```
 
-we prefer
+prefer
 
 ```fsharp
 type BasicStoryDetailsCaptured =
@@ -35,45 +35,34 @@ type DomainEvent =
 As events never leave core, they can include domain types. Integration events,
 leaving core, would need to be transformed into primitive types.
 
-Persisting events for auditing or troubleshooting, some fields should be
-promoted to query events. As each event may have a different shape, the event is
-persisted as JSON or a string, depending on database support. The aggregate Id
-to which the event belongs should be extracted across events and promoted to a
-field in the persisted domain events table.
+Persisting domain events for auditing or troubleshooting is rarely useful for
+event sourced solution. They're only intended for use within core, not intended
+for replay, and not versioned.
 
-Persisting domain events doesn't imply event sourcing. Domain events are only
-intended for use within core, not intended for replay, and not versioned. Event
-sourcing is a complex topic, not worth it for most applications.
+In a non-event sourced system, some domain event fields should be promoted to
+database fields for querying. As each event may have a different shape, the
+event is persisted as JSON or a string, depending on database support. Aggregate
+Id to which the event belongs is one such promoted field in persisted domain
+events table.
 
 Publishing an event to another aggregate, the event processor may require access
-to fields not part of the event. These event processors would query the
-repository. As both the command handler generating the event and subsequent
-event processors run within the same transaction, querying the store guarantees
-up-to-date entities.
+to fields not part of the event. As such, it would query the repository for
+additional information. As both the command handler generating the event and
+subsequent event processors run within the same transaction, querying the store
+guarantees up-to-date entities.
 
 One command handler isn't limited to emitting a single event. Imagine a workflow
 where the handler adds and removes items to or from a list. This could result in
-multiple events.
+multiple events, one for each item.
 
 ## Decision
 
-We use semi-fat events, including fields relevant to the event as it supports
-update the store based on events. It isn't event sourcing so we can't re-create
-the state of an aggregate for events, but apply events on the fly. It's a
-pragmatic trade-off between going full event sourcing (often too complex) and
-the complexities of using a relational database without EF change tracking.
-
-We could've stored aggregates and domain events in a document database. It would
-remove the repository complexities of mapping from a flat SQL result set to an
-object graph. However, complexities start to creep back in as aggregates evolve
-and dynamic queries become more difficult, even with SQLite JSON query support.
+Use semi-fat events, including only fields relevant to the event.
 
 ## Consequences
 
-Without EF's change tracker, keeping an aggregate up-to-date with a relational
-store may involve significant work: imagine scanning an aggregate for changes
-and generating SQL from those. By instead treating the store as an immediately
-updated read-model, we simplify change tracking.
+Semi-fat events strikes the best balance between including too little and too
+much information.
 
 ## See also
 
