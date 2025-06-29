@@ -19,10 +19,11 @@ we could've created one table for each aggregate. Serialization and
 deserialization of an object tree then would become trivial. Similar for change
 tracking, which would be comparing two JSON documents.
 
-Serializing/deserializing F# domain types poses a few problems, though. When
-most every field on domain types is a value object, the JSON becomes
-bloated. Writing manual serialization/deserialization code becomes tedious, and
-possibly using UMX for value objects would solve this issue.
+Serializing/deserializing F# domain types (as part events) poses a few problems,
+though. When most every field on domain types is a value object, the JSON
+becomes bloated. Writing manual serialization/deserialization code becomes
+tedious, so possibly using UMX for value objects would solve this issue (EF
+solves it through owned properties in configuration files).
 
 ## Decision
 
