@@ -1,6 +1,7 @@
 # TODO
 
-- Add enumeration status field.
+- Test if using UMX for value object serializes/deserialized without issues using the F# System.Text.Json NuGet.
+- Add enumeration status field (serialize as string).
 - Add estimate field on task and aggregated estimate on story.
 - Why does ASP.NET errors not conform to ProblemDetails? For instance, invalid GUID with model binding.
 - Return error codes (cases of error DUs) in JSON error response, inspired by https://www.youtube.com/watch?v=AeZC1z8D5xI for Dapr.
