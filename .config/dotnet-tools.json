@@ -3,34 +3,39 @@
   "isRoot": true,
   "tools": {
     "fantomas": {
-      "version": "6.0.2",
+      "version": "7.0.3",
       "commands": [
         "fantomas"
-      ]
+      ],
+      "rollForward": false
     },
     "dotnet-trace": {
-      "version": "7.0.447801",
+      "version": "9.0.652701",
       "commands": [
         "dotnet-trace"
-      ]
+      ],
+      "rollForward": false
     },
     "dotnet-counters": {
-      "version": "7.0.447801",
+      "version": "9.0.652701",
       "commands": [
         "dotnet-counters"
-      ]
+      ],
+      "rollForward": false
     },
     "dotnet-dump": {
-      "version": "7.0.447801",
+      "version": "9.0.652701",
       "commands": [
         "dotnet-dump"
-      ]
+      ],
+      "rollForward": false
     },
     "dotnet-gcdump": {
-      "version": "7.0.447801",
+      "version": "9.0.652701",
       "commands": [
         "dotnet-gcdump"
-      ]
+      ],
+      "rollForward": false
     }
   }
 }

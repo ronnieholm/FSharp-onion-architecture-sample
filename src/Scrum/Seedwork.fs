@@ -4,8 +4,8 @@ module Domain =
     open System
     open System.Diagnostics
 
-    let unreachable message : 't = raise (UnreachableException(message))        
-    
+    let unreachable message : 't = raise (UnreachableException(message))
+
     type Entity<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
     type AggregateRoot<'id> = { Id: 'id; CreatedAt: DateTime; UpdatedAt: DateTime option }
 
@@ -57,9 +57,9 @@ module Domain =
             let value (Cursor v) : string = v
 
         type Paged<'t> = { Cursor: Cursor option; Items: 't list }
-        
+
     module Service =
-        ()       
+        ()
 
 module Application =
     open System
@@ -137,7 +137,12 @@ module Application =
         let elapsed = (uint sw.ElapsedMilliseconds) * 1u<ms>
         result, elapsed
 
-    let runWithMiddlewareAsync<'TResponse, 'TPayload> (log: LogMessage -> unit) identity (payload: 'TPayload) (fn: unit -> System.Threading.Tasks.Task<'TResponse>) =
+    let runWithMiddlewareAsync<'TResponse, 'TPayload>
+        (log: LogMessage -> unit)
+        identity
+        (payload: 'TPayload)
+        (fn: unit -> System.Threading.Tasks.Task<'TResponse>)
+        =
         try
             task {
                 let name = payload.GetType().Name
@@ -296,14 +301,10 @@ module Infrastructure =
                 writer.WriteEndObject()
 
     module Option =
-        let ofDBNull (value: obj): obj option =
-            if value = DBNull.Value then
-                None
-            else
-                Some value
+        let ofDBNull (value: obj) : obj option = if value = DBNull.Value then None else Some value
 
     module Repository =
-        let getConnection (connectionString: string): SQLiteConnection =
+        let getConnection (connectionString: string) : SQLiteConnection =
             let connection = new SQLiteConnection(connectionString)
             connection.Open()
             use cmd = new SQLiteCommand("pragma foreign_keys = on", connection)
@@ -336,7 +337,8 @@ module Infrastructure =
             (createdAt: DateTime)
             =
             task {
-                let sql = "insert into events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
+                let sql =
+                    "insert into events (id, aggregate_type, aggregate_id, event_type, event_payload, created_at) values (@id, @aggregateType, @aggregateId, @eventType, @eventPayload, @createdAt)"
                 let cmd = new SQLiteCommand(sql, transaction.Connection, transaction)
                 let p = cmd.Parameters
                 p.AddWithValue("@id", Guid.NewGuid() |> string) |> ignore
@@ -397,25 +399,20 @@ module Infrastructure =
         open Microsoft.Extensions.Primitives
         open Application
 
-        let create status detail: ProblemDetails2 = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
+        let create status detail : ProblemDetails2 = { Type = "Error"; Title = "Error"; Status = status; Detail = detail }
 
         let inferContentType (acceptHeaders: StringValues) =
             let ok =
                 acceptHeaders.ToArray()
                 |> Array.exists (fun v -> v = "application/problem+json")
-            if ok then
-                "application/problem+json"
-            else
-                "application/json"
+            if ok then "application/problem+json" else "application/json"
 
-        let toJsonResult acceptHeaders error: ActionResult =
+        let toJsonResult acceptHeaders error : ActionResult =
             JsonResult(error, StatusCode = error.Status, ContentType = inferContentType acceptHeaders) :> _
 
-        let createJsonResult acceptHeaders status detail =
-            create status detail |> toJsonResult acceptHeaders
+        let createJsonResult acceptHeaders status detail = create status detail |> toJsonResult acceptHeaders
 
-        let authorizationError (role: ScrumRole) =
-            create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
+        let authorizationError (role: ScrumRole) = create StatusCodes.Status401Unauthorized $"Missing role: '{role.ToString()}'"
 
         type ValidationErrorResponse = { Field: string; Message: string }
 
@@ -441,12 +438,7 @@ module Infrastructure =
         open Application
         open Repository
 
-        let getByAggregateIdAsync
-                (transaction: SQLiteTransaction)
-                (ct: CancellationToken)
-                (aggregateId: Guid)
-                limit
-                cursor =
+        let getByAggregateIdAsync (transaction: SQLiteTransaction) (ct: CancellationToken) (aggregateId: Guid) limit cursor =
             task {
                 let connection = transaction.Connection
                 let sql =
@@ -497,19 +489,14 @@ module Infrastructure =
 
         let log (logger: ILogger<_>) message =
             match message with
-            | Workflow (identity, name, payload) ->
+            | Workflow(identity, name, payload) ->
                 let payloadJson = JsonSerializer.Serialize(payload, jsonSerializationOptions)
                 logger.LogInformation("Workflow: {name}, payload: {payload}, identity: {identity}", name, payloadJson, $"%A{identity}")
-            | WorkflowDuration (name, duration) ->
-                logger.LogInformation("{name}: {duration}", name, duration)
-            | Exception e ->
-                logger.LogDebug("{exception}", $"%A{e}")
-            | Err message ->
-                logger.LogError(message)
-            | Inf message ->
-                logger.LogInformation(message)
-            | Dbg message ->
-                logger.LogDebug(message)
+            | WorkflowDuration(name, duration) -> logger.LogInformation("{name}: {duration}", name, duration)
+            | Exception e -> logger.LogDebug("{exception}", $"%A{e}")
+            | Err message -> logger.LogError(message)
+            | Inf message -> logger.LogInformation(message)
+            | Dbg message -> logger.LogDebug(message)
 
     // Claims shared between services.
     module ScrumClaims =
@@ -522,7 +509,7 @@ module Infrastructure =
         open System.Security.Claims
         open Application
 
-        let getCurrentIdentity(context: HttpContext) =
+        let getCurrentIdentity (context: HttpContext) =
             if isNull context then
                 Anonymous
             else
@@ -553,7 +540,6 @@ module Infrastructure =
                         | 0 -> Anonymous
                         | _ -> Authenticated(userIdClaim, rolesClaim)
 
-
     module DatabaseMigration =
         open System.IO
         open System.Reflection
@@ -564,7 +550,8 @@ module Infrastructure =
         type AppliedMigration = { Name: string; Hash: string; Sql: string; CreatedAt: DateTime }
 
         type Migrate(log: LogMessage -> unit, connectionString: string) =
-            let createMigrationsSql = "
+            let createMigrationsSql =
+                "
                 create table migrations(
                     name text primary key,
                     hash text not null,
@@ -646,7 +633,8 @@ module Infrastructure =
                     let count = cmd.ExecuteNonQuery()
                     assert (count >= 0)
 
-                    let sql = $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{available[i].Name}', '{available[i].Hash}', '{available[i].Sql}', {DateTime.UtcNow.Ticks})"
+                    let sql =
+                        $"insert into migrations ('name', 'hash', 'sql', 'created_at') values ('{available[i].Name}', '{available[i].Hash}', '{available[i].Sql}', {DateTime.UtcNow.Ticks})"
                     let cmd = new SQLiteCommand(sql, connection, tx)
 
                     try
@@ -767,29 +755,26 @@ module RouteHandler =
                 return! json paged next ctx
             | Error e ->
                 ctx.SetStatusCode e.Status
-                ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                 return! json e next ctx
         }
 
     let stringToInt32 field (value: string) =
         let ok, value = Int32.TryParse(value)
         if ok then
-           Ok value
+            Ok value
         else
-           Error (ProblemDetails.queryStringParameterMustBeOfType field "integer")
+            Error(ProblemDetails.queryStringParameterMustBeOfType field "integer")
 
     let verifyOnlyExpectedQueryStringParameters (query: IQueryCollection) expectedParameters =
         // Per design APIs conservatively:
         // https://opensource.zalando.com/restful-api-guidelines/#109
         let unexpected =
-            query
-            |> Seq.map _.Key
-            |> Seq.toList
-            |> List.except expectedParameters
+            query |> Seq.map _.Key |> Seq.toList |> List.except expectedParameters
         if List.isEmpty unexpected then
-            Ok ()
+            Ok()
         else
-            Error (ProblemDetails.unexpectedQueryStringParameters unexpected)
+            Error(ProblemDetails.unexpectedQueryStringParameters unexpected)
 
     module GetEvents =
         open Microsoft.Extensions.Logging
@@ -800,7 +785,7 @@ module RouteHandler =
         open Application.EventRequest
         open Application.EventRequest.GetByAggregateIdQuery
 
-        let handle aggregateId: HttpHandler =
+        let handle aggregateId : HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
                 let logger = ctx.GetService<ILogger<_>>()
@@ -822,14 +807,14 @@ module RouteHandler =
 
                             use connection = getConnection connectionString
                             use transaction = connection.BeginTransaction()
-                            let getByAggregateId = EventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
+                            let getByAggregateId =
+                                EventRepository.getByAggregateIdAsync transaction ctx.RequestAborted
 
-                            let qry: GetByAggregateIdQuery = { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
+                            let qry: GetByAggregateIdQuery =
+                                { Id = aggregateId; Limit = limit; Cursor = cursor |> Option.ofObj }
                             let! result =
-                                runWithMiddlewareAsync log identity qry
-                                    (fun () -> runAsync getByAggregateId identity qry)
-                                |> TaskResult.mapError(
-                                    function
+                                runWithMiddlewareAsync log identity qry (fun () -> runAsync getByAggregateId identity qry)
+                                |> TaskResult.mapError (function
                                     | AuthorizationError role -> ProblemDetails.authorizationError role
                                     | ValidationErrors ve -> ProblemDetails.validationErrors ve)
                             do! transaction.RollbackAsync(ctx.RequestAborted)

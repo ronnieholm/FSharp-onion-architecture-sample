@@ -214,35 +214,35 @@ module RouteHandler =
               // Loosely modeled after OAuth2 endpoints.
               POST
               >=> choose
-                  [ route "/authentication/issue-token" >=> issueTokenHandler
-                    route "/authentication/renew-token"
-                    >=> verifyUserIsAuthenticated
-                    >=> renewTokenHandler
-                    route "/authentication/introspect"
-                    >=> verifyUserIsAuthenticated
-                    >=> introspectTokenHandler ]
+                      [ route "/authentication/issue-token" >=> issueTokenHandler
+                        route "/authentication/renew-token"
+                        >=> verifyUserIsAuthenticated
+                        >=> renewTokenHandler
+                        route "/authentication/introspect"
+                        >=> verifyUserIsAuthenticated
+                        >=> introspectTokenHandler ]
 
               // Could be included in Story.fs, but kept in Program.fs because
               // having endpoints defined in a central location helps understand
               // the app and makes it easier to spot API inconsistencies.
               verifyUserIsAuthenticated
               >=> choose
-                  [ POST >=> route "/stories" >=> CaptureBasicStoryDetails.handle
-                    PUT >=> routef "/stories/%O" ReviseBasicStoryDetails.handle
-                    POST >=> routef "/stories/%O/tasks" AddBasicTaskDetailsToStory.handle
-                    PUT >=> routef "/stories/%O/tasks/%O" ReviseBasicTaskDetails.handle
-                    DELETE >=> routef "/stories/%O/tasks/%O" RemoveTask.handle
-                    DELETE >=> routef "/stories/%O" RemoveStory.handle
-                    GET >=> routef "/stories/%O" GetStoryById.handle
-                    GET >=> route "/stories" >=> GetStoriesPaged.handle ]
+                      [ POST >=> route "/stories" >=> CaptureBasicStoryDetails.handle
+                        PUT >=> routef "/stories/%O" ReviseBasicStoryDetails.handle
+                        POST >=> routef "/stories/%O/tasks" AddBasicTaskDetailsToStory.handle
+                        PUT >=> routef "/stories/%O/tasks/%O" ReviseBasicTaskDetails.handle
+                        DELETE >=> routef "/stories/%O/tasks/%O" RemoveTask.handle
+                        DELETE >=> routef "/stories/%O" RemoveStory.handle
+                        GET >=> routef "/stories/%O" GetStoryById.handle
+                        GET >=> route "/stories" >=> GetStoriesPaged.handle ]
 
               verifyUserIsAuthenticated
               >=> choose [ GET >=> routef "/events/%O" GetEvents.handle ]
 
               GET
               >=> choose
-                  [ route "/tests/introspect" >=> introspectTestHandler
-                    route "/tests/current-time" >=> currentTimeTestHandler ]
+                      [ route "/tests/introspect" >=> introspectTestHandler
+                        route "/tests/current-time" >=> currentTimeTestHandler ]
 
               RequestErrors.NOT_FOUND "Not Found" ]
 
@@ -271,7 +271,7 @@ module Program =
     open OpenTelemetry.Resources
     open OpenTelemetry.Trace
     open Giraffe
-    open Scrum.Seedwork.Infrastructure    
+    open Scrum.Seedwork.Infrastructure
     open Scrum.Seedwork.Infrastructure.Json
     open Scrum.Seedwork.Infrastructure.Configuration
     open HealthCheck
@@ -374,23 +374,18 @@ module Program =
             .Configure<BrotliCompressionProviderOptions>(fun (options: BrotliCompressionProviderOptions) ->
                 options.Level <- CompressionLevel.SmallestSize)
         |> ignore
-        
+
         services
             .AddOpenTelemetry()
             .ConfigureResource(fun resource -> resource.AddService("Scrum") |> ignore)
             .WithTracing(fun tracing ->
-                tracing
-                    .AddAspNetCoreInstrumentation()
-                    .AddConsoleExporter()
-                    .AddOtlpExporter() |> ignore            
-             )
+                tracing.AddAspNetCoreInstrumentation().AddConsoleExporter().AddOtlpExporter()
+                |> ignore)
             .WithMetrics(fun metrics ->
-                metrics
-                    .AddAspNetCoreInstrumentation()
-                    .AddConsoleExporter()
-                    .AddOtlpExporter() |> ignore
-            ) |> ignore      
-               
+                metrics.AddAspNetCoreInstrumentation().AddConsoleExporter().AddOtlpExporter()
+                |> ignore)
+        |> ignore
+
         services.AddGiraffe()
 
     let configureApplication (app: IApplicationBuilder) =
