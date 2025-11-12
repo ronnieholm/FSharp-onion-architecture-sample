@@ -104,9 +104,7 @@ module Domain =
               StoryTitle: StoryTitle
               StoryDescription: StoryDescription option }
 
-        type RemoveStory =
-            { OccurredAt: DateTime
-              StoryId: StoryId }
+        type RemoveStory = { OccurredAt: DateTime; StoryId: StoryId }
 
         type AddBasicTaskDetailsToStory =
             { OccurredAt: DateTime
@@ -122,10 +120,7 @@ module Domain =
               TaskTitle: TaskEntity.TaskTitle
               TaskDescription: TaskEntity.TaskDescription option }
 
-        type RemoveTask =
-            { OccurredAt: DateTime
-              StoryId: StoryId
-              TaskId: TaskEntity.TaskId }
+        type RemoveTask = { OccurredAt: DateTime; StoryId: StoryId; TaskId: TaskEntity.TaskId }
 
         // These aren't domain event in the DDD sense. Domain events describe
         // something that has already happened, hence they're named in past
@@ -143,7 +138,7 @@ module Domain =
 
         open TaskEntity
 
-        let zeroStory =
+        let zeroStory = // Use CreateStory terminology from Marten?
             let zero =
                 result {
                     let! storyId = StoryId.create (Guid.NewGuid())
@@ -152,12 +147,12 @@ module Domain =
                         { Aggregate = { Id = storyId; CreatedAt = DateTime.MinValue; UpdatedAt = None }
                           Title = storyTitle
                           Description = None
-                          Tasks = [] }              
+                          Tasks = [] }
                 }
             match zero with
             | Ok zero -> zero
             | Error _ -> unreachable "Invalid zero story"
-        
+
         let apply story =
             function
             | CaptureBasicStoryDetails e ->
@@ -167,9 +162,11 @@ module Domain =
                   Tasks = [] }
             | ReviseBasicStoryDetails e ->
                 let root = { story.Aggregate with UpdatedAt = Some e.OccurredAt }
-                { story with Aggregate = root; Title = e.StoryTitle; Description = e.StoryDescription }                
-            | RemoveStory _ ->
-                story
+                { story with
+                    Aggregate = root
+                    Title = e.StoryTitle
+                    Description = e.StoryDescription }
+            | RemoveStory _ -> story
             | AddBasicTaskDetailsToStory e ->
                 let task = create e.TaskId e.TaskTitle e.TaskDescription e.OccurredAt
                 { story with Tasks = task :: story.Tasks }
@@ -178,7 +175,8 @@ module Domain =
                 let task = story.Tasks[idx]
                 let tasks = story.Tasks |> List.removeAt idx
                 let entity = { task.Entity with UpdatedAt = Some e.OccurredAt }
-                let updatedTask = { Entity = entity; Title = e.TaskTitle; Description = e.TaskDescription }
+                let updatedTask =
+                    { Entity = entity; Title = e.TaskTitle; Description = e.TaskDescription }
                 { story with Tasks = updatedTask :: tasks }
             | RemoveTask e ->
                 let idx = story.Tasks |> List.findIndex (fun t -> t.Entity.Id = e.TaskId)
@@ -209,9 +207,7 @@ module Domain =
             // Depending on the specifics of a domain, we might want to
             // explicitly delete the story's tasks and emit task deleted
             // events. In this case, we leave cascade delete to the store.
-            RemoveStory
-                { OccurredAt = occurredAt
-                  StoryId = story.Aggregate.Id }
+            RemoveStory { OccurredAt = occurredAt; StoryId = story.Aggregate.Id }
 
         type AddBasicTaskDetailsToStoryError = DuplicateTask of TaskId
 
@@ -228,7 +224,8 @@ module Domain =
                       StoryId = story.Aggregate.Id
                       TaskId = task.Entity.Id
                       TaskTitle = task.Title
-                      TaskDescription = task.Description } |> Ok
+                      TaskDescription = task.Description }
+                |> Ok
 
         type ReviseBasicTaskDetailsError = TaskNotFound of TaskId
 
@@ -241,8 +238,9 @@ module Domain =
                       StoryId = story.Aggregate.Id
                       TaskId = taskId
                       TaskTitle = title
-                      TaskDescription = description } |> Ok
-            | false -> Error (TaskNotFound taskId)
+                      TaskDescription = description }
+                |> Ok
+            | false -> Error(TaskNotFound taskId)
 
         type RemoveTaskError = TaskNotFound of TaskId
 
@@ -250,11 +248,9 @@ module Domain =
             let exists = story.Tasks |> List.exists (fun t -> t.Entity.Id = taskId)
             match exists with
             | true ->
-                RemoveTask
-                    { OccurredAt = occurredAt
-                      StoryId = story.Aggregate.Id
-                      TaskId = taskId } |> Ok
-            | false -> Error (TaskNotFound taskId)
+                RemoveTask { OccurredAt = occurredAt; StoryId = story.Aggregate.Id; TaskId = taskId }
+                |> Ok
+            | false -> Error(TaskNotFound taskId)
 
     module Service =
         ()
@@ -304,7 +300,7 @@ module Application =
                     do!
                         storyExist cmd.Id
                         |> TaskResult.requireFalse (DuplicateStory(StoryId.value cmd.Id))
-                    let event = captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (now ())                    
+                    let event = captureBasicStoryDetails cmd.Id cmd.Title cmd.Description (now ())
                     let story = apply zeroStory event
                     // saveStory can be thought of as synchronously updating
                     // the read model based on generated events.
@@ -620,12 +616,12 @@ module Application =
                         { PagedDto.Cursor = storiesPage.Cursor |> Option.map Cursor.value
                           Items = storiesPage.Items |> List.map StoryDto.from }
                 }
-    
+
 module Infrastructure =
-    exception WebException of string    
-    
+    exception WebException of string
+
     let panic message : 't = raise (WebException(message))
-    
+
     module StoryRepository =
         open System
         open System.Data.Common
@@ -645,14 +641,14 @@ module Infrastructure =
             // entity is a state machine, it resets the entity to its starting
             // state. Furthermore, StoryAggregate.captureBasicStoryDetails
             // emits events which we'd be discarding.
-            { Aggregate = {
-                Id = id
-                CreatedAt = parseCreatedAt r["s_created_at"]
-                UpdatedAt = parseUpdatedAt r["s_updated_at"] }
+            { Aggregate =
+                { Id = id
+                  CreatedAt = parseCreatedAt r["s_created_at"]
+                  UpdatedAt = parseUpdatedAt r["s_updated_at"] }
               Title = (r["s_title"] |> string |> StoryTitle.create |> panicOnError "s_title")
               Description =
                 (Option.ofDBNull r["s_description"]
-                |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
+                 |> Option.map (string >> StoryDescription.create >> panicOnError "s_description"))
               Tasks = [] }
 
         let parseTask id (r: DbDataReader) =
@@ -661,14 +657,14 @@ module Infrastructure =
             // by the database, it requires explicitly code. Integration tests
             // would generally catch such issues, except when the database is
             // updated by a migration.
-            { Entity = {
-                Id = id
-                CreatedAt = parseCreatedAt r["t_created_at"]
-                UpdatedAt = parseUpdatedAt r["t_updated_at"] }
+            { Entity =
+                { Id = id
+                  CreatedAt = parseCreatedAt r["t_created_at"]
+                  UpdatedAt = parseUpdatedAt r["t_updated_at"] }
               Title = (r["t_title"] |> string |> TaskTitle.create |> panicOnError "t_title")
               Description =
                 (Option.ofDBNull r["t_description"]
-                |> Option.map (string >> TaskDescription.create >> panicOnError "t_description")) }
+                 |> Option.map (string >> TaskDescription.create >> panicOnError "t_description")) }
 
         let storiesToDomainAsync ct (r: DbDataReader) =
             // See
@@ -717,10 +713,10 @@ module Infrastructure =
 
             task {
                 while! r.ReadAsync(ct) do
-                   visitStory ()
+                    visitStory ()
 
-                assert(stories.Count = storiesOrder.Count)
-                assert(storyTasks.Count = storyTasksOrder.Count)
+                assert (stories.Count = storiesOrder.Count)
+                assert (storyTasks.Count = storyTasksOrder.Count)
 
                 return
                     storiesOrder
@@ -729,9 +725,7 @@ module Infrastructure =
                         let tasks =
                             let ok, order = storyTasksOrder.TryGetValue(storyId)
                             if ok then
-                                order
-                                |> Seq.map (fun taskId -> storyTasks[storyId][taskId])
-                                |> Seq.toList
+                                order |> Seq.map (fun taskId -> storyTasks[storyId][taskId]) |> Seq.toList
                             else
                                 []
                         { story with Tasks = Seq.toList tasks })
@@ -745,7 +739,8 @@ module Infrastructure =
                 // For queries involving multiple tables, ADO.NET requires
                 // aliasing fields for those to be extractable through the
                 // reader.
-                let sql = "
+                let sql =
+                    "
                     select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                            t.id t_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                     from stories s
@@ -790,7 +785,8 @@ module Infrastructure =
                 let aggregateId, occuredAt =
                     match event with
                     | CaptureBasicStoryDetails e ->
-                        let sql = "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
+                        let sql =
+                            "insert into stories (id, title, description, created_at) values (@id, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
                         let storyId = e.StoryId |> StoryId.value
@@ -802,7 +798,8 @@ module Infrastructure =
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | ReviseBasicStoryDetails e ->
-                        let sql = "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
+                        let sql =
+                            "update stories set title = @title, description = @description, updated_at = @updatedAt where id = @id"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
                         let storyId = e.StoryId |> StoryId.value
@@ -821,7 +818,8 @@ module Infrastructure =
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | AddBasicTaskDetailsToStory e ->
-                        let sql = "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
+                        let sql =
+                            "insert into tasks (id, story_id, title, description, created_at) values (@id, @storyId, @title, @description, @createdAt)"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
                         let storyId = e.StoryId |> StoryId.value
@@ -834,7 +832,8 @@ module Infrastructure =
                         task { do! applyExecuteNonQueryAsync cmd ct } |> ignore
                         storyId, e.OccurredAt
                     | ReviseBasicTaskDetails e ->
-                        let sql = "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
+                        let sql =
+                            "update tasks set title = @title, description = @description, updated_at = @updatedAt where id = @id and story_id = @storyId"
                         use cmd = new SQLiteCommand(sql, connection, transaction)
                         let p = cmd.Parameters
                         let storyId = e.StoryId |> StoryId.value
@@ -864,21 +863,14 @@ module Infrastructure =
                 // F# type printer. This wouldn't work in a pure event sourced
                 // system where we'd read back the event for processing, but
                 // the printer suffices for persisting event for troubleshooting.
-                do!
-                    persistEventAsync
-                        transaction
-                        ct
-                        (nameof Story)
-                        aggregateId
-                        (event.GetType().Name)
-                        $"%A{event}"
-                        occuredAt
+                do! persistEventAsync transaction ct (nameof Story) aggregateId (event.GetType().Name) $"%A{event}" occuredAt
             }
 
         let getPagedAsync (transaction: SQLiteTransaction) (ct: CancellationToken) limit cursor =
             let connection = transaction.Connection
             task {
-                let sqlStories = "
+                let sqlStories =
+                    "
                     select s.id s_id, s.title s_title, s.description s_description, s.created_at s_created_at, s.updated_at s_updated_at,
                            t.id t_id, t.title t_title, t.description t_description, t.created_at t_created_at, t.updated_at t_updated_at
                     from stories s
@@ -901,7 +893,7 @@ module Infrastructure =
                     let cursor = offsetsToCursor pageEndOffset globalEndOffset
                     return { Cursor = cursor; Items = stories }
             }
-            
+
 module RouteHandler =
     open System
     open Microsoft.AspNetCore.Http
@@ -913,10 +905,10 @@ module RouteHandler =
     open Scrum.Seedwork.Application
     open Application.StoryRequest
     open Infrastructure
-    
+
     module CaptureBasicStoryDetails =
         open Application.StoryRequest.CaptureBasicStoryDetailsCommand
-        
+
         type Request = { title: string; description: string }
 
         let handle: HttpHandler =
@@ -940,9 +932,7 @@ module RouteHandler =
                         { Id = Guid.NewGuid()
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                    let! result =
-                        runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow storyExist storyApply identity cmd)
+                    let! result = runWithMiddlewareAsync log identity cmd (fun () -> runAsync utcNow storyExist storyApply identity cmd)
 
                     match result with
                     | Ok id ->
@@ -958,15 +948,15 @@ module RouteHandler =
                             | ValidationErrors ve -> ProblemDetails.validationErrors ve
                             | DuplicateStory id -> unreachable (string id)
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
-    
+
     module ReviseBasicStoryDetails =
         open ReviseBasicStoryDetailsCommand
         type Request = { title: string; description: string }
 
-        let handle storyId: HttpHandler =
+        let handle storyId : HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 // TODO: verify no query string args passed
                 let configuration = ctx.GetService<IConfiguration>()
@@ -986,9 +976,7 @@ module RouteHandler =
                         { Id = storyId
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                    let! result =
-                        runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
+                    let! result = runWithMiddlewareAsync log identity cmd (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok id ->
@@ -1004,16 +992,16 @@ module RouteHandler =
                             | ValidationErrors ve -> ProblemDetails.validationErrors ve
                             | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
 
     module AddBasicTaskDetailsToStory =
         open AddBasicTaskDetailsToStoryCommand
-        
+
         type Request = { title: string; description: string }
 
-        let handle storyId: HttpHandler =
+        let handle storyId : HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
                 let logger = ctx.GetService<ILogger<_>>()
@@ -1033,9 +1021,7 @@ module RouteHandler =
                           StoryId = storyId
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                    let! result =
-                        runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
+                    let! result = runWithMiddlewareAsync log identity cmd (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok taskId ->
@@ -1052,16 +1038,16 @@ module RouteHandler =
                             | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                             | DuplicateTask id -> unreachable (string id)
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
 
     module ReviseBasicTaskDetails =
         open ReviseBasicTaskDetailsCommand
-        
+
         type Request = { title: string; description: string }
-        
-        let handle (storyId, taskId): HttpHandler =
+
+        let handle (storyId, taskId) : HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
                 let logger = ctx.GetService<ILogger<_>>()
@@ -1081,9 +1067,7 @@ module RouteHandler =
                           TaskId = taskId
                           Title = request.title
                           Description = request.description |> Option.ofObj }
-                    let! result =
-                        runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
+                    let! result = runWithMiddlewareAsync log identity cmd (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok taskId ->
@@ -1100,14 +1084,14 @@ module RouteHandler =
                             | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                             | TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
 
     module RemoveTask =
         open RemoveTaskCommand
-    
-        let handle (storyId, taskId): HttpHandler =
+
+        let handle (storyId, taskId) : HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
                 let logger = ctx.GetService<ILogger<_>>()
@@ -1122,15 +1106,13 @@ module RouteHandler =
                     let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let cmd: RemoveTaskCommand = { StoryId = storyId; TaskId = taskId }
-                    let! result =
-                        runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
+                    let! result = runWithMiddlewareAsync log identity cmd (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok _ ->
                         do! transaction.CommitAsync(ctx.RequestAborted)
                         ctx.SetStatusCode 200
-                        return! json {||} next ctx
+                        return! json {| |} next ctx
                     | Error e ->
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         let problem =
@@ -1140,13 +1122,13 @@ module RouteHandler =
                             | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                             | TaskNotFound id -> ProblemDetails.create 404 $"Task not found: '{string id}'"
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
 
     module RemoveStory =
         open RemoveStoryCommand
-    
+
         let handle storyId : HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
@@ -1162,15 +1144,13 @@ module RouteHandler =
                     let storyApply = StoryRepository.applyAsync transaction ctx.RequestAborted
 
                     let cmd: RemoveStoryCommand = { Id = storyId }
-                    let! result =
-                        runWithMiddlewareAsync log identity cmd
-                            (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
+                    let! result = runWithMiddlewareAsync log identity cmd (fun () -> runAsync utcNow getStoryById storyApply identity cmd)
 
                     match result with
                     | Ok _ ->
                         do! transaction.CommitAsync(ctx.RequestAborted)
                         ctx.SetStatusCode 200
-                        return! json {||} next ctx
+                        return! json {| |} next ctx
                     | Error e ->
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         let problem =
@@ -1179,10 +1159,10 @@ module RouteHandler =
                             | ValidationErrors ve -> ProblemDetails.validationErrors ve
                             | StoryNotFound _ -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
-                
+
     module GetStoryById =
         open GetStoryByIdQuery
 
@@ -1200,15 +1180,13 @@ module RouteHandler =
                     let getStoryById = StoryRepository.getByIdAsync transaction ctx.RequestAborted
 
                     let qry: GetStoryByIdQuery = { Id = storyId }
-                    let! result =
-                        runWithMiddlewareAsync log identity qry
-                            (fun () -> runAsync getStoryById identity qry)
+                    let! result = runWithMiddlewareAsync log identity qry (fun () -> runAsync getStoryById identity qry)
 
                     match result with
                     | Ok _ ->
                         do! transaction.CommitAsync(ctx.RequestAborted)
                         ctx.SetStatusCode 200
-                        return! json {||} next ctx
+                        return! json {| |} next ctx
                     | Error e ->
                         do! transaction.RollbackAsync(ctx.RequestAborted)
                         let problem =
@@ -1217,15 +1195,15 @@ module RouteHandler =
                             | ValidationErrors ve -> ProblemDetails.validationErrors ve
                             | StoryNotFound id -> ProblemDetails.create 404 $"Story not found: '{string id}'"
                         ctx.SetStatusCode problem.Status
-                        ctx.SetContentType (ProblemDetails.inferContentType ctx.Request.Headers.Accept)
+                        ctx.SetContentType(ProblemDetails.inferContentType ctx.Request.Headers.Accept)
                         return! json problem next ctx
                 }
 
     module GetStoriesPaged =
-        open FsToolkit.ErrorHandling        
+        open FsToolkit.ErrorHandling
         open Scrum.Seedwork.RouteHandler
         open Application.StoryRequest.GetStoriesPagedQuery
-        
+
         let handle: HttpHandler =
             fun (next: HttpFunc) (ctx: HttpContext) ->
                 let configuration = ctx.GetService<IConfiguration>()
@@ -1252,10 +1230,8 @@ module RouteHandler =
 
                             let qry: GetStoriesPagedQuery = { Limit = limit; Cursor = cursor |> Option.ofObj }
                             let! result =
-                                runWithMiddlewareAsync log identity qry
-                                    (fun () -> runAsync getStoriesPaged identity qry)
-                                |> TaskResult.mapError(
-                                    function
+                                runWithMiddlewareAsync log identity qry (fun () -> runAsync getStoriesPaged identity qry)
+                                |> TaskResult.mapError (function
                                     | AuthorizationError role -> ProblemDetails.authorizationError role
                                     | ValidationErrors ve -> ProblemDetails.validationErrors ve)
                             do! transaction.RollbackAsync(ctx.RequestAborted)

@@ -14,5 +14,4 @@ open Xunit
 
 type WebTestsTests() =
     [<Fact>]
-    let ``Todo`` () =
-        ()
+    let ``Todo`` () = ()

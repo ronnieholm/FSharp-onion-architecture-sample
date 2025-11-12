@@ -23,8 +23,7 @@ module A =
     let captureBasicStoryDetailsCommand () : CaptureBasicStoryDetailsCommand =
         { Id = Guid.NewGuid(); Title = "title"; Description = Some "description" }
 
-    let reviseBasicStoryDetailsCommand (storyId: Guid) =
-        { Id = storyId; Title = "title1"; Description = Some "description1" }
+    let reviseBasicStoryDetailsCommand (storyId: Guid) = { Id = storyId; Title = "title1"; Description = Some "description1" }
 
     let addBasicTaskDetailsToStoryCommand (storyId: Guid) : AddBasicTaskDetailsToStoryCommand =
         { StoryId = storyId
@@ -32,7 +31,7 @@ module A =
           Title = "title"
           Description = Some "description" }
 
-    let reviseBasicTaskDetailsCommand (storyId: Guid) (taskId: Guid): ReviseBasicTaskDetailsCommand =
+    let reviseBasicTaskDetailsCommand (storyId: Guid) (taskId: Guid) : ReviseBasicTaskDetailsCommand =
         { StoryId = storyId
           TaskId = taskId
           Title = "title1"
@@ -51,10 +50,7 @@ module Database =
     // way data is left in the database for troubleshooting.
     let reset () : unit =
         // Organize in reverse dependency order.
-        let sql =
-            [| "delete from tasks"
-               "delete from stories"
-               "delete from events" |]
+        let sql = [| "delete from tasks"; "delete from stories"; "delete from events" |]
         use connection = new SQLiteConnection(connectionString)
         connection.Open()
         use transaction = connection.BeginTransaction()
@@ -70,10 +66,8 @@ module Setup =
     let ct = CancellationToken.None
     let nullLogger _ = ()
     let clock () = DateTime.UtcNow
-    let adminIdentity =
-        Authenticated(UserId = "123", Roles = [ Admin ])
-    let memberIdentity =
-        Authenticated(UserId = "123", Roles = [ Member ])
+    let adminIdentity = Authenticated(UserId = "123", Roles = [ Admin ])
+    let memberIdentity = Authenticated(UserId = "123", Roles = [ Member ])
 
     let getConnection (connectionString: string) : SQLiteConnection =
         let connection = new SQLiteConnection(connectionString)
@@ -125,8 +119,7 @@ type DisableParallelization() =
     interface ICollectionFixture<ApplyDatabaseMigrationsFixture>
 
 module Helpers =
-    let failOnError result =
-        Task.map (Result.mapError (fun e -> Assert.Fail($"%A{e}"))) result
+    let failOnError result = Task.map (Result.mapError (fun e -> Assert.Fail($"%A{e}"))) result
 
 open Helpers
 
@@ -141,8 +134,10 @@ open Helpers
 // to interfere with each other, and the reset, serialize test runs.
 [<Collection(nameof DisableParallelization)>]
 type StoryRequestTests() as this =
-    [<DefaultValue>] val mutable connection: SQLiteConnection
-    [<DefaultValue>] val mutable transaction: SQLiteTransaction
+    [<DefaultValue>]
+    val mutable connection: SQLiteConnection
+    [<DefaultValue>]
+    val mutable transaction: SQLiteTransaction
 
     do
         reset ()
@@ -315,7 +310,8 @@ type StoryRequestTests() as this =
             let cmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity cmd
             let cmd = A.reviseBasicTaskDetailsCommand cmd.Id (missingId ())
-            let! (actual: Result<Guid,ReviseBasicTaskDetailsCommand.ReviseBasicTaskDetailsError>) = fns.ReviseBasicTaskDetails memberIdentity cmd
+            let! (actual: Result<Guid, ReviseBasicTaskDetailsCommand.ReviseBasicTaskDetailsError>) =
+                fns.ReviseBasicTaskDetails memberIdentity cmd
             test <@ actual = Error(ReviseBasicTaskDetailsCommand.TaskNotFound(cmd.TaskId)) @>
         }
 
@@ -339,8 +335,12 @@ type StoryRequestTests() as this =
                 ()
 
             let! page1 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = None } |> failOnError
-            let! page2 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page1.Cursor } |> failOnError
-            let! page3 = fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page2.Cursor } |> failOnError
+            let! page2 =
+                fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page1.Cursor }
+                |> failOnError
+            let! page3 =
+                fns.GetStoriesPaged memberIdentity { Limit = 5; Cursor = page2.Cursor }
+                |> failOnError
 
             Assert.Equal(5, page1.Items.Length)
             Assert.Equal(5, page2.Items.Length)
@@ -361,9 +361,11 @@ type StoryRequestTests() as this =
             this.connection.Dispose()
 
 [<Collection(nameof DisableParallelization)>]
-type EventRequestTests()  as this =
-    [<DefaultValue>] val mutable connection: SQLiteConnection
-    [<DefaultValue>] val mutable transaction: SQLiteTransaction
+type EventRequestTests() as this =
+    [<DefaultValue>]
+    val mutable connection: SQLiteConnection
+    [<DefaultValue>]
+    val mutable transaction: SQLiteTransaction
 
     do
         reset ()
@@ -386,14 +388,21 @@ type EventRequestTests()  as this =
             let storyCmd = A.captureBasicStoryDetailsCommand ()
             let! _ = fns.CaptureBasicStoryDetails memberIdentity storyCmd |> failOnError
             for i = 1 to 14 do
-                let taskCmd = { A.addBasicTaskDetailsToStoryCommand  storyCmd.Id with Title = $"Title {i}" }
+                let taskCmd =
+                    { A.addBasicTaskDetailsToStoryCommand storyCmd.Id with Title = $"Title {i}" }
                 let! _ = fns.AddBasicTaskDetailsToStory memberIdentity taskCmd |> failOnError
                 ()
 
             // This could be another user making a request.
-            let! page1 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None } |> failOnError
-            let! page2 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor } |> failOnError
-            let! page3 = fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor } |> failOnError
+            let! page1 =
+                fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = None }
+                |> failOnError
+            let! page2 =
+                fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page1.Cursor }
+                |> failOnError
+            let! page3 =
+                fns.GetByAggregateId adminIdentity { Id = storyCmd.Id; Limit = 5; Cursor = page2.Cursor }
+                |> failOnError
 
             Assert.Equal(5, page1.Items.Length)
             Assert.Equal(5, page2.Items.Length)
@@ -402,12 +411,7 @@ type EventRequestTests()  as this =
             let events = List.concat [ page1.Items; page2.Items; page3.Items ]
             Assert.Equal(15, events |> List.map _.CreatedAt |> List.distinct |> List.length)
             Assert.Equal(storyCmd.Id, (events |> List.map _.AggregateId |> List.distinct |> List.exactlyOne))
-            Assert.Equal(
-                "Story",
-                (events
-                 |> List.map _.AggregateType
-                 |> List.distinct
-                 |> List.exactlyOne))
+            Assert.Equal("Story", (events |> List.map _.AggregateType |> List.distinct |> List.exactlyOne))
         }
 
     interface IDisposable with
