@@ -5,14 +5,14 @@
 This sample focuses on applying functional constructs over cluing together
 libraries and frameworks. It substitutes .NET dependency injection container,
 FluentValidation, MediatR, Entity Framework, Moq, Respawn, and a migration tool
-for custom constructs.
+for custom code.
 
-It's imperative shell, functional core illustrated.
+It's imperative shell, functional core:
 
 <img src="./docs/onion-architecture.png" width="550px" />
 
-The sample is a modular monolith which offers the simplicity of a monolith and
-the scalability of microservices.
+The sample is a modular monolith to offer the simplicity of a monolith and the
+scalability of microservices.
 
 It includes the following features:
 
@@ -35,14 +35,14 @@ supporting role-based security.
 
 The Scrum domain was chosen because everyone is familiar with it, though most
 aspects of the application is illustrated with stories and tasks only. Onion
-architecture and domain driven design may therefore seem to introduce a
+architecture and domain driven design may therefore appear to introduce a
 disproportional amount of complexity. In practice, they're only worth it for
-larger, more complex domains with more integrations.
+larger, more complex domains.
 
 Not every project requires an implementation of every concept from onion
 architecture and domain driven design. Concepts should be scaled up or down
 based on business complexity and expected evolution of the application: if core
-is expected to only ever be accessed through the web service, code from core
+is expected to only ever be accessed through a web service, code from core
 handlers could be moved to HTTP handlers. On the other hand, if core is to be
 exposed through multiple of web, gRPC, console, or a long-running service, the
 extra indirection with core handlers becomes valuable.
@@ -50,8 +50,8 @@ extra indirection with core handlers becomes valuable.
 The sample constraints itself to The Blue Book concepts. That means implementing
 CQRS, aggregates, entities, events, and so on. For the HTTP API, the sample
 adheres to the Zalando API guidelines. It doesn't mean The Blue Book and the
-Zalando API guidelines are the end all, be all, but the sample strives to reflect
-constraints of a larger real-world application.
+Zalando API guidelines are the end all, be all, but the sample strives to
+reflect constraints of a larger real-world application.
 
 ## Getting started
 
@@ -113,36 +113,40 @@ curl https://localhost:5000/health --insecure
 
 ## Reflections
 
-The onion architecture is good at separating functionality into testable layers,
-more so than the classic three-layer architecture, but at the cost of ceremony:
+More so than the classic three-layer architecture, the onion architecture is
+good at separating functionality into testable layers. But at the cost of
+ceremony:
 
-- Mapping logic is needed at each layer, such as DTO to/from domain, database
-  to/from domain, and value types to wrap primitive types.
+- Mapping logic is needed with each layer: DTO to/from domain, database to/from
+  domain, and value types to wrap primitive types.
 - Re-implementation of a request pipeline in Application layer rather than
   re-using what ASP.NET offers out of the box. It enables the Application layer
-  to be re-used across ASP.NET, console, or service hosts, but sometimes those
-  hosts might internally go through the HTTP interface.
-- Using a document database could alleviate a lot of complex, repetitive mapping
-  in repositories. Like
+  to be used across ASP.NET, console, or service hosts.
+- Using a document database could alleviate complex, repetitive mapping in
+  repositories. For instance
   [PostgreSQL](https://www.postgresql.org/docs/current/functions-json.html),
-  such database should support queries/indices on JSON documents. Alternatively,
-  queries on separate read model projections as relational tables or JSON
-  documents. At this point, looking into [Marten](https://martendb.io) and
-  [Wolverine](https://wolverinefx.net) may be preferred over home grown
-  solutions.
+  supports queries/indices on JSON documents, whose documents may represent
+  events or projected read models.
+- Storing documents of value types come with their own issues as value types
+  adds another level to the JSON document and require an F# type aware
+  serializer.
+- Looking into [Marten](https://martendb.io) and
+  [Wolverine](https://wolverinefx.net) may be preferred over custom build only
+  what's needed. Their level of documentation or lock-in has to be taken into
+  account.
 - F#'s type system is superior to C#'s, but increased compile times make F# less
-  attractive. A 2.5 kloc codebase shouldn't take 15-20 seconds to compile. By
-  copying `Story.fs` and updating the namespaces, we can extrapolate that a 10
-  kloc codebase would have a 1+ minute compile time.
+  attractive.
 - The actor model, implemented by something like
-  [Orleans](https://learn.microsoft.com/en-us/dotnet/orleans), would be
-  well-suited for applications where the same aggregate is often requested (as
-  actors are stateful). Each aggregate becomes an actor with commands and
-  queries becoming actor methods. Inside each method would be command/query
-  handler code and Orleans would serve as mediator with its request pipeline. In
-  principle, an actor framework could replay events and generate projections,
-  though switching to a document database and a non-actor approach, the
-  stateless Application layer may be performant enough.
+  [Orleans](https://learn.microsoft.com/en-us/dotnet/orleans) might be suited
+  for applications where the same aggregate is often requested (as actors are
+  stateful). Each aggregate could become an actor with commands and queries
+  becoming actor methods. Inside each method would be command/query handler code
+  and Orleans would serve as mediator with its request pipeline.
+- An actor framework could replay events and keep projections up to date, though
+  switching to a document database and a non-actor approach, the stateless
+  Application layer may be performant enough.
+- An actor framework adds significant complexity. A simpler solution, storing
+  aggregate state in memory, may be good enough and easier to reason about.
 
 ## See also
 
