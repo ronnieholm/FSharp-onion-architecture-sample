@@ -1,37 +1,33 @@
 # TODO
 
 - Test if using UMX for value object serializes/deserialized without issues using the F# System.Text.Json NuGet.
-- Add enumeration status field (serialize as string).
-- Add estimate field on task and aggregated estimate on story.
+- Add enumeration status field to serialize as string.
+- Add calculated estimate field on task and aggregated estimate on story.
 - Why does ASP.NET errors not conform to ProblemDetails? For instance, invalid GUID with model binding.
-- Return error codes (cases of error DUs) in JSON error response, inspired by https://www.youtube.com/watch?v=AeZC1z8D5xI for Dapr.
+- Return error codes for cases of error DUs in JSON error response, inspired by https://www.youtube.com/watch?v=AeZC1z8D5xI for Dapr.
 - Create F# script/tests to call every endpoint (https://github.com/minio/mc/blob/master/functional-tests.sh) using fshttp.
-- Add GitHub Actions build (https://github.com/Zaid-Ajaj/pulumi-converter-bicep/blob/master/.github/workflows/test.yml).
-- Use given (class), then (method) pattern in tests?
-- Create assert helpers for comparing composite types?
+- Use GitHub Actions for build (https://github.com/Zaid-Ajaj/pulumi-converter-bicep/blob/master/.github/workflows/test.yml).
 - Add OpenTelemetry
   - https://www.youtube.com/watch?v=hkPMtIyI3OI (F# test specific)
   - https://www.youtube.com/watch?v=tctadmNTHfU
   - https://www.youtube.com/watch?v=nFU-hcHyl2s
   - https://www.youtube.com/watch?v=MHJ0BHfWhRw
 - Add RowVersion to each aggregate/entity per https://www.youtube.com/watch?v=YfIM-gfJe4c
-  - We can use modified as rowversion, but perhaps better to add a specific column.
+  - We can use modified at as rowversion, but perhaps better to add a specific column.
   - Redundant for SQLite which only supports one write at a time.
+- Switch to Postgres.
 - Switch from HTTP 400 to HTTP 422 (https://youtu.be/x7v6SNIgJpE?t=4245).
 - Include fscheck tests (https://github.com/jet/equinox/blob/master/tests/Equinox.CosmosStore.Integration/AccessStrategies.fs).
 - Write stateful property based test, generating commands/queries.
   - Test can maintain in memory aggregate state, then compare with what's returned by the database (https://youtu.be/LvFs33-1Tbo?t=1786).
   - See also https://aaronstannard.com/fscheck-property-testing-csharp-part3.
-- Make use of phantom types from https://www.compositional-it.com/news-blog/working-with-phantom-types-in-fsharp.
 - Add email sending service, storing emails in database for separate processing (inbox/outbox pattern).
 - Use vscode user as with https://github.com/dotnet/orleans/blob/main/.devcontainer/devcontainer.json.
-- Current database write queries are only valid with isolation level serialization (https://rfd.shared.oxide.computer/rfd/0192).
 - Perform simulation testing: https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=N5HyVUPuU0E and https://www.youtube.com/watch?v=UZkDdQEoolo.
 - Why isn't middleware starting and completing the transaction?
   - Investigate transactions in middleware: https://blog.bencope.land/f-crud-api-with-giraffe-mysql-and-dapper-fsharp.
   - One such example: https://www.youtube.com/watch?v=EUdhyAdYfpA.
 - How to measure time the optimized way: https://www.youtube.com/watch?v=Lvdyi5DWNm4.
-- Experiment with SQLite WAL feature.
 - Try out https://sqlitestudio.pl/
 - Try out https://github.com/xoofx/ultra
 - Change update time field to modified time field.
