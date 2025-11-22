@@ -141,6 +141,10 @@ ceremony:
   require more work compared to SQL scripts. But even with SQL scripts,
   migrating data is the hardest part, regardless of done in a batch or
   on-demand.
+- A fully event sourced system looks nice on paper, but in most cases isn't
+  worth the hassle. Changes to events over time quickly become non-trivial to
+  manage. In many cases, maintaining a persisted domain events table, not used
+  to replay state, is good enough for traceability.
 - Looking into [Marten](https://martendb.io) and
   [Wolverine](https://wolverinefx.net) may be preferred over custom building
   only what's needed. Their level of documentation or lock-in has to be taken
