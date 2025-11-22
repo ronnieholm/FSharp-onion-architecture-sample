@@ -11,11 +11,7 @@ open FSharp.UMX
 // 1. Either create the serializer options from the F# options...
 let options =
     JsonFSharpOptions.Default()
-        // Lower-case 'case' and 'field'.
-        // Lower-case other parts of JSON with a policy
-        // Compared to System.Text.Json serialization (is the F# library needed?)
-
-        // Add any .WithXXX() calls here to customize the format
+            // Add any .WithXXX() calls here to customize the format
         .WithUnionNamedFields(true)
         //.WithUnionFieldNamesFromTypes(true)
         //.WithUnionUnwrapRecordCases(true)
