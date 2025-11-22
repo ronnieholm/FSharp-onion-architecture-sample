@@ -124,24 +124,36 @@ ceremony:
   to be used across ASP.NET, console, or service hosts.
 - Using a document database could alleviate complex, repetitive mapping in
   repositories. For instance
-  [PostgreSQL](https://www.postgresql.org/docs/current/functions-json.html),
-  supports queries/indices on JSON documents, whose documents may represent
-  events or projected read models.
-- Storing documents of value types come with their own issues as value types
-  adds another level to the JSON document and require an F# type aware
-  serializer.
+  [PostgreSQL](https://www.postgresql.org/docs/current/functions-json.html) and
+  [SQLite](https://sqlite.org/json1.html), supports queries/indices on JSON
+  documents, whose documents may represent aggregates, events, or projected read
+  models.
+- Manually change tracking aggregate state, represented by a document, is
+  simpler than change tracking an object graph, not to mention simpler to
+  serialize and deserialize without an ORM. Instead of using the database
+  transaction log as a replacement for unit of work + identity map, which
+  outside SQLite is expensive in terms of round-trips, a unit of work + identity
+  map tracking aggregates as a whole is reasonable to implement by hand.
+- Storing documents of value types come with their own issues. Value types adds
+  another level to the JSON document and require an F# type aware serializer and
+  deserializer. Though, the extra level with value types disappear using the
+  [UMX](https://github.com/fsprojects/FSharp.UMX) library. Also, migrations may
+  require more work compared to SQL scripts. But even with SQL scripts,
+  migrating data is the hardest part, regardless of done in a batch or
+  on-demand.
 - Looking into [Marten](https://martendb.io) and
-  [Wolverine](https://wolverinefx.net) may be preferred over custom build only
-  what's needed. Their level of documentation or lock-in has to be taken into
-  account.
+  [Wolverine](https://wolverinefx.net) may be preferred over custom building
+  only what's needed. Their level of documentation or lock-in has to be taken
+  into account, though.
 - F#'s type system is superior to C#'s, but increased compile times make F# less
   attractive.
 - The actor model, implemented by something like
   [Orleans](https://learn.microsoft.com/en-us/dotnet/orleans) might be suited
-  for applications where the same aggregate is often requested (as actors are
-  stateful). Each aggregate could become an actor with commands and queries
-  becoming actor methods. Inside each method would be command/query handler code
-  and Orleans would serve as mediator with its request pipeline.
+  for applications where the same aggregate is requested often (as actors are
+  stateful) and for serializing updates to aggregates. Each aggregate could
+  become an actor with commands and queries becoming actor methods. Inside each
+  method would be command/query handler code and Orleans would serve as mediator
+  with its request pipeline.
 - An actor framework could replay events and keep projections up to date, though
   switching to a document database and a non-actor approach, the stateless
   Application layer may be performant enough.
