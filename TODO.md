@@ -38,3 +38,6 @@
 - Setup code coverage report.
 - Add Fable frontend.
 - Add Docker compose file.
+- For logging, pass into Debug, Verbose functions, ... a fun instead of
+  string. That's more efficient as the string will not be constructed until
+  actually logged. And it may never be logged due to active log level.
